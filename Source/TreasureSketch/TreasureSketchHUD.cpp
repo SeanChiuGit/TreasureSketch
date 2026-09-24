@@ -124,11 +124,21 @@ void ATreasureSketchHUD::DrawHUD()
     const FString RoleLabel = FString::Printf(TEXT("%s / %s"),
         bScout ? TEXT("侦察者") : TEXT("寻宝者"),
         GetNetMode() == NM_ListenServer ? TEXT("主机") : TEXT("已连接客户端"));
-    const FString Help = bScout
-        ? TEXT("WASD 移动 | M 打开白纸画图 | C 清空 | Enter 交图")
+    const FString Help = PC->IsScoutSpectating()
+        ? TEXT("观战：WASD 飞行 | Space 上升 | Ctrl 下降 | Shift 加速")
+        : bScout ? TEXT("WASD 移动 | M 打开白纸画图 | C 清空 | Enter 交图")
         : TEXT("等待交图；收到后 M 查看地图 | E 挖掘");
     DrawText(FString::Printf(TEXT("%s  |  岛屿种子 %d"), *RoleLabel, GS->IslandSeed), FLinearColor::White, 35.f, 28.f, GEngine->GetLargeFont(), 1.f);
     DrawText(Help, FLinearColor(0.9f,0.9f,0.9f), 35.f, 62.f, GEngine->GetSmallFont(), 1.f);
+    if (PC->IsScoutSpectating())
+    {
+        DrawText(TEXT("鼠标转向 | Tab 切换视角 | T 显示/隐藏宝藏"),
+            FLinearColor(0.9f, 0.9f, 0.9f), 35.f, 86.f, GEngine->GetSmallFont(), 1.f);
+        DrawText(FString::Printf(TEXT("%s  |  宝藏标记：%s"),
+            PC->IsHunterFirstPersonView() ? TEXT("寻宝者第一视角") : TEXT("自由飞行"),
+            PC->IsSpectatorTreasureVisible() ? TEXT("显示") : TEXT("隐藏")),
+            FLinearColor(0.45f, 0.9f, 0.85f), 35.f, 110.f, GEngine->GetSmallFont(), 1.f);
+    }
 
     const int32 SecondsRemaining = GS->GetSecondsRemaining();
     const FString TimerText = FString::Printf(TEXT("%02d:%02d"), SecondsRemaining / 60, SecondsRemaining % 60);

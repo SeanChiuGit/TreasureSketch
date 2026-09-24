@@ -6,6 +6,14 @@
 #include "TreasureSketchPlayerController.generated.h"
 
 class ATreasureMarker;
+class ACameraActor;
+class ATreasureSketchCharacter;
+
+enum class EScoutSpectatorView : uint8
+{
+    FreeFlight,
+    HunterFirstPerson
+};
 
 UCLASS()
 class TREASURESKETCH_API ATreasureSketchPlayerController : public APlayerController
@@ -26,6 +34,9 @@ public:
     void RequestReplay(bool bSwapRoles = false);
     bool IsLocalScout() const;
     bool IsHunterWaiting() const;
+    bool IsScoutSpectating() const { return SpectatorCamera != nullptr; }
+    bool IsHunterFirstPersonView() const { return SpectatorView == EScoutSpectatorView::HunterFirstPerson; }
+    bool IsSpectatorTreasureVisible() const { return bTreasureMarkerVisible; }
 
     UFUNCTION(Client, Reliable)
     void ClientReceiveSketch(const TArray<FSketchStroke>& CompletedStrokes);
@@ -34,7 +45,7 @@ public:
     void ClientDigResult(bool bFound, float Distance);
 
     UFUNCTION(Client, Reliable)
-    void ClientStartNewRound();
+    void ClientStartNewRound(int32 NewRoundSerial);
 
     UFUNCTION(Client, Reliable)
     void ClientRevealTreasure(FVector_NetQuantize TreasureLocation);
@@ -42,12 +53,28 @@ public:
     UFUNCTION(Client, Reliable)
     void ClientHideTreasure();
 
+    UFUNCTION(Client, Unreliable)
+    void ClientUpdateHunterView(FVector_NetQuantize ViewLocation, FRotator ViewRotation);
+
 private:
     UPROPERTY()
     TArray<FSketchStroke> Strokes;
 
     UPROPERTY()
     TObjectPtr<ATreasureMarker> LocalScoutMarker;
+
+    UPROPERTY()
+    TObjectPtr<ACameraActor> SpectatorCamera;
+
+    FVector ScoutTreasureLocation = FVector::ZeroVector;
+    FVector HunterViewLocation = FVector::ZeroVector;
+    FRotator HunterViewRotation = FRotator::ZeroRotator;
+    float HunterViewUpdatedAt = 0.f;
+    EScoutSpectatorView SpectatorView = EScoutSpectatorView::FreeFlight;
+    bool bHasScoutTreasureLocation = false;
+    bool bTreasureMarkerVisible = false;
+    bool bHasHunterView = false;
+    int32 PendingSpectatorRoundSerial = 0;
 
     bool bMapOpen = false;
     bool bWasDrawing = false;
@@ -65,9 +92,16 @@ private:
     void ConfirmJoinOnlineGame();
     void StartOnlineRound();
     void InviteSteamFriend();
+    void ToggleSpectatorView();
+    void ToggleSpectatorTreasure();
     bool IsPointOnPaper(const FVector2D& Point) const;
     void ApplyPhaseInputRules();
     void UpdateReplayInput();
+    void UpdateSpectatorCamera(float DeltaTime);
+    void StartSpectating();
+    void StopSpectating();
+    void SetLocalTreasureMarkerVisible(bool bVisible);
+    ATreasureSketchCharacter* FindHunterCharacter() const;
 
     UFUNCTION(Server, Reliable)
     void ServerSubmitSketch(const TArray<FSketchStroke>& CompletedStrokes);

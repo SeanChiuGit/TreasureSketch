@@ -11,6 +11,7 @@ void ATreasureSketchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProper
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
     DOREPLIFETIME(ATreasureSketchGameState, IslandSeed);
+    DOREPLIFETIME(ATreasureSketchGameState, RoundSerial);
     DOREPLIFETIME(ATreasureSketchGameState, Phase);
     DOREPLIFETIME(ATreasureSketchGameState, RoundEndServerTime);
     DOREPLIFETIME(ATreasureSketchGameState, bGameStarted);

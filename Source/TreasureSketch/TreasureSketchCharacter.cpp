@@ -2,9 +2,14 @@
 
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialInterface.h"
+#include "Net/UnrealNetwork.h"
+#include "UObject/ConstructorHelpers.h"
 
 ATreasureSketchCharacter::ATreasureSketchCharacter()
 {
@@ -22,8 +27,78 @@ ATreasureSketchCharacter::ATreasureSketchCharacter()
     FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
     FollowCamera->bUsePawnControlRotation = false;
 
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> BaseMaterial(
+        TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+
+    BodyMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BodyMesh"));
+    HeadMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HeadMesh"));
+    LeftArmMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("LeftArmMesh"));
+    RightArmMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RightArmMesh"));
+    LeftLegMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("LeftLegMesh"));
+    RightLegMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RightLegMesh"));
+    FaceMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FaceMesh"));
+
+    const auto SetupPart = [this](UStaticMeshComponent* Part,
+        bool bSphere, const FVector& Location, const FVector& Scale)
+    {
+        Part->SetupAttachment(GetCapsuleComponent());
+        Part->SetStaticMesh(bSphere ? Sphere.Object : Cube.Object);
+        Part->SetRelativeLocation(Location);
+        Part->SetRelativeScale3D(Scale);
+        Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Part->SetMaterial(0, BaseMaterial.Object);
+    };
+    SetupPart(BodyMesh.Get(), false, FVector(0.f, 0.f, -8.f), FVector(0.45f, 0.34f, 0.70f));
+    SetupPart(HeadMesh.Get(), true, FVector(0.f, 0.f, 47.f), FVector(0.36f, 0.36f, 0.36f));
+    SetupPart(LeftArmMesh.Get(), false, FVector(0.f, -28.f, -14.f), FVector(0.16f, 0.18f, 0.58f));
+    SetupPart(RightArmMesh.Get(), false, FVector(0.f, 28.f, -14.f), FVector(0.16f, 0.18f, 0.58f));
+    SetupPart(LeftLegMesh.Get(), false, FVector(0.f, -13.f, -63.f), FVector(0.20f, 0.20f, 0.58f));
+    SetupPart(RightLegMesh.Get(), false, FVector(0.f, 13.f, -63.f), FVector(0.20f, 0.20f, 0.58f));
+    SetupPart(FaceMesh.Get(), false, FVector(20.f, 0.f, 49.f), FVector(0.06f, 0.22f, 0.10f));
+
     bUseControllerRotationYaw = false;
     GetCharacterMovement()->bOrientRotationToMovement = true;
+}
+
+void ATreasureSketchCharacter::BeginPlay()
+{
+    Super::BeginPlay();
+    const auto ColorPart = [](UStaticMeshComponent* Part, const FLinearColor& Color)
+    {
+        if (UMaterialInstanceDynamic* Material = Part->CreateAndSetMaterialInstanceDynamic(0))
+            Material->SetVectorParameterValue(TEXT("Color"), Color);
+    };
+    ColorPart(BodyMesh.Get(), FLinearColor(0.08f, 0.55f, 0.68f));
+    ColorPart(HeadMesh.Get(), FLinearColor(0.94f, 0.72f, 0.49f));
+    ColorPart(LeftArmMesh.Get(), FLinearColor(0.08f, 0.55f, 0.68f));
+    ColorPart(RightArmMesh.Get(), FLinearColor(0.08f, 0.55f, 0.68f));
+    ColorPart(LeftLegMesh.Get(), FLinearColor(0.08f, 0.15f, 0.28f));
+    ColorPart(RightLegMesh.Get(), FLinearColor(0.08f, 0.15f, 0.28f));
+    ColorPart(FaceMesh.Get(), FLinearColor(0.02f, 0.06f, 0.09f));
+}
+
+void ATreasureSketchCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+    DOREPLIFETIME(ATreasureSketchCharacter, bSpectatorHidden);
+}
+
+void ATreasureSketchCharacter::SetSpectatorHidden(bool bHidden)
+{
+    if (!HasAuthority()) return;
+    bSpectatorHidden = bHidden;
+    OnRep_SpectatorHidden();
+    ForceNetUpdate();
+}
+
+void ATreasureSketchCharacter::OnRep_SpectatorHidden()
+{
+    SetActorHiddenInGame(bSpectatorHidden);
+    GetCapsuleComponent()->SetCollisionEnabled(
+        bSpectatorHidden ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
+    GetCharacterMovement()->SetMovementMode(bSpectatorHidden ? MOVE_None : MOVE_Walking);
 }
 
 void ATreasureSketchCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

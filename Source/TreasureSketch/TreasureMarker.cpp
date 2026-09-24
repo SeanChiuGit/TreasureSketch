@@ -6,6 +6,7 @@
 
 ATreasureMarker::ATreasureMarker()
 {
+    bReplicates = false;
     SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
     SetRootComponent(SceneRoot);
     static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));

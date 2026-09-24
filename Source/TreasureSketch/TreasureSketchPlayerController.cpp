@@ -3,9 +3,12 @@
 #include "TreasureSketchGameMode.h"
 #include "TreasureSketchGameState.h"
 #include "TreasureSketchPlayerState.h"
+#include "TreasureSketchCharacter.h"
 #include "TreasureMarker.h"
 #include "TreasureOnlineSubsystem.h"
+#include "Camera/CameraActor.h"
 #include "Engine/Engine.h"
+#include "EngineUtils.h"
 
 ATreasureSketchPlayerController::ATreasureSketchPlayerController()
 {
@@ -27,6 +30,8 @@ void ATreasureSketchPlayerController::SetupInputComponent()
     InputComponent->BindAction("ConfirmJoin", IE_Pressed, this, &ATreasureSketchPlayerController::ConfirmJoinOnlineGame);
     InputComponent->BindAction("StartOnlineRound", IE_Pressed, this, &ATreasureSketchPlayerController::StartOnlineRound);
     InputComponent->BindAction("InviteSteamFriend", IE_Pressed, this, &ATreasureSketchPlayerController::InviteSteamFriend);
+    InputComponent->BindAction("ToggleSpectatorView", IE_Pressed, this, &ATreasureSketchPlayerController::ToggleSpectatorView);
+    InputComponent->BindAction("ToggleTreasureMarker", IE_Pressed, this, &ATreasureSketchPlayerController::ToggleSpectatorTreasure);
 }
 
 FVector2D ATreasureSketchPlayerController::GetPaperMin() const
@@ -51,6 +56,7 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
 {
     Super::PlayerTick(DeltaTime);
     UpdateReplayInput();
+    UpdateSpectatorCamera(DeltaTime);
     ApplyPhaseInputRules();
     if (!StatusMessage.IsEmpty() && GetWorld()->GetTimeSeconds() >= StatusUntil)
         StatusMessage.Empty();
@@ -126,6 +132,140 @@ void ATreasureSketchPlayerController::UpdateReplayInput()
     }
 }
 
+ATreasureSketchCharacter* ATreasureSketchPlayerController::FindHunterCharacter() const
+{
+    for (TActorIterator<ATreasureSketchCharacter> It(GetWorld()); It; ++It)
+    {
+        const ATreasureSketchPlayerState* PS = It->GetPlayerState<ATreasureSketchPlayerState>();
+        if (PS && PS->PlayerRole == ETreasurePlayerRole::Hunter) return *It;
+    }
+    return nullptr;
+}
+
+void ATreasureSketchPlayerController::StartSpectating()
+{
+    FVector StartLocation = GetPawn() ? GetPawn()->GetActorLocation() + FVector(0.f, 0.f, 300.f)
+        : FVector(0.f, 0.f, 500.f);
+    FRotator StartRotation = GetControlRotation();
+    if (ATreasureSketchCharacter* Hunter = FindHunterCharacter())
+    {
+        StartLocation = Hunter->GetActorLocation() + FVector(-400.f, 0.f, 350.f);
+        StartRotation = (Hunter->GetActorLocation() - StartLocation).Rotation();
+    }
+    SpectatorCamera = GetWorld()->SpawnActor<ACameraActor>(
+        ACameraActor::StaticClass(), StartLocation, StartRotation);
+    if (!SpectatorCamera) return;
+
+    SpectatorCamera->SetActorEnableCollision(false);
+    SpectatorView = EScoutSpectatorView::FreeFlight;
+    bMapOpen = false;
+    bShowMouseCursor = false;
+    SetInputMode(FInputModeGameOnly());
+    SetViewTargetWithBlend(SpectatorCamera.Get(), 0.2f);
+}
+
+void ATreasureSketchPlayerController::StopSpectating()
+{
+    if (!SpectatorCamera) return;
+    if (GetPawn()) SetViewTarget(GetPawn());
+    SpectatorCamera->Destroy();
+    SpectatorCamera = nullptr;
+    bHasHunterView = false;
+    SetLocalTreasureMarkerVisible(false);
+}
+
+void ATreasureSketchPlayerController::UpdateSpectatorCamera(float DeltaTime)
+{
+    if (!IsLocalController()) return;
+    const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
+    if (GS && PendingSpectatorRoundSerial > 0 && GS->RoundSerial >= PendingSpectatorRoundSerial)
+        PendingSpectatorRoundSerial = 0;
+    const bool bShouldSpectate = GS && GS->bGameStarted && PendingSpectatorRoundSerial == 0
+        && GS->Phase == ETreasureRoundPhase::HunterSearching && IsLocalScout();
+    if (!bShouldSpectate)
+    {
+        StopSpectating();
+        return;
+    }
+    if (!SpectatorCamera) StartSpectating();
+    if (!SpectatorCamera) return;
+
+    if (SpectatorView == EScoutSpectatorView::HunterFirstPerson)
+    {
+        if (bHasHunterView && GetWorld()->GetTimeSeconds() - HunterViewUpdatedAt < 1.f)
+        {
+            SpectatorCamera->SetActorLocation(FMath::VInterpTo(
+                SpectatorCamera->GetActorLocation(), HunterViewLocation, DeltaTime, 18.f));
+            SpectatorCamera->SetActorRotation(FMath::RInterpTo(
+                SpectatorCamera->GetActorRotation(), HunterViewRotation, DeltaTime, 18.f));
+        }
+        else if (ATreasureSketchCharacter* Hunter = FindHunterCharacter())
+        {
+            const FRotator Aim = Hunter->GetBaseAimRotation();
+            SpectatorCamera->SetActorLocation(Hunter->GetActorLocation() + FVector(0.f, 0.f, 72.f)
+                + FRotator(0.f, Aim.Yaw, 0.f).Vector() * 46.f);
+            SpectatorCamera->SetActorRotation(Aim);
+        }
+        return;
+    }
+
+    float MouseX = 0.f, MouseY = 0.f;
+    GetInputMouseDelta(MouseX, MouseY);
+    FRotator Rotation = SpectatorCamera->GetActorRotation();
+    Rotation.Yaw += MouseX * 0.15f;
+    Rotation.Pitch = FMath::ClampAngle(Rotation.Pitch - MouseY * 0.15f, -85.f, 85.f);
+    Rotation.Roll = 0.f;
+    SpectatorCamera->SetActorRotation(Rotation);
+
+    const FRotator YawRotation(0.f, Rotation.Yaw, 0.f);
+    FVector Direction = YawRotation.Vector() * (static_cast<int32>(IsInputKeyDown(EKeys::W)) - static_cast<int32>(IsInputKeyDown(EKeys::S)));
+    Direction += FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y)
+        * (static_cast<int32>(IsInputKeyDown(EKeys::D)) - static_cast<int32>(IsInputKeyDown(EKeys::A)));
+    Direction.Z += static_cast<int32>(IsInputKeyDown(EKeys::SpaceBar))
+        - static_cast<int32>(IsInputKeyDown(EKeys::LeftControl));
+    const float Speed = IsInputKeyDown(EKeys::LeftShift) ? 2200.f : 1100.f;
+    SpectatorCamera->AddActorWorldOffset(Direction.GetSafeNormal() * Speed * DeltaTime);
+}
+
+void ATreasureSketchPlayerController::ToggleSpectatorView()
+{
+    if (!SpectatorCamera) return;
+    SpectatorView = SpectatorView == EScoutSpectatorView::FreeFlight
+        ? EScoutSpectatorView::HunterFirstPerson : EScoutSpectatorView::FreeFlight;
+    if (SpectatorView == EScoutSpectatorView::HunterFirstPerson && bHasHunterView)
+        SpectatorCamera->SetActorLocationAndRotation(HunterViewLocation, HunterViewRotation);
+}
+
+void ATreasureSketchPlayerController::ToggleSpectatorTreasure()
+{
+    if (SpectatorCamera && IsLocalScout() && bHasScoutTreasureLocation)
+        SetLocalTreasureMarkerVisible(!bTreasureMarkerVisible);
+}
+
+void ATreasureSketchPlayerController::SetLocalTreasureMarkerVisible(bool bVisible)
+{
+    bTreasureMarkerVisible = bVisible && bHasScoutTreasureLocation;
+    if (!bTreasureMarkerVisible)
+    {
+        if (LocalScoutMarker) LocalScoutMarker->Destroy();
+        LocalScoutMarker = nullptr;
+    }
+    else if (!LocalScoutMarker)
+    {
+        LocalScoutMarker = GetWorld()->SpawnActor<ATreasureMarker>(
+            ATreasureMarker::StaticClass(), ScoutTreasureLocation, FRotator::ZeroRotator);
+    }
+}
+
+void ATreasureSketchPlayerController::ClientUpdateHunterView_Implementation(
+    FVector_NetQuantize ViewLocation, FRotator ViewRotation)
+{
+    HunterViewLocation = ViewLocation;
+    HunterViewRotation = ViewRotation;
+    HunterViewUpdatedAt = GetWorld()->GetTimeSeconds();
+    bHasHunterView = true;
+}
+
 void ATreasureSketchPlayerController::ToggleMap()
 {
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
@@ -157,12 +297,13 @@ void ATreasureSketchPlayerController::Handoff()
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (IsLocalScout() && GS && GS->bGameStarted && GS->Phase == ETreasureRoundPhase::ScoutDrawing)
     {
+        SetLocalTreasureMarkerVisible(false);
         ServerSubmitSketch(Strokes);
         bMapOpen = false;
         bShowMouseCursor = false;
         SetInputMode(FInputModeGameOnly());
         ApplyPhaseInputRules();
-        StatusMessage = TEXT("地图已交给寻宝者，请等待对方寻宝。");
+        StatusMessage = TEXT("地图已交给寻宝者；现在可以观战。");
         StatusUntil = GetWorld()->GetTimeSeconds() + 5.f;
     }
 }
@@ -208,13 +349,12 @@ void ATreasureSketchPlayerController::ClientDigResult_Implementation(bool bFound
     StatusUntil = GetWorld()->GetTimeSeconds() + 6.f;
 }
 
-void ATreasureSketchPlayerController::ClientStartNewRound_Implementation()
+void ATreasureSketchPlayerController::ClientStartNewRound_Implementation(int32 NewRoundSerial)
 {
-    if (LocalScoutMarker)
-    {
-        LocalScoutMarker->Destroy();
-        LocalScoutMarker = nullptr;
-    }
+    StopSpectating();
+    PendingSpectatorRoundSerial = NewRoundSerial;
+    bHasScoutTreasureLocation = false;
+    SetLocalTreasureMarkerVisible(false);
     Strokes.Reset();
     bWasDrawing = false;
     StatusMessage = TEXT("新的一局开始了！");
@@ -223,18 +363,15 @@ void ATreasureSketchPlayerController::ClientStartNewRound_Implementation()
 
 void ATreasureSketchPlayerController::ClientRevealTreasure_Implementation(FVector_NetQuantize TreasureLocation)
 {
-    if (LocalScoutMarker) LocalScoutMarker->Destroy();
-    LocalScoutMarker = GetWorld()->SpawnActor<ATreasureMarker>(
-        ATreasureMarker::StaticClass(), TreasureLocation, FRotator::ZeroRotator);
+    ScoutTreasureLocation = TreasureLocation;
+    bHasScoutTreasureLocation = true;
+    if (LocalScoutMarker) LocalScoutMarker->SetActorLocation(ScoutTreasureLocation);
+    SetLocalTreasureMarkerVisible(true);
 }
 
 void ATreasureSketchPlayerController::ClientHideTreasure_Implementation()
 {
-    if (LocalScoutMarker)
-    {
-        LocalScoutMarker->Destroy();
-        LocalScoutMarker = nullptr;
-    }
+    SetLocalTreasureMarkerVisible(false);
 }
 
 void ATreasureSketchPlayerController::ClearSketch()

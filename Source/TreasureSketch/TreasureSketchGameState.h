@@ -27,6 +27,9 @@ public:
     int32 IslandSeed = 0;
 
     UPROPERTY(Replicated, BlueprintReadOnly)
+    int32 RoundSerial = 0;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
     ETreasureRoundPhase Phase = ETreasureRoundPhase::ScoutDrawing;
 
     UPROPERTY(Replicated, BlueprintReadOnly)

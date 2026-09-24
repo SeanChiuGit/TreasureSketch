@@ -6,7 +6,6 @@
 #include "TreasureSketchGameMode.generated.h"
 
 class AProceduralIsland;
-class ATreasureMarker;
 
 UCLASS()
 class TREASURESKETCH_API ATreasureSketchGameMode : public AGameModeBase
@@ -29,14 +28,14 @@ public:
 private:
     UPROPERTY()
     TObjectPtr<AProceduralIsland> Island;
-    UPROPERTY()
-    TObjectPtr<ATreasureMarker> Marker;
 
     FVector TreasureLocation = FVector::ZeroVector;
     int32 IslandSeed = 0;
+    float HunterViewUpdateTime = 0.f;
 
     void BuildRound();
     bool FinishIfTimeExpired();
     void RevealTreasureToScout();
     void HideTreasureFromScout();
+    void SendHunterViewToScout(float DeltaSeconds);
 };
