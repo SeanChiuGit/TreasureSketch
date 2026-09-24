@@ -84,6 +84,7 @@ void UTreasureOnlineSubsystem::CreateSession()
     SessionSettings->bIsLANMatch = false;
     SessionSettings->NumPublicConnections = 2;
     SessionSettings->bShouldAdvertise = true;
+    SessionSettings->bAllowInvites = true;
     SessionSettings->bAllowJoinInProgress = true;
     SessionSettings->bAllowJoinViaPresence = true;
     SessionSettings->bUsesPresence = true;
