@@ -5,6 +5,8 @@
 #include "SketchTypes.h"
 #include "TreasureSketchPlayerController.generated.h"
 
+class ATreasureMarker;
+
 UCLASS()
 class TREASURESKETCH_API ATreasureSketchPlayerController : public APlayerController
 {
@@ -21,7 +23,7 @@ public:
     FVector2D GetPaperMin() const;
     FVector2D GetPaperSize() const;
     void ClearSketch();
-    void RequestReplay();
+    void RequestReplay(bool bSwapRoles = false);
     bool IsLocalScout() const;
     bool IsHunterWaiting() const;
 
@@ -34,9 +36,18 @@ public:
     UFUNCTION(Client, Reliable)
     void ClientStartNewRound();
 
+    UFUNCTION(Client, Reliable)
+    void ClientRevealTreasure(FVector_NetQuantize TreasureLocation);
+
+    UFUNCTION(Client, Reliable)
+    void ClientHideTreasure();
+
 private:
     UPROPERTY()
     TArray<FSketchStroke> Strokes;
+
+    UPROPERTY()
+    TObjectPtr<ATreasureMarker> LocalScoutMarker;
 
     bool bMapOpen = false;
     bool bWasDrawing = false;
@@ -65,5 +76,5 @@ private:
     void ServerTryDig(FVector_NetQuantize WorldLocation);
 
     UFUNCTION(Server, Reliable)
-    void ServerRequestReplay();
+    void ServerRequestReplay(bool bSwapRoles);
 };

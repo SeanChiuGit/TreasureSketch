@@ -23,7 +23,7 @@ public:
 
     void HandoffToHunter(const TArray<struct FSketchStroke>& SubmittedStrokes);
     bool TryDig(const FVector& WorldLocation, float& OutDistance);
-    void StartNewRound();
+    void StartNewRound(bool bSwapRoles = false);
     void StartHostedRound();
 
 private:
@@ -37,4 +37,6 @@ private:
 
     void BuildRound();
     bool FinishIfTimeExpired();
+    void RevealTreasureToScout();
+    void HideTreasureFromScout();
 };

@@ -3,6 +3,7 @@
 #include "TreasureSketchGameMode.h"
 #include "TreasureSketchGameState.h"
 #include "TreasureSketchPlayerState.h"
+#include "TreasureMarker.h"
 #include "TreasureOnlineSubsystem.h"
 #include "Engine/Engine.h"
 
@@ -209,10 +210,31 @@ void ATreasureSketchPlayerController::ClientDigResult_Implementation(bool bFound
 
 void ATreasureSketchPlayerController::ClientStartNewRound_Implementation()
 {
+    if (LocalScoutMarker)
+    {
+        LocalScoutMarker->Destroy();
+        LocalScoutMarker = nullptr;
+    }
     Strokes.Reset();
     bWasDrawing = false;
     StatusMessage = TEXT("新的一局开始了！");
     StatusUntil = GetWorld()->GetTimeSeconds() + 4.f;
+}
+
+void ATreasureSketchPlayerController::ClientRevealTreasure_Implementation(FVector_NetQuantize TreasureLocation)
+{
+    if (LocalScoutMarker) LocalScoutMarker->Destroy();
+    LocalScoutMarker = GetWorld()->SpawnActor<ATreasureMarker>(
+        ATreasureMarker::StaticClass(), TreasureLocation, FRotator::ZeroRotator);
+}
+
+void ATreasureSketchPlayerController::ClientHideTreasure_Implementation()
+{
+    if (LocalScoutMarker)
+    {
+        LocalScoutMarker->Destroy();
+        LocalScoutMarker = nullptr;
+    }
 }
 
 void ATreasureSketchPlayerController::ClearSketch()
@@ -225,19 +247,19 @@ void ATreasureSketchPlayerController::NewRound()
     if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) GM->StartNewRound();
 }
 
-void ATreasureSketchPlayerController::RequestReplay()
+void ATreasureSketchPlayerController::RequestReplay(bool bSwapRoles)
 {
     const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
     if (GS && GS->IsRoundOver())
-        ServerRequestReplay();
+        ServerRequestReplay(bSwapRoles);
 }
 
-void ATreasureSketchPlayerController::ServerRequestReplay_Implementation()
+void ATreasureSketchPlayerController::ServerRequestReplay_Implementation(bool bSwapRoles)
 {
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (!GS || !GS->IsRoundOver()) return;
     if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
-        GM->StartNewRound();
+        GM->StartNewRound(bSwapRoles);
 }
 
 void ATreasureSketchPlayerController::HostOnlineGame()
