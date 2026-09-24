@@ -8,10 +8,15 @@
 #include "TreasureSketchPlayerController.h"
 #include "TreasureSketchPlayerState.h"
 #include "Engine/World.h"
-#include "Kismet/GameplayStatics.h"
+
+namespace
+{
+constexpr float PhaseDurationSeconds = 60.f;
+}
 
 ATreasureSketchGameMode::ATreasureSketchGameMode()
 {
+    PrimaryActorTick.bCanEverTick = true;
     DefaultPawnClass = ATreasureSketchCharacter::StaticClass();
     PlayerControllerClass = ATreasureSketchPlayerController::StaticClass();
     PlayerStateClass = ATreasureSketchPlayerState::StaticClass();
@@ -23,6 +28,28 @@ void ATreasureSketchGameMode::BeginPlay()
 {
     Super::BeginPlay();
     BuildRound();
+}
+
+void ATreasureSketchGameMode::Tick(float DeltaSeconds)
+{
+    Super::Tick(DeltaSeconds);
+    FinishIfTimeExpired();
+}
+
+bool ATreasureSketchGameMode::FinishIfTimeExpired()
+{
+    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!GS || !GS->bGameStarted
+        || (GS->Phase != ETreasureRoundPhase::ScoutDrawing && GS->Phase != ETreasureRoundPhase::HunterSearching)
+        || GS->GetServerWorldTimeSeconds() < GS->RoundEndServerTime)
+        return false;
+
+    const bool bScoutTimedOut = GS->Phase == ETreasureRoundPhase::ScoutDrawing;
+    GS->Phase = bScoutTimedOut ? ETreasureRoundPhase::ScoutTimedOut : ETreasureRoundPhase::HunterTimedOut;
+    if (Marker) Marker->SetActorHiddenInGame(true);
+    UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_TIMEOUT Phase=%s"),
+        bScoutTimedOut ? TEXT("ScoutDrawing") : TEXT("HunterSearching"));
+    return true;
 }
 
 void ATreasureSketchGameMode::BuildRound()
@@ -40,8 +67,8 @@ void ATreasureSketchGameMode::BuildRound()
     {
         GS->IslandSeed = IslandSeed;
         GS->Phase = ETreasureRoundPhase::ScoutDrawing;
-        GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + 60.f;
-        GS->bGameStarted = GetNetMode() == NM_Standalone;
+        GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + PhaseDurationSeconds;
+        GS->bGameStarted = false;
     }
     UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_ROUND_READY Seed=%d Treasure=%s"), IslandSeed, *TreasureLocation.ToCompactString());
 }
@@ -50,13 +77,14 @@ void ATreasureSketchGameMode::StartHostedRound()
 {
     if (ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>())
     {
+        if (GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing) return;
         if (GS->PlayerArray.Num() < 2)
         {
             UE_LOG(LogTemp, Warning, TEXT("TREASURE_ONLINE_START waiting for second player"));
             return;
         }
         GS->bGameStarted = true;
-        GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + 60.f;
+        GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + PhaseDurationSeconds;
         UE_LOG(LogTemp, Display, TEXT("TREASURE_ONLINE_START players=%d"), GS->PlayerArray.Num());
     }
 }
@@ -80,9 +108,11 @@ void ATreasureSketchGameMode::PostLogin(APlayerController* NewPlayer)
 
 void ATreasureSketchGameMode::HandoffToHunter(const TArray<FSketchStroke>& SubmittedStrokes)
 {
+    if (FinishIfTimeExpired()) return;
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
-    if (!GS || GS->Phase != ETreasureRoundPhase::ScoutDrawing) return;
+    if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing) return;
     GS->Phase = ETreasureRoundPhase::HunterSearching;
+    GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + PhaseDurationSeconds;
     if (Marker) Marker->SetActorHiddenInGame(true);
     UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_HANDOFF Hunter active; marker hidden"));
 
@@ -106,6 +136,7 @@ void ATreasureSketchGameMode::HandoffToHunter(const TArray<FSketchStroke>& Submi
 bool ATreasureSketchGameMode::TryDig(const FVector& WorldLocation, float& OutDistance)
 {
     OutDistance = FVector::Dist2D(WorldLocation, TreasureLocation);
+    if (FinishIfTimeExpired()) return false;
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (!GS || GS->Phase != ETreasureRoundPhase::HunterSearching) return false;
     if (OutDistance <= 425.f)
@@ -120,5 +151,28 @@ bool ATreasureSketchGameMode::TryDig(const FVector& WorldLocation, float& OutDis
 
 void ATreasureSketchGameMode::StartNewRound()
 {
-    UGameplayStatics::OpenLevel(this, FName(*GetWorld()->GetName()), false);
+    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!GS) return;
+
+    const bool bWasStarted = GS->bGameStarted;
+    if (Marker) Marker->Destroy();
+    if (Island) Island->Destroy();
+    BuildRound();
+    GS->bGameStarted = bWasStarted;
+
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get());
+        if (!PC) continue;
+        PC->ClientStartNewRound();
+
+        if (APawn* Pawn = PC->GetPawn())
+        {
+            const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
+            const float SpawnY = PS && PS->PlayerRole == ETreasurePlayerRole::Hunter ? 400.f : 0.f;
+            const float SpawnZ = Island ? Island->HeightAt(-2800.f, SpawnY) + 180.f : 500.f;
+            Pawn->SetActorLocation(FVector(-2800.f, SpawnY, FMath::Max(SpawnZ, 250.f)), false, nullptr, ETeleportType::ResetPhysics);
+        }
+    }
+    UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_REPLAY New round started with seed=%d"), IslandSeed);
 }

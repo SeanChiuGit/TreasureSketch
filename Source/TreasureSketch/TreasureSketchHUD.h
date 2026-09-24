@@ -11,4 +11,5 @@ class TREASURESKETCH_API ATreasureSketchHUD : public AHUD
 
 public:
     virtual void DrawHUD() override;
+    virtual void NotifyHitBoxClick(FName BoxName) override;
 };

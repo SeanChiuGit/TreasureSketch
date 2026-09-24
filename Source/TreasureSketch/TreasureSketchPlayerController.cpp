@@ -49,7 +49,10 @@ bool ATreasureSketchPlayerController::IsPointOnPaper(const FVector2D& Point) con
 void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
 {
     Super::PlayerTick(DeltaTime);
+    UpdateReplayInput();
     ApplyPhaseInputRules();
+    if (!StatusMessage.IsEmpty() && GetWorld()->GetTimeSeconds() >= StatusUntil)
+        StatusMessage.Empty();
     if (!bMapOpen || !IsLocalScout()) { bWasDrawing = false; return; }
 
     float X = 0.f, Y = 0.f;
@@ -83,22 +86,54 @@ void ATreasureSketchPlayerController::ApplyPhaseInputRules()
 {
     const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
     const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
-    if (!PS || !GS || bMapOpen) return;
+    if (!PS || !GS) return;
     const bool bShouldWait = (PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->Phase == ETreasureRoundPhase::ScoutDrawing)
-        || (PS->PlayerRole == ETreasurePlayerRole::Scout && GS->Phase != ETreasureRoundPhase::ScoutDrawing);
-    SetIgnoreMoveInput(bShouldWait);
-    SetIgnoreLookInput(bShouldWait);
+        || (PS->PlayerRole == ETreasurePlayerRole::Scout && GS->Phase != ETreasureRoundPhase::ScoutDrawing)
+        || GS->IsRoundOver();
+    const bool bShouldLock = bMapOpen || bShouldWait;
+    if (bInputLocked != bShouldLock)
+    {
+        SetIgnoreMoveInput(bShouldLock);
+        SetIgnoreLookInput(bShouldLock);
+        bInputLocked = bShouldLock;
+    }
+}
+
+void ATreasureSketchPlayerController::UpdateReplayInput()
+{
+    const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
+    const bool bRoundOver = GS && GS->IsRoundOver();
+    if (bReplayInputActive == bRoundOver) return;
+
+    bReplayInputActive = bRoundOver;
+    bMapOpen = false;
+    bWasDrawing = false;
+    bShowMouseCursor = bRoundOver;
+    if (bRoundOver)
+    {
+        FInputModeGameAndUI ReplayInput;
+        ReplayInput.SetHideCursorDuringCapture(false);
+        ReplayInput.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        SetInputMode(ReplayInput);
+        int32 W = 1280, H = 720;
+        GetViewportSize(W, H);
+        SetMouseLocation(W / 2, H / 2);
+    }
+    else
+    {
+        SetInputMode(FInputModeGameOnly());
+    }
 }
 
 void ATreasureSketchPlayerController::ToggleMap()
 {
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
-    if (IsHunterWaiting() || (IsLocalScout() && GS && GS->Phase != ETreasureRoundPhase::ScoutDrawing))
+    if ((GS && GS->IsRoundOver()) || IsHunterWaiting()
+        || (IsLocalScout() && GS && GS->Phase != ETreasureRoundPhase::ScoutDrawing))
         return;
     bMapOpen = !bMapOpen;
     bShowMouseCursor = bMapOpen;
-    SetIgnoreLookInput(bMapOpen);
-    SetIgnoreMoveInput(bMapOpen);
+    ApplyPhaseInputRules();
     if (bMapOpen)
     {
         FInputModeGameAndUI DrawingInput;
@@ -119,12 +154,13 @@ void ATreasureSketchPlayerController::ToggleMap()
 void ATreasureSketchPlayerController::Handoff()
 {
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
-    if (IsLocalScout() && GS && GS->Phase == ETreasureRoundPhase::ScoutDrawing)
+    if (IsLocalScout() && GS && GS->bGameStarted && GS->Phase == ETreasureRoundPhase::ScoutDrawing)
     {
         ServerSubmitSketch(Strokes);
         bMapOpen = false;
         bShowMouseCursor = false;
         SetInputMode(FInputModeGameOnly());
+        ApplyPhaseInputRules();
         StatusMessage = TEXT("地图已交给寻宝者，请等待对方寻宝。");
         StatusUntil = GetWorld()->GetTimeSeconds() + 5.f;
     }
@@ -171,6 +207,14 @@ void ATreasureSketchPlayerController::ClientDigResult_Implementation(bool bFound
     StatusUntil = GetWorld()->GetTimeSeconds() + 6.f;
 }
 
+void ATreasureSketchPlayerController::ClientStartNewRound_Implementation()
+{
+    Strokes.Reset();
+    bWasDrawing = false;
+    StatusMessage = TEXT("新的一局开始了！");
+    StatusUntil = GetWorld()->GetTimeSeconds() + 4.f;
+}
+
 void ATreasureSketchPlayerController::ClearSketch()
 {
     if (IsLocalScout()) Strokes.Reset();
@@ -179,6 +223,21 @@ void ATreasureSketchPlayerController::ClearSketch()
 void ATreasureSketchPlayerController::NewRound()
 {
     if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) GM->StartNewRound();
+}
+
+void ATreasureSketchPlayerController::RequestReplay()
+{
+    const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
+    if (GS && GS->IsRoundOver())
+        ServerRequestReplay();
+}
+
+void ATreasureSketchPlayerController::ServerRequestReplay_Implementation()
+{
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (!GS || !GS->IsRoundOver()) return;
+    if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
+        GM->StartNewRound();
 }
 
 void ATreasureSketchPlayerController::HostOnlineGame()

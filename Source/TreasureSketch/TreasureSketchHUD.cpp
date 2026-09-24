@@ -63,6 +63,47 @@ void ATreasureSketchHUD::DrawHUD()
         return;
     }
 
+    if (GS->IsRoundOver())
+    {
+        const bool bWon = GS->Phase == ETreasureRoundPhase::Won;
+        const float CenterX = Canvas->SizeX * 0.5f;
+        const float CenterY = Canvas->SizeY * 0.5f;
+        const float PanelWidth = FMath::Min(620.f, Canvas->SizeX * 0.82f);
+        const float PanelHeight = 300.f;
+        const float ButtonWidth = FMath::Min(280.f, PanelWidth - 48.f);
+        const float ButtonHeight = 64.f;
+        const FVector2D ButtonMin(CenterX - ButtonWidth * 0.5f, CenterY + 40.f);
+        const FName ReplayButtonName(TEXT("ReplayRound"));
+
+        DrawRect(FLinearColor(0.01f, 0.015f, 0.025f, 0.94f), 0.f, 0.f, Canvas->SizeX, Canvas->SizeY);
+        DrawRect(FLinearColor(0.07f, 0.11f, 0.14f, 1.f), CenterX - PanelWidth * 0.5f,
+            CenterY - PanelHeight * 0.5f, PanelWidth, PanelHeight);
+
+        const FString Title = bWon ? TEXT("合作成功！") : TEXT("时间到！");
+        float TextWidth = 0.f, TextHeight = 0.f;
+        GetTextSize(Title, TextWidth, TextHeight, GEngine->GetLargeFont(), 1.35f);
+        DrawText(Title, bWon ? FLinearColor(0.95f, 0.85f, 0.25f) : FLinearColor(1.f, 0.35f, 0.25f),
+            CenterX - TextWidth * 0.5f,
+            CenterY - 105.f, GEngine->GetLargeFont(), 1.35f);
+
+        const FString Hint = bWon ? TEXT("找到宝藏了！再来一座新岛屿？")
+            : GS->Phase == ETreasureRoundPhase::ScoutTimedOut ? TEXT("侦察者未能及时交图，再试一次？")
+            : TEXT("寻宝者未能及时找到宝藏，再试一次？");
+        GetTextSize(Hint, TextWidth, TextHeight, GEngine->GetMediumFont(), 1.f);
+        DrawText(Hint, FLinearColor::White, CenterX - TextWidth * 0.5f,
+            CenterY - 38.f, GEngine->GetMediumFont(), 1.f);
+
+        const bool bHovered = HitBoxesOver.Contains(ReplayButtonName);
+        DrawRect(bHovered ? FLinearColor(0.24f, 0.69f, 0.52f) : FLinearColor(0.16f, 0.52f, 0.40f),
+            ButtonMin.X, ButtonMin.Y, ButtonWidth, ButtonHeight);
+        const FString ButtonText = TEXT("再玩一次");
+        GetTextSize(ButtonText, TextWidth, TextHeight, GEngine->GetLargeFont(), 1.f);
+        DrawText(ButtonText, FLinearColor::White, CenterX - TextWidth * 0.5f,
+            ButtonMin.Y + (ButtonHeight - TextHeight) * 0.5f, GEngine->GetLargeFont(), 1.f);
+        AddHitBox(ButtonMin, FVector2D(ButtonWidth, ButtonHeight), ReplayButtonName, true, 0);
+        return;
+    }
+
     const bool bScout = PS->PlayerRole == ETreasurePlayerRole::Scout;
     FString RoleLabel;
     if (GetNetMode() == NM_Standalone)
@@ -112,5 +153,15 @@ void ATreasureSketchHUD::DrawHUD()
             const FVector2D B = Min + Stroke.Points[I] * Size;
             DrawLine(A.X, A.Y, B.X, B.Y, FLinearColor(0.08f,0.07f,0.05f), 4.f);
         }
+    }
+}
+
+void ATreasureSketchHUD::NotifyHitBoxClick(FName BoxName)
+{
+    Super::NotifyHitBoxClick(BoxName);
+    if (BoxName == FName(TEXT("ReplayRound")))
+    {
+        if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(PlayerOwner))
+            PC->RequestReplay();
     }
 }
