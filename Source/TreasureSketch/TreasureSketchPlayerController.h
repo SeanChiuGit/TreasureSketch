@@ -21,6 +21,7 @@ public:
     FVector2D GetPaperMin() const;
     FVector2D GetPaperSize() const;
     void ClearSketch();
+    void RequestReplay();
     bool IsLocalScout() const;
     bool IsHunterWaiting() const;
 
@@ -30,12 +31,17 @@ public:
     UFUNCTION(Client, Reliable)
     void ClientDigResult(bool bFound, float Distance);
 
+    UFUNCTION(Client, Reliable)
+    void ClientStartNewRound();
+
 private:
     UPROPERTY()
     TArray<FSketchStroke> Strokes;
 
     bool bMapOpen = false;
     bool bWasDrawing = false;
+    bool bReplayInputActive = false;
+    bool bInputLocked = false;
     FString StatusMessage;
     float StatusUntil = 0.f;
 
@@ -50,10 +56,14 @@ private:
     void InviteSteamFriend();
     bool IsPointOnPaper(const FVector2D& Point) const;
     void ApplyPhaseInputRules();
+    void UpdateReplayInput();
 
     UFUNCTION(Server, Reliable)
     void ServerSubmitSketch(const TArray<FSketchStroke>& CompletedStrokes);
 
     UFUNCTION(Server, Reliable)
     void ServerTryDig(FVector_NetQuantize WorldLocation);
+
+    UFUNCTION(Server, Reliable)
+    void ServerRequestReplay();
 };

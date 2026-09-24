@@ -8,7 +8,6 @@
 #include "TreasureSketchPlayerController.h"
 #include "TreasureSketchPlayerState.h"
 #include "Engine/World.h"
-#include "Kismet/GameplayStatics.h"
 
 ATreasureSketchGameMode::ATreasureSketchGameMode()
 {
@@ -81,7 +80,7 @@ void ATreasureSketchGameMode::PostLogin(APlayerController* NewPlayer)
 void ATreasureSketchGameMode::HandoffToHunter(const TArray<FSketchStroke>& SubmittedStrokes)
 {
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
-    if (!GS || GS->Phase != ETreasureRoundPhase::ScoutDrawing) return;
+    if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing) return;
     GS->Phase = ETreasureRoundPhase::HunterSearching;
     if (Marker) Marker->SetActorHiddenInGame(true);
     UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_HANDOFF Hunter active; marker hidden"));
@@ -120,5 +119,28 @@ bool ATreasureSketchGameMode::TryDig(const FVector& WorldLocation, float& OutDis
 
 void ATreasureSketchGameMode::StartNewRound()
 {
-    UGameplayStatics::OpenLevel(this, FName(*GetWorld()->GetName()), false);
+    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!GS) return;
+
+    const bool bWasStarted = GS->bGameStarted;
+    if (Marker) Marker->Destroy();
+    if (Island) Island->Destroy();
+    BuildRound();
+    GS->bGameStarted = bWasStarted;
+
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get());
+        if (!PC) continue;
+        PC->ClientStartNewRound();
+
+        if (APawn* Pawn = PC->GetPawn())
+        {
+            const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
+            const float SpawnY = PS && PS->PlayerRole == ETreasurePlayerRole::Hunter ? 400.f : 0.f;
+            const float SpawnZ = Island ? Island->HeightAt(-2800.f, SpawnY) + 180.f : 500.f;
+            Pawn->SetActorLocation(FVector(-2800.f, SpawnY, FMath::Max(SpawnZ, 250.f)), false, nullptr, ETeleportType::ResetPhysics);
+        }
+    }
+    UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_REPLAY New round started with seed=%d"), IslandSeed);
 }
