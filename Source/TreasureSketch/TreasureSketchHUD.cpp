@@ -21,7 +21,7 @@ void ATreasureSketchHUD::DrawHUD()
         const FString OnlineText = Online ? Online->GetStatus() : TEXT("Steam 在线服务未初始化");
         DrawRect(FLinearColor(0.015f, 0.02f, 0.035f, 0.94f), Canvas->SizeX * 0.16f, Canvas->SizeY * 0.16f, Canvas->SizeX * 0.68f, Canvas->SizeY * 0.64f);
         DrawText(TEXT("TREASURESKETCH STEAM 大厅"), FLinearColor(0.3f,0.85f,1.f), Canvas->SizeX * 0.20f, Canvas->SizeY * 0.21f, GEngine->GetLargeFont(), 1.15f);
-        DrawText(TEXT("H 创建房间    J 刷新房间列表    K 加入列表第一个房间"), FLinearColor::White, Canvas->SizeX * 0.20f, Canvas->SizeY * 0.28f, GEngine->GetMediumFont(), 1.f);
+        DrawText(TEXT("H 创建房间    I 邀请 Steam 好友    J 搜索    K 加入列表第一个房间"), FLinearColor::White, Canvas->SizeX * 0.20f, Canvas->SizeY * 0.28f, GEngine->GetMediumFont(), 1.f);
         DrawText(OnlineText, FLinearColor(0.95f,0.85f,0.25f), Canvas->SizeX * 0.20f, Canvas->SizeY * 0.34f, GEngine->GetSmallFont(), 1.f);
         float RoomY = Canvas->SizeY * 0.41f;
         const TArray<FString>& Rooms = Online->GetRoomLines();
@@ -30,6 +30,13 @@ void ATreasureSketchHUD::DrawHUD()
         {
             RoomY += 38.f;
             DrawText(Room, FLinearColor::White, Canvas->SizeX * 0.22f, RoomY, GEngine->GetSmallFont(), 1.f);
+        }
+        RoomY += 52.f;
+        DrawText(TEXT("联机诊断："), FLinearColor(0.45f,0.9f,0.65f), Canvas->SizeX * 0.20f, RoomY, GEngine->GetSmallFont(), 1.f);
+        for (const FString& Line : Online->GetDiagnostics())
+        {
+            RoomY += 23.f;
+            DrawText(Line, FLinearColor(0.78f,0.82f,0.88f), Canvas->SizeX * 0.21f, RoomY, GEngine->GetSmallFont(), 0.82f);
         }
         return;
     }
@@ -41,6 +48,18 @@ void ATreasureSketchHUD::DrawHUD()
         DrawText(FString::Printf(TEXT("当前玩家：%d / 2"), GS->PlayerArray.Num()), FLinearColor::White, Canvas->SizeX * 0.39f, Canvas->SizeY * 0.42f, GEngine->GetLargeFont(), 1.f);
         DrawText(GetNetMode() == NM_ListenServer ? TEXT("两人到齐后，房主按 P 开始") : TEXT("等待房主开始游戏……"),
             FLinearColor(0.95f,0.85f,0.25f), Canvas->SizeX * 0.34f, Canvas->SizeY * 0.52f, GEngine->GetMediumFont(), 1.f);
+        if (const UTreasureOnlineSubsystem* Online = GetGameInstance()->GetSubsystem<UTreasureOnlineSubsystem>())
+        {
+            float DiagY = Canvas->SizeY * 0.58f;
+            if (GetNetMode() == NM_ListenServer)
+                DrawText(TEXT("按 I 打开 Steam 好友邀请"), FLinearColor(0.45f,0.9f,0.65f), Canvas->SizeX * 0.36f, DiagY, GEngine->GetSmallFont(), 1.f);
+            for (const FString& Line : Online->GetDiagnostics())
+            {
+                DiagY += 21.f;
+                DrawText(Line, FLinearColor(0.72f,0.77f,0.85f), Canvas->SizeX * 0.24f, DiagY, GEngine->GetSmallFont(), 0.78f);
+                if (DiagY > Canvas->SizeY * 0.78f) break;
+            }
+        }
         return;
     }
 

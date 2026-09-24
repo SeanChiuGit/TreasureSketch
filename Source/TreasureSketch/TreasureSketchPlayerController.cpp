@@ -25,6 +25,7 @@ void ATreasureSketchPlayerController::SetupInputComponent()
     InputComponent->BindAction("JoinOnline", IE_Pressed, this, &ATreasureSketchPlayerController::JoinOnlineGame);
     InputComponent->BindAction("ConfirmJoin", IE_Pressed, this, &ATreasureSketchPlayerController::ConfirmJoinOnlineGame);
     InputComponent->BindAction("StartOnlineRound", IE_Pressed, this, &ATreasureSketchPlayerController::StartOnlineRound);
+    InputComponent->BindAction("InviteSteamFriend", IE_Pressed, this, &ATreasureSketchPlayerController::InviteSteamFriend);
 }
 
 FVector2D ATreasureSketchPlayerController::GetPaperMin() const
@@ -198,4 +199,9 @@ void ATreasureSketchPlayerController::ConfirmJoinOnlineGame()
 void ATreasureSketchPlayerController::StartOnlineRound()
 {
     if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) GM->StartHostedRound();
+}
+
+void ATreasureSketchPlayerController::InviteSteamFriend()
+{
+    if (UTreasureOnlineSubsystem* Online = GetGameInstance()->GetSubsystem<UTreasureOnlineSubsystem>()) Online->OpenSteamInviteUI();
 }

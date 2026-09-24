@@ -47,6 +47,7 @@ private:
     void JoinOnlineGame();
     void ConfirmJoinOnlineGame();
     void StartOnlineRound();
+    void InviteSteamFriend();
     bool IsPointOnPaper(const FVector2D& Point) const;
     void ApplyPhaseInputRules();
 
