@@ -16,7 +16,7 @@ class TREASURESKETCH_API ATreasureSketchCharacter : public ACharacter
 public:
     ATreasureSketchCharacter();
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
-    void SetSpectatorHidden(bool bHidden);
+    void SetSpectatorHidden(bool bShouldHide);
 
 protected:
     virtual void BeginPlay() override;

@@ -85,10 +85,10 @@ void ATreasureSketchCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProper
     DOREPLIFETIME(ATreasureSketchCharacter, bSpectatorHidden);
 }
 
-void ATreasureSketchCharacter::SetSpectatorHidden(bool bHidden)
+void ATreasureSketchCharacter::SetSpectatorHidden(bool bShouldHide)
 {
     if (!HasAuthority()) return;
-    bSpectatorHidden = bHidden;
+    bSpectatorHidden = bShouldHide;
     OnRep_SpectatorHidden();
     ForceNetUpdate();
 }
