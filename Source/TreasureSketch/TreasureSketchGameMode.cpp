@@ -8,6 +8,8 @@
 #include "TreasureSketchPlayerController.h"
 #include "TreasureSketchPlayerState.h"
 #include "Engine/World.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 
 namespace
 {
@@ -55,7 +57,11 @@ bool ATreasureSketchGameMode::FinishIfTimeExpired()
 void ATreasureSketchGameMode::BuildRound()
 {
     FRandomStream Stream(FDateTime::Now().GetTicks());
-    IslandSeed = Stream.RandRange(1000, 999999);
+    int32 RequestedSeed = 0;
+    IslandSeed = FParse::Value(FCommandLine::Get(), TEXT("IslandSeed="), RequestedSeed) && RequestedSeed != 0
+        ? FMath::Abs(RequestedSeed)
+        : Stream.RandRange(1000, 999999);
+    Stream.Initialize(IslandSeed ^ 0x35D1A7);
     FActorSpawnParameters Params;
     Island = GetWorld()->SpawnActorDeferred<AProceduralIsland>(AProceduralIsland::StaticClass(), FTransform::Identity);
     Island->Seed = IslandSeed;
@@ -70,7 +76,8 @@ void ATreasureSketchGameMode::BuildRound()
         GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + PhaseDurationSeconds;
         GS->bGameStarted = false;
     }
-    UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_ROUND_READY Seed=%d Treasure=%s"), IslandSeed, *TreasureLocation.ToCompactString());
+    UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_ROUND_READY Seed=%d Shape=%s Treasure=%s"),
+        IslandSeed, *Island->GetShapeName(), *TreasureLocation.ToCompactString());
 }
 
 void ATreasureSketchGameMode::StartHostedRound()

@@ -5,6 +5,7 @@
 #include "ProceduralIsland.generated.h"
 
 class UProceduralMeshComponent;
+class UHierarchicalInstancedStaticMeshComponent;
 
 UCLASS()
 class TREASURESKETCH_API AProceduralIsland : public AActor
@@ -27,6 +28,7 @@ public:
 
     float HeightAt(float X, float Y) const;
     FVector FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight = 130.f) const;
+    FString GetShapeName() const;
 
 private:
     UPROPERTY(VisibleAnywhere)
@@ -35,8 +37,26 @@ private:
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UProceduralMeshComponent> WaterMesh;
 
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> PalmInstances;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> RockInstances;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> BushInstances;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> DriftwoodInstances;
+
+    TArray<FVector2D> OccupiedPoints;
+
     void BuildIsland();
     void BuildWater();
+    void BuildDecorations();
+    float NormalizedIslandDistance(float X, float Y) const;
+    float SlopeAt(float X, float Y) const;
+    bool IsClearOfDecorations(float X, float Y, float Radius) const;
 
     UFUNCTION()
     void OnRep_Seed();
