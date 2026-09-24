@@ -16,6 +16,7 @@ class TREASURESKETCH_API ATreasureSketchGameMode : public AGameModeBase
 public:
     ATreasureSketchGameMode();
     virtual void BeginPlay() override;
+    virtual void Tick(float DeltaSeconds) override;
     virtual void PostLogin(APlayerController* NewPlayer) override;
 
     FVector GetTreasureLocation() const { return TreasureLocation; }
@@ -35,4 +36,5 @@ private:
     int32 IslandSeed = 0;
 
     void BuildRound();
+    bool FinishIfTimeExpired();
 };

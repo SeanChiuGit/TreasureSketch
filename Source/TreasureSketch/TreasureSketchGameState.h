@@ -9,7 +9,9 @@ enum class ETreasureRoundPhase : uint8
 {
     ScoutDrawing,
     HunterSearching,
-    Won
+    Won,
+    ScoutTimedOut,
+    HunterTimedOut
 };
 
 UCLASS()
@@ -32,6 +34,13 @@ public:
 
     UPROPERTY(Replicated, BlueprintReadOnly)
     bool bGameStarted = false;
+
+    bool IsRoundOver() const
+    {
+        return Phase == ETreasureRoundPhase::Won
+            || Phase == ETreasureRoundPhase::ScoutTimedOut
+            || Phase == ETreasureRoundPhase::HunterTimedOut;
+    }
 
     int32 GetSecondsRemaining() const;
 };

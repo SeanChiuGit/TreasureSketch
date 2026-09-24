@@ -63,8 +63,9 @@ void ATreasureSketchHUD::DrawHUD()
         return;
     }
 
-    if (GS->Phase == ETreasureRoundPhase::Won)
+    if (GS->IsRoundOver())
     {
+        const bool bWon = GS->Phase == ETreasureRoundPhase::Won;
         const float CenterX = Canvas->SizeX * 0.5f;
         const float CenterY = Canvas->SizeY * 0.5f;
         const float PanelWidth = FMath::Min(620.f, Canvas->SizeX * 0.82f);
@@ -78,13 +79,16 @@ void ATreasureSketchHUD::DrawHUD()
         DrawRect(FLinearColor(0.07f, 0.11f, 0.14f, 1.f), CenterX - PanelWidth * 0.5f,
             CenterY - PanelHeight * 0.5f, PanelWidth, PanelHeight);
 
-        const FString Title = TEXT("合作成功！");
+        const FString Title = bWon ? TEXT("合作成功！") : TEXT("时间到！");
         float TextWidth = 0.f, TextHeight = 0.f;
         GetTextSize(Title, TextWidth, TextHeight, GEngine->GetLargeFont(), 1.35f);
-        DrawText(Title, FLinearColor(0.95f, 0.85f, 0.25f), CenterX - TextWidth * 0.5f,
+        DrawText(Title, bWon ? FLinearColor(0.95f, 0.85f, 0.25f) : FLinearColor(1.f, 0.35f, 0.25f),
+            CenterX - TextWidth * 0.5f,
             CenterY - 105.f, GEngine->GetLargeFont(), 1.35f);
 
-        const FString Hint = TEXT("找到宝藏了！再来一座新岛屿？");
+        const FString Hint = bWon ? TEXT("找到宝藏了！再来一座新岛屿？")
+            : GS->Phase == ETreasureRoundPhase::ScoutTimedOut ? TEXT("侦察者未能及时交图，再试一次？")
+            : TEXT("寻宝者未能及时找到宝藏，再试一次？");
         GetTextSize(Hint, TextWidth, TextHeight, GEngine->GetMediumFont(), 1.f);
         DrawText(Hint, FLinearColor::White, CenterX - TextWidth * 0.5f,
             CenterY - 38.f, GEngine->GetMediumFont(), 1.f);

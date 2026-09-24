@@ -89,7 +89,7 @@ void ATreasureSketchPlayerController::ApplyPhaseInputRules()
     if (!PS || !GS) return;
     const bool bShouldWait = (PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->Phase == ETreasureRoundPhase::ScoutDrawing)
         || (PS->PlayerRole == ETreasurePlayerRole::Scout && GS->Phase != ETreasureRoundPhase::ScoutDrawing)
-        || GS->Phase == ETreasureRoundPhase::Won;
+        || GS->IsRoundOver();
     const bool bShouldLock = bMapOpen || bShouldWait;
     if (bInputLocked != bShouldLock)
     {
@@ -102,14 +102,14 @@ void ATreasureSketchPlayerController::ApplyPhaseInputRules()
 void ATreasureSketchPlayerController::UpdateReplayInput()
 {
     const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
-    const bool bWon = GS && GS->Phase == ETreasureRoundPhase::Won;
-    if (bReplayInputActive == bWon) return;
+    const bool bRoundOver = GS && GS->IsRoundOver();
+    if (bReplayInputActive == bRoundOver) return;
 
-    bReplayInputActive = bWon;
+    bReplayInputActive = bRoundOver;
     bMapOpen = false;
     bWasDrawing = false;
-    bShowMouseCursor = bWon;
-    if (bWon)
+    bShowMouseCursor = bRoundOver;
+    if (bRoundOver)
     {
         FInputModeGameAndUI ReplayInput;
         ReplayInput.SetHideCursorDuringCapture(false);
@@ -128,7 +128,7 @@ void ATreasureSketchPlayerController::UpdateReplayInput()
 void ATreasureSketchPlayerController::ToggleMap()
 {
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
-    if ((GS && GS->Phase == ETreasureRoundPhase::Won) || IsHunterWaiting()
+    if ((GS && GS->IsRoundOver()) || IsHunterWaiting()
         || (IsLocalScout() && GS && GS->Phase != ETreasureRoundPhase::ScoutDrawing))
         return;
     bMapOpen = !bMapOpen;
@@ -228,14 +228,14 @@ void ATreasureSketchPlayerController::NewRound()
 void ATreasureSketchPlayerController::RequestReplay()
 {
     const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
-    if (GS && GS->Phase == ETreasureRoundPhase::Won)
+    if (GS && GS->IsRoundOver())
         ServerRequestReplay();
 }
 
 void ATreasureSketchPlayerController::ServerRequestReplay_Implementation()
 {
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
-    if (!GS || GS->Phase != ETreasureRoundPhase::Won) return;
+    if (!GS || !GS->IsRoundOver()) return;
     if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
         GM->StartNewRound();
 }
