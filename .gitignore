@@ -1,0 +1,28 @@
+# Unreal Engine generated files
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+Packaged/
+.vs/
+
+# Build and IDE output
+Build/Windows/FileOpenOrder/
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+
+# Local test packages and logs
+*.zip
+*.log
+steam_appid.txt
+
+# User-specific editor state
+Config/DefaultEditorPerProjectUserSettings.ini
+
+# OS files
+.DS_Store
+Thumbs.db
