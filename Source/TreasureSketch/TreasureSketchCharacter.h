@@ -6,6 +6,7 @@
 
 class USpringArmComponent;
 class UCameraComponent;
+class UStaticMeshComponent;
 
 UCLASS()
 class TREASURESKETCH_API ATreasureSketchCharacter : public ACharacter
@@ -14,8 +15,12 @@ class TREASURESKETCH_API ATreasureSketchCharacter : public ACharacter
 
 public:
     ATreasureSketchCharacter();
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+    void SetSpectatorHidden(bool bHidden);
 
 protected:
+    virtual void BeginPlay() override;
+
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
 private:
@@ -24,6 +29,33 @@ private:
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UCameraComponent> FollowCamera;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UStaticMeshComponent> BodyMesh;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UStaticMeshComponent> HeadMesh;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UStaticMeshComponent> LeftArmMesh;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UStaticMeshComponent> RightArmMesh;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UStaticMeshComponent> LeftLegMesh;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UStaticMeshComponent> RightLegMesh;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UStaticMeshComponent> FaceMesh;
+
+    UPROPERTY(ReplicatedUsing=OnRep_SpectatorHidden)
+    bool bSpectatorHidden = false;
+
+    UFUNCTION()
+    void OnRep_SpectatorHidden();
 
     void MoveForward(float Value);
     void MoveRight(float Value);
