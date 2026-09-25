@@ -24,7 +24,7 @@ public:
     int32 GridSize = 35;
 
     UPROPERTY(EditAnywhere, Category="Island")
-    float CellSize = 260.f;
+    float CellSize = 300.f;
 
     float HeightAt(float X, float Y) const;
     FVector FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight = 130.f) const;
@@ -52,11 +52,33 @@ private:
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> DriftwoodInstances;
 
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> SkullIdolInstances;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> FaceIdolInstances;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> GiantAnchorInstances;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> ShipwreckInstances;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> BrokenMastInstances;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> StoneRingInstances;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> CampfireInstances;
+
     TArray<FVector2D> OccupiedPoints;
 
     void BuildIsland();
     void BuildWater();
     void BuildDecorations();
+    void BuildLandmarks(FRandomStream& Stream);
     void ApplyDecorationMaterials();
     float NormalizedIslandDistance(float X, float Y) const;
     float SlopeAt(float X, float Y) const;

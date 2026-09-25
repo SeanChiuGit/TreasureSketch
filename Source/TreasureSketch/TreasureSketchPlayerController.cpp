@@ -37,13 +37,13 @@ void ATreasureSketchPlayerController::SetupInputComponent()
 FVector2D ATreasureSketchPlayerController::GetPaperMin() const
 {
     int32 W = 1280, H = 720; GetViewportSize(W, H);
-    return FVector2D(W * 0.12f, H * 0.10f);
+    return FVector2D(W * 0.08f, H * 0.07f);
 }
 
 FVector2D ATreasureSketchPlayerController::GetPaperSize() const
 {
     int32 W = 1280, H = 720; GetViewportSize(W, H);
-    return FVector2D(W * 0.76f, H * 0.80f);
+    return FVector2D(W * 0.84f, H * 0.86f);
 }
 
 bool ATreasureSketchPlayerController::IsPointOnPaper(const FVector2D& Point) const

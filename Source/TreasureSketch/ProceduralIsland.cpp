@@ -57,6 +57,19 @@ AProceduralIsland::AProceduralIsland()
     DriftwoodInstances = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("DriftwoodInstances"));
     DriftwoodInstances->SetupAttachment(RootComponent);
 
+#define CREATE_LANDMARK_COMPONENT(Member) \
+    Member = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT(#Member)); \
+    Member->SetupAttachment(RootComponent); \
+    ConfigureInstances(Member)
+    CREATE_LANDMARK_COMPONENT(SkullIdolInstances);
+    CREATE_LANDMARK_COMPONENT(FaceIdolInstances);
+    CREATE_LANDMARK_COMPONENT(GiantAnchorInstances);
+    CREATE_LANDMARK_COMPONENT(ShipwreckInstances);
+    CREATE_LANDMARK_COMPONENT(BrokenMastInstances);
+    CREATE_LANDMARK_COMPONENT(StoneRingInstances);
+    CREATE_LANDMARK_COMPONENT(CampfireInstances);
+#undef CREATE_LANDMARK_COMPONENT
+
     ConfigureInstances(PalmInstances);
     ConfigureInstances(PalmCollisionInstances);
     ConfigureInstances(RockInstances);
@@ -72,11 +85,25 @@ AProceduralIsland::AProceduralIsland()
     static ConstructorHelpers::FObjectFinder<UStaticMesh> BushMesh(TEXT("/Game/IslandAssets/Prototype/SM_Bush_A/StaticMeshes/SM_Bush_A.SM_Bush_A"));
     static ConstructorHelpers::FObjectFinder<UStaticMesh> DriftwoodMesh(TEXT("/Game/IslandAssets/Prototype/SM_Driftwood_A/StaticMeshes/SM_Driftwood_A.SM_Driftwood_A"));
     static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderMesh(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> SkullMesh(TEXT("/Game/IslandAssets/PirateLandmarks/SM_SkullIdol_A/StaticMeshes/SM_SkullIdol_A.SM_SkullIdol_A"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> FaceMesh(TEXT("/Game/IslandAssets/PirateLandmarks/SM_FaceIdol_A/StaticMeshes/SM_FaceIdol_A.SM_FaceIdol_A"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> AnchorMesh(TEXT("/Game/IslandAssets/PirateLandmarks/SM_GiantAnchor_A/StaticMeshes/SM_GiantAnchor_A.SM_GiantAnchor_A"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> ShipwreckMesh(TEXT("/Game/IslandAssets/PirateLandmarks/SM_HalfBuriedShipwreck_A/StaticMeshes/SM_HalfBuriedShipwreck_A.SM_HalfBuriedShipwreck_A"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> MastMesh(TEXT("/Game/IslandAssets/PirateLandmarks/SM_BrokenMast_A/StaticMeshes/SM_BrokenMast_A.SM_BrokenMast_A"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> StoneRingMesh(TEXT("/Game/IslandAssets/PirateLandmarks/SM_StoneRing_A/StaticMeshes/SM_StoneRing_A.SM_StoneRing_A"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> CampfireMesh(TEXT("/Game/IslandAssets/PirateLandmarks/SM_CampfireRuins_A/StaticMeshes/SM_CampfireRuins_A.SM_CampfireRuins_A"));
     PalmInstances->SetStaticMesh(PalmMesh.Object);
     PalmCollisionInstances->SetStaticMesh(CylinderMesh.Object);
     RockInstances->SetStaticMesh(RockMesh.Object);
     BushInstances->SetStaticMesh(BushMesh.Object);
     DriftwoodInstances->SetStaticMesh(DriftwoodMesh.Object);
+    SkullIdolInstances->SetStaticMesh(SkullMesh.Object);
+    FaceIdolInstances->SetStaticMesh(FaceMesh.Object);
+    GiantAnchorInstances->SetStaticMesh(AnchorMesh.Object);
+    ShipwreckInstances->SetStaticMesh(ShipwreckMesh.Object);
+    BrokenMastInstances->SetStaticMesh(MastMesh.Object);
+    StoneRingInstances->SetStaticMesh(StoneRingMesh.Object);
+    CampfireInstances->SetStaticMesh(CampfireMesh.Object);
 }
 
 void AProceduralIsland::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -285,6 +312,13 @@ void AProceduralIsland::BuildDecorations()
     RockInstances->ClearInstances();
     BushInstances->ClearInstances();
     DriftwoodInstances->ClearInstances();
+    SkullIdolInstances->ClearInstances();
+    FaceIdolInstances->ClearInstances();
+    GiantAnchorInstances->ClearInstances();
+    ShipwreckInstances->ClearInstances();
+    BrokenMastInstances->ClearInstances();
+    StoneRingInstances->ClearInstances();
+    CampfireInstances->ClearInstances();
     OccupiedPoints.Reset();
     ApplyDecorationMaterials();
 
@@ -322,13 +356,45 @@ void AProceduralIsland::BuildDecorations()
         }
     };
 
+    // Reserve the large silhouettes first so every seed reliably contains all seven landmarks.
+    BuildLandmarks(Stream);
     TryPlace(RockInstances, 15, 135.f, 760.f, 0.58f, 430.f, FVector2D(0.78f, 1.45f), false);
     TryPlace(PalmInstances, 28, 125.f, 530.f, 0.32f, 500.f, FVector2D(0.82f, 1.22f), false);
     TryPlace(BushInstances, 38, 120.f, 570.f, 0.40f, 260.f, FVector2D(0.72f, 1.28f), false);
     TryPlace(DriftwoodInstances, 10, 45.f, 145.f, 0.30f, 520.f, FVector2D(0.82f, 1.25f), true);
 
-    UE_LOG(LogTemp, Display, TEXT("TREASURE_ISLAND_BUILT Seed=%d Shape=%s Palms=%d Rocks=%d Bushes=%d Driftwood=%d"),
+    UE_LOG(LogTemp, Display, TEXT("TREASURE_ISLAND_BUILT Seed=%d Shape=%s Palms=%d Rocks=%d Bushes=%d Driftwood=%d Landmarks=7"),
         Seed, *GetShapeName(), PalmInstances->GetInstanceCount(), RockInstances->GetInstanceCount(), BushInstances->GetInstanceCount(), DriftwoodInstances->GetInstanceCount());
+}
+
+void AProceduralIsland::BuildLandmarks(FRandomStream& Stream)
+{
+    UHierarchicalInstancedStaticMeshComponent* LandmarkComponents[] = {
+        SkullIdolInstances, FaceIdolInstances, GiantAnchorInstances, ShipwreckInstances,
+        BrokenMastInstances, StoneRingInstances, CampfireInstances
+    };
+    const float Extent = CellSize * (GridSize - 1) * 0.40f;
+    for (int32 Index = 0; Index < UE_ARRAY_COUNT(LandmarkComponents); ++Index)
+    {
+        for (int32 Attempt = 0; Attempt < 180; ++Attempt)
+        {
+            const float X = Stream.FRandRange(-Extent, Extent);
+            const float Y = Stream.FRandRange(-Extent, Extent);
+            const float Z = HeightAt(X, Y);
+            if (Z < 115.f || Z > 610.f || SlopeAt(X, Y) > 0.30f || NormalizedIslandDistance(X, Y) > 0.80f)
+                continue;
+            if (X < -2600.f && FMath::Abs(Y) < 1050.f)
+                continue;
+            if (!IsClearOfDecorations(X, Y, 900.f))
+                continue;
+
+            const float Scale = Stream.FRandRange(0.90f, 1.18f);
+            const FRotator Rotation(0.f, Stream.FRandRange(0.f, 360.f), 0.f);
+            LandmarkComponents[Index]->AddInstance(FTransform(Rotation, FVector(X, Y, Z), FVector(Scale)));
+            OccupiedPoints.Add(FVector2D(X, Y));
+            break;
+        }
+    }
 }
 
 void AProceduralIsland::ApplyDecorationMaterials()
@@ -346,7 +412,17 @@ void AProceduralIsland::ApplyDecorationMaterials()
         {
             const FString SlotName = Slots[SlotIndex].MaterialSlotName.ToString();
             FColor SRGBColor(105, 112, 102);
-            if (SlotName.Contains(TEXT("LeafDark"))) SRGBColor = FColor(28, 82, 35);
+            if (SlotName.Contains(TEXT("Flame"))) SRGBColor = FColor(255, 132, 16);
+            else if (SlotName.Contains(TEXT("Ember"))) SRGBColor = FColor(235, 48, 8);
+            else if (SlotName.Contains(TEXT("TornSail"))) SRGBColor = FColor(92, 25, 21);
+            else if (SlotName.Contains(TEXT("PirateMoss"))) SRGBColor = FColor(33, 93, 32);
+            else if (SlotName.Contains(TEXT("PirateMetal"))) SRGBColor = FColor(45, 54, 58);
+            else if (SlotName.Contains(TEXT("PirateStoneLight"))) SRGBColor = FColor(145, 151, 133);
+            else if (SlotName.Contains(TEXT("PirateStoneDark"))) SRGBColor = FColor(61, 68, 64);
+            else if (SlotName.Contains(TEXT("PirateStone"))) SRGBColor = FColor(99, 107, 98);
+            else if (SlotName.Contains(TEXT("PirateWoodLight"))) SRGBColor = FColor(154, 88, 38);
+            else if (SlotName.Contains(TEXT("PirateWood"))) SRGBColor = FColor(91, 43, 20);
+            else if (SlotName.Contains(TEXT("LeafDark"))) SRGBColor = FColor(28, 82, 35);
             else if (SlotName.Contains(TEXT("Leaf"))) SRGBColor = FColor(52, 137, 61);
             else if (SlotName.Contains(TEXT("Driftwood"))) SRGBColor = FColor(142, 105, 70);
             else if (SlotName.Contains(TEXT("Wood"))) SRGBColor = FColor(92, 48, 24);
@@ -363,6 +439,13 @@ void AProceduralIsland::ApplyDecorationMaterials()
     ApplyColors(RockInstances);
     ApplyColors(BushInstances);
     ApplyColors(DriftwoodInstances);
+    ApplyColors(SkullIdolInstances);
+    ApplyColors(FaceIdolInstances);
+    ApplyColors(GiantAnchorInstances);
+    ApplyColors(ShipwreckInstances);
+    ApplyColors(BrokenMastInstances);
+    ApplyColors(StoneRingInstances);
+    ApplyColors(CampfireInstances);
 }
 
 void AProceduralIsland::BuildWater()
