@@ -15,6 +15,119 @@ void ATreasureSketchHUD::DrawHUD()
     ATreasureSketchPlayerState* PS = PC ? PC->GetPlayerState<ATreasureSketchPlayerState>() : nullptr;
     if (!PC || !GS || !PS || !Canvas) return;
 
+    if (PC->IsFrontEndVisible())
+    {
+        const float W = Canvas->SizeX;
+        const float H = Canvas->SizeY;
+        const float PanelX = W * 0.075f;
+        const float PanelY = H * 0.10f;
+        const float PanelW = FMath::Clamp(W * 0.38f, 440.f, 650.f);
+        const float PanelH = H * 0.80f;
+        DrawRect(FLinearColor(0.018f, 0.035f, 0.045f, 0.38f), 0.f, 0.f, W, H);
+        DrawRect(FLinearColor(0.035f, 0.075f, 0.085f, 0.91f), PanelX, PanelY, PanelW, PanelH);
+        DrawRect(FLinearColor(0.88f, 0.66f, 0.25f, 0.95f), PanelX, PanelY, 7.f, PanelH);
+
+        DrawText(TEXT("TREASURE SKETCH"), FLinearColor(0.96f, 0.79f, 0.40f),
+            PanelX + 46.f, PanelY + 42.f, GEngine->GetLargeFont(), 1.45f);
+        DrawText(TEXT("画下岛屿，交出地图，一起找到宝藏"), FLinearColor(0.80f, 0.90f, 0.88f),
+            PanelX + 48.f, PanelY + 92.f, GEngine->GetSmallFont(), 1.f);
+
+        auto DrawMenuButton = [&](FName Name, const FString& Label, float Y, bool bPrimary = false)
+        {
+            const FVector2D Min(PanelX + 48.f, Y);
+            const FVector2D Size(PanelW - 96.f, 54.f);
+            const bool bHovered = HitBoxesOver.Contains(Name);
+            const FLinearColor Normal = bPrimary ? FLinearColor(0.72f, 0.43f, 0.16f, 0.98f)
+                : FLinearColor(0.09f, 0.17f, 0.18f, 0.96f);
+            const FLinearColor Hover = bPrimary ? FLinearColor(0.93f, 0.61f, 0.22f, 1.f)
+                : FLinearColor(0.15f, 0.30f, 0.30f, 1.f);
+            DrawRect(bHovered ? Hover : Normal, Min.X, Min.Y, Size.X, Size.Y);
+            float TextW = 0.f, TextH = 0.f;
+            GetTextSize(Label, TextW, TextH, GEngine->GetMediumFont(), 1.f);
+            DrawText(Label, FLinearColor::White, Min.X + 22.f, Min.Y + (Size.Y - TextH) * 0.5f,
+                GEngine->GetMediumFont(), 1.f);
+            AddHitBox(Min, Size, Name, true, 10);
+        };
+
+        const EFrontEndPage Page = PC->GetFrontEndPage();
+        if (Page == EFrontEndPage::MainMenu)
+        {
+            float Y = PanelY + 155.f;
+            DrawMenuButton(TEXT("MenuCreate"), TEXT("创建房间"), Y, true); Y += 68.f;
+            DrawMenuButton(TEXT("MenuJoin"), TEXT("加入房间"), Y); Y += 68.f;
+            DrawMenuButton(TEXT("MenuSolo"), TEXT("单人探险"), Y); Y += 68.f;
+            DrawMenuButton(TEXT("MenuSettings"), TEXT("设置"), Y); Y += 68.f;
+            DrawMenuButton(TEXT("MenuQuit"), TEXT("退出游戏"), Y);
+            DrawText(TEXT("双人合作寻宝原型"), FLinearColor(0.55f, 0.70f, 0.68f),
+                PanelX + 48.f, PanelY + PanelH - 45.f, GEngine->GetSmallFont(), 0.9f);
+        }
+        else if (Page == EFrontEndPage::SoloComingSoon || Page == EFrontEndPage::Settings)
+        {
+            const FString Heading = Page == EFrontEndPage::SoloComingSoon ? TEXT("单人探险") : TEXT("设置");
+            const FString Message = Page == EFrontEndPage::SoloComingSoon
+                ? TEXT("单人探险仍在开发中") : TEXT("设置页面仍在开发中");
+            DrawText(Heading, FLinearColor::White, PanelX + 48.f, PanelY + 185.f,
+                GEngine->GetLargeFont(), 1.25f);
+            DrawText(Message, FLinearColor(0.75f, 0.84f, 0.82f), PanelX + 48.f, PanelY + 250.f,
+                GEngine->GetMediumFont(), 1.f);
+            DrawMenuButton(TEXT("MenuBack"), TEXT("返回主页面"), PanelY + 330.f, true);
+        }
+        else if (Page == EFrontEndPage::JoinBrowser)
+        {
+            const UTreasureOnlineSubsystem* Online = GetGameInstance()->GetSubsystem<UTreasureOnlineSubsystem>();
+            DrawText(TEXT("加入房间"), FLinearColor::White, PanelX + 48.f, PanelY + 150.f,
+                GEngine->GetLargeFont(), 1.2f);
+            DrawText(Online ? Online->GetStatus() : TEXT("Steam 在线服务未初始化"),
+                FLinearColor(0.96f, 0.79f, 0.40f), PanelX + 48.f, PanelY + 205.f,
+                GEngine->GetSmallFont(), 0.9f);
+            float RoomY = PanelY + 250.f;
+            if (Online && Online->GetRoomLines().Num() > 0)
+            {
+                for (const FString& Room : Online->GetRoomLines())
+                {
+                    DrawText(Room, FLinearColor(0.86f, 0.92f, 0.90f), PanelX + 48.f, RoomY,
+                        GEngine->GetSmallFont(), 0.82f);
+                    RoomY += 27.f;
+                    if (RoomY > PanelY + 390.f) break;
+                }
+                DrawMenuButton(TEXT("MenuJoinFirst"), TEXT("加入第一个房间"), PanelY + 420.f, true);
+            }
+            else
+            {
+                DrawText(TEXT("正在搜索，或暂时没有可加入房间"), FLinearColor(0.70f, 0.80f, 0.78f),
+                    PanelX + 48.f, RoomY, GEngine->GetSmallFont(), 0.9f);
+            }
+            DrawMenuButton(TEXT("MenuBack"), TEXT("返回主页面"), PanelY + 500.f);
+        }
+        else if (Page == EFrontEndPage::RoomLobby)
+        {
+            const UTreasureOnlineSubsystem* Online = GetGameInstance()->GetSubsystem<UTreasureOnlineSubsystem>();
+            DrawText(TEXT("双人房间"), FLinearColor::White, PanelX + 48.f, PanelY + 150.f,
+                GEngine->GetLargeFont(), 1.2f);
+            DrawText(FString::Printf(TEXT("玩家  %d / 2"), GS->PlayerArray.Num()),
+                FLinearColor(0.86f, 0.92f, 0.90f), PanelX + 48.f, PanelY + 215.f,
+                GEngine->GetLargeFont(), 1.f);
+            DrawText(Online ? Online->GetStatus() : TEXT("正在建立 Steam 房间……"),
+                FLinearColor(0.96f, 0.79f, 0.40f), PanelX + 48.f, PanelY + 265.f,
+                GEngine->GetSmallFont(), 0.9f);
+            if (GetNetMode() == NM_ListenServer)
+            {
+                DrawMenuButton(TEXT("RoomInvite"), TEXT("邀请 Steam 好友"), PanelY + 335.f, true);
+                DrawMenuButton(TEXT("RoomStart"), TEXT("开始游戏"), PanelY + 405.f,
+                    GS->PlayerArray.Num() >= 2);
+                DrawText(GS->PlayerArray.Num() >= 2 ? TEXT("两名玩家已到齐") : TEXT("等待另一名玩家加入……"),
+                    FLinearColor(0.70f, 0.82f, 0.78f), PanelX + 48.f, PanelY + 478.f,
+                    GEngine->GetSmallFont(), 0.9f);
+            }
+            else
+            {
+                DrawText(TEXT("已加入房间，等待房主开始游戏……"), FLinearColor(0.70f, 0.82f, 0.78f),
+                    PanelX + 48.f, PanelY + 345.f, GEngine->GetMediumFont(), 0.9f);
+            }
+        }
+        return;
+    }
+
     if (GetNetMode() == NM_Standalone)
     {
         const UTreasureOnlineSubsystem* Online = GetGameInstance()->GetSubsystem<UTreasureOnlineSubsystem>();
@@ -185,5 +298,9 @@ void ATreasureSketchHUD::NotifyHitBoxClick(FName BoxName)
     {
         if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(PlayerOwner))
             PC->RequestReplay(BoxName == FName(TEXT("ReplaySwapRoles")));
+    }
+    else if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(PlayerOwner))
+    {
+        PC->HandleFrontEndAction(BoxName);
     }
 }

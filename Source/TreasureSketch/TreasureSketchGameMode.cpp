@@ -12,7 +12,7 @@
 
 namespace
 {
-constexpr float PhaseDurationSeconds = 60.f;
+constexpr float PhaseDurationSeconds = 120.f;
 }
 
 ATreasureSketchGameMode::ATreasureSketchGameMode()

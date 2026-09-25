@@ -15,6 +15,16 @@ enum class EScoutSpectatorView : uint8
     HunterFirstPerson
 };
 
+enum class EFrontEndPage : uint8
+{
+    None,
+    MainMenu,
+    JoinBrowser,
+    RoomLobby,
+    SoloComingSoon,
+    Settings
+};
+
 UCLASS()
 class TREASURESKETCH_API ATreasureSketchPlayerController : public APlayerController
 {
@@ -22,6 +32,7 @@ class TREASURESKETCH_API ATreasureSketchPlayerController : public APlayerControl
 
 public:
     ATreasureSketchPlayerController();
+    virtual void BeginPlay() override;
     virtual void SetupInputComponent() override;
     virtual void PlayerTick(float DeltaTime) override;
 
@@ -37,6 +48,9 @@ public:
     bool IsScoutSpectating() const { return SpectatorCamera != nullptr; }
     bool IsHunterFirstPersonView() const { return SpectatorView == EScoutSpectatorView::HunterFirstPerson; }
     bool IsSpectatorTreasureVisible() const { return bTreasureMarkerVisible; }
+    bool IsFrontEndVisible() const;
+    EFrontEndPage GetFrontEndPage() const { return FrontEndPage; }
+    void HandleFrontEndAction(FName ActionName);
 
     UFUNCTION(Client, Reliable)
     void ClientReceiveSketch(const TArray<FSketchStroke>& CompletedStrokes);
@@ -66,6 +80,9 @@ private:
     UPROPERTY()
     TObjectPtr<ACameraActor> SpectatorCamera;
 
+    UPROPERTY()
+    TObjectPtr<ACameraActor> MenuCamera;
+
     FVector ScoutTreasureLocation = FVector::ZeroVector;
     FVector HunterViewLocation = FVector::ZeroVector;
     FRotator HunterViewRotation = FRotator::ZeroRotator;
@@ -82,6 +99,8 @@ private:
     bool bInputLocked = false;
     FString StatusMessage;
     float StatusUntil = 0.f;
+    EFrontEndPage FrontEndPage = EFrontEndPage::None;
+    bool bFrontEndInputActive = false;
 
     void ToggleMap();
     void Handoff();
@@ -101,6 +120,8 @@ private:
     void StartSpectating();
     void StopSpectating();
     void SetLocalTreasureMarkerVisible(bool bVisible);
+    void UpdateFrontEnd();
+    void OpenFrontEndPage(EFrontEndPage NewPage);
     ATreasureSketchCharacter* FindHunterCharacter() const;
 
     UFUNCTION(Server, Reliable)

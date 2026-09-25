@@ -17,6 +17,23 @@ ATreasureSketchPlayerController::ATreasureSketchPlayerController()
     bEnableMouseOverEvents = true;
 }
 
+void ATreasureSketchPlayerController::BeginPlay()
+{
+    Super::BeginPlay();
+    if (!IsLocalController()) return;
+
+    FrontEndPage = GetNetMode() == NM_Standalone ? EFrontEndPage::MainMenu : EFrontEndPage::RoomLobby;
+    MenuCamera = GetWorld()->SpawnActor<ACameraActor>(ACameraActor::StaticClass(),
+        FVector(-9800.f, -9800.f, 7600.f), FRotator(-24.f, 45.f, 0.f));
+    if (MenuCamera)
+    {
+        MenuCamera->SetActorRotation((FVector(0.f, 0.f, 350.f) - MenuCamera->GetActorLocation()).Rotation());
+        MenuCamera->SetActorEnableCollision(false);
+        SetViewTarget(MenuCamera);
+    }
+    UpdateFrontEnd();
+}
+
 void ATreasureSketchPlayerController::SetupInputComponent()
 {
     Super::SetupInputComponent();
@@ -55,6 +72,8 @@ bool ATreasureSketchPlayerController::IsPointOnPaper(const FVector2D& Point) con
 void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
 {
     Super::PlayerTick(DeltaTime);
+    UpdateFrontEnd();
+    if (IsFrontEndVisible()) return;
     UpdateReplayInput();
     UpdateSpectatorCamera(DeltaTime);
     ApplyPhaseInputRules();
@@ -74,6 +93,68 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
         }
     }
     bWasDrawing = bPressed;
+}
+
+bool ATreasureSketchPlayerController::IsFrontEndVisible() const
+{
+    const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
+    return FrontEndPage != EFrontEndPage::None && (!GS || !GS->bGameStarted);
+}
+
+void ATreasureSketchPlayerController::UpdateFrontEnd()
+{
+    const bool bVisible = IsFrontEndVisible();
+    if (bVisible == bFrontEndInputActive) return;
+    bFrontEndInputActive = bVisible;
+    if (bVisible)
+    {
+        bShowMouseCursor = true;
+        SetIgnoreMoveInput(true);
+        SetIgnoreLookInput(true);
+        FInputModeGameAndUI MenuInput;
+        MenuInput.SetHideCursorDuringCapture(false);
+        MenuInput.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        SetInputMode(MenuInput);
+    }
+    else
+    {
+        FrontEndPage = EFrontEndPage::None;
+        bShowMouseCursor = false;
+        SetIgnoreMoveInput(false);
+        SetIgnoreLookInput(false);
+        SetInputMode(FInputModeGameOnly());
+        if (GetPawn()) SetViewTarget(GetPawn());
+        if (MenuCamera) MenuCamera->Destroy();
+        MenuCamera = nullptr;
+    }
+}
+
+void ATreasureSketchPlayerController::OpenFrontEndPage(EFrontEndPage NewPage)
+{
+    FrontEndPage = NewPage;
+    bFrontEndInputActive = false;
+    UpdateFrontEnd();
+}
+
+void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
+{
+    if (ActionName == TEXT("MenuCreate"))
+    {
+        OpenFrontEndPage(EFrontEndPage::RoomLobby);
+        HostOnlineGame();
+    }
+    else if (ActionName == TEXT("MenuJoin"))
+    {
+        OpenFrontEndPage(EFrontEndPage::JoinBrowser);
+        JoinOnlineGame();
+    }
+    else if (ActionName == TEXT("MenuJoinFirst")) ConfirmJoinOnlineGame();
+    else if (ActionName == TEXT("MenuSolo")) OpenFrontEndPage(EFrontEndPage::SoloComingSoon);
+    else if (ActionName == TEXT("MenuSettings")) OpenFrontEndPage(EFrontEndPage::Settings);
+    else if (ActionName == TEXT("MenuBack")) OpenFrontEndPage(EFrontEndPage::MainMenu);
+    else if (ActionName == TEXT("RoomInvite")) InviteSteamFriend();
+    else if (ActionName == TEXT("RoomStart")) StartOnlineRound();
+    else if (ActionName == TEXT("MenuQuit")) ConsoleCommand(TEXT("quit"));
 }
 
 bool ATreasureSketchPlayerController::IsLocalScout() const
