@@ -10,12 +10,16 @@
 
 namespace
 {
-enum class EIslandShape : uint8 { RoundBay, LongSpine, Crescent, TwinCove, TriCape, Hook, StarCove };
+enum class EIslandShape : uint8
+{
+    RoundBay, LongSpine, Crescent, TwinCove, TriCape, Hook, StarCove,
+    MainAndSatellite, TwinIslands, ThreeIslets
+};
 enum class ETerrainProfile : uint8 { Flat, SinglePeak, TwinPeaks, Ridge, EdgeCliff, Basin, Rolling };
 
 EIslandShape ShapeFromSeed(int32 Seed)
 {
-    return static_cast<EIslandShape>(FMath::Abs(Seed) % 7);
+    return static_cast<EIslandShape>(FMath::Abs(Seed) % 10);
 }
 
 ETerrainProfile TerrainFromSeed(int32 Seed)
@@ -143,7 +147,10 @@ FString AProceduralIsland::GetShapeName() const
     case EIslandShape::TwinCove: return TEXT("TwinCove");
     case EIslandShape::TriCape: return TEXT("TriCape");
     case EIslandShape::Hook: return TEXT("Hook");
-    default: return TEXT("StarCove");
+    case EIslandShape::StarCove: return TEXT("StarCove");
+    case EIslandShape::MainAndSatellite: return TEXT("MainAndSatellite");
+    case EIslandShape::TwinIslands: return TEXT("TwinIslands");
+    default: return TEXT("ThreeIslets");
     }
 }
 
@@ -178,6 +185,25 @@ float AProceduralIsland::NormalizedIslandDistance(float X, float Y) const
         const float BayX = (RX - Radius * 0.43f) / (Radius * 0.34f);
         const float BayY = (RY - Radius * 0.02f) / (Radius * 0.34f);
         return FMath::Min(Main, Tip) + FMath::Exp(-(BayX * BayX + BayY * BayY) * 1.8f) * 0.78f;
+    }
+    if (Shape == EIslandShape::MainAndSatellite)
+    {
+        const float Main = FMath::Sqrt(FMath::Square((RX + Radius * 0.23f) / 0.68f) + FMath::Square(RY / 0.78f)) / Radius;
+        const float Satellite = FMath::Sqrt(FMath::Square((RX - Radius * 0.72f) / 0.22f) + FMath::Square((RY - Radius * 0.10f) / 0.30f)) / Radius;
+        return FMath::Min(Main, Satellite);
+    }
+    if (Shape == EIslandShape::TwinIslands)
+    {
+        const float A = FMath::Sqrt(FMath::Square((RX + Radius * 0.48f) / 0.43f) + FMath::Square((RY + Radius * 0.06f) / 0.65f)) / Radius;
+        const float B = FMath::Sqrt(FMath::Square((RX - Radius * 0.48f) / 0.43f) + FMath::Square((RY - Radius * 0.06f) / 0.65f)) / Radius;
+        return FMath::Min(A, B);
+    }
+    if (Shape == EIslandShape::ThreeIslets)
+    {
+        const float A = FMath::Sqrt(FMath::Square((RX + Radius * 0.43f) / 0.36f) + FMath::Square((RY + Radius * 0.25f) / 0.39f)) / Radius;
+        const float B = FMath::Sqrt(FMath::Square((RX - Radius * 0.43f) / 0.36f) + FMath::Square((RY + Radius * 0.25f) / 0.39f)) / Radius;
+        const float C = FMath::Sqrt(FMath::Square(RX / 0.39f) + FMath::Square((RY - Radius * 0.48f) / 0.34f)) / Radius;
+        return FMath::Min(FMath::Min(A, B), C);
     }
 
     float Wobble = 1.f + 0.09f * FMath::Sin(5.f * Angle + Seed * 0.017f)
@@ -215,7 +241,15 @@ float AProceduralIsland::HeightAt(float X, float Y) const
 {
     const float Edge = NormalizedIslandDistance(X, Y);
     if (Edge >= 1.f)
+    {
+        const EIslandShape Shape = ShapeFromSeed(Seed);
+        const bool bSplitIsland = Shape == EIslandShape::MainAndSatellite
+            || Shape == EIslandShape::TwinIslands || Shape == EIslandShape::ThreeIslets;
+        // Keep the narrow gaps walkable as waist-deep water; the outer ocean still drops away quickly.
+        if (bSplitIsland && Edge < 1.22f)
+            return -55.f;
         return -180.f - (Edge - 1.f) * 520.f;
+    }
 
     const float Radius = CellSize * (GridSize - 1) * 0.46f;
     FRandomStream Profile(Seed ^ 0x2F6E2B1);
@@ -233,7 +267,7 @@ float AProceduralIsland::HeightAt(float X, float Y) const
     switch (Terrain)
     {
     case ETerrainProfile::Flat:
-        Relief = SeedNoise(X, Y, Seed) * 45.f;
+        Relief = 90.f + SeedNoise(X, Y, Seed) * 45.f;
         break;
     case ETerrainProfile::SinglePeak:
         Relief = Hill(Profile.FRandRange(-0.58f, 0.58f) * Radius, Profile.FRandRange(-0.58f, 0.58f) * Radius,
@@ -292,6 +326,33 @@ FVector AProceduralIsland::FindRandomLandPoint(FRandomStream& Stream, float Mini
             return GetActorLocation() + FVector(X, Y, Z);
     }
     return GetActorLocation() + FVector(0.f, 0.f, HeightAt(0.f, 0.f));
+}
+
+FVector AProceduralIsland::FindSpawnPoint(float LateralOffset) const
+{
+    const float Radius = CellSize * (GridSize - 1) * 0.46f;
+    const FVector2D Desired(-Radius * 0.68f, LateralOffset);
+    FVector Best(0.f, 0.f, HeightAt(0.f, 0.f));
+    float BestScore = TNumericLimits<float>::Max();
+    for (int32 YStep = -18; YStep <= 18; ++YStep)
+    {
+        for (int32 XStep = -18; XStep <= 18; ++XStep)
+        {
+            const float X = Radius * XStep / 18.f;
+            const float Y = Radius * YStep / 18.f;
+            const float Z = HeightAt(X, Y);
+            if (Z < 115.f || NormalizedIslandDistance(X, Y) > 0.84f || SlopeAt(X, Y) > 0.34f)
+                continue;
+            const float Score = FVector2D::DistSquared(FVector2D(X, Y), Desired);
+            if (Score < BestScore)
+            {
+                BestScore = Score;
+                Best = FVector(X, Y, Z);
+            }
+        }
+    }
+    Best.Z += 180.f;
+    return GetActorLocation() + Best;
 }
 
 void AProceduralIsland::BuildIsland()

@@ -200,8 +200,8 @@ void ATreasureSketchGameMode::HandoffToHunter(const TArray<FSketchStroke>& Submi
             PC->ClientReceiveSketch(SubmittedStrokes);
             if (APawn* Pawn = PC->GetPawn())
             {
-                const float SpawnZ = Island ? Island->HeightAt(-3800.f, 0.f) + 180.f : 500.f;
-                Pawn->SetActorLocation(FVector(-3800.f, 0.f, FMath::Max(SpawnZ, 250.f)), false, nullptr, ETeleportType::ResetPhysics);
+                const FVector SpawnLocation = Island ? Island->FindSpawnPoint() : FVector(-3800.f, 0.f, 500.f);
+                Pawn->SetActorLocation(SpawnLocation, false, nullptr, ETeleportType::ResetPhysics);
             }
         }
     }
@@ -264,8 +264,8 @@ void ATreasureSketchGameMode::StartNewRound(bool bSwapRoles)
         {
             const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
             const float SpawnY = PS && PS->PlayerRole == ETreasurePlayerRole::Hunter ? 400.f : 0.f;
-            const float SpawnZ = Island ? Island->HeightAt(-3800.f, SpawnY) + 180.f : 500.f;
-            Pawn->SetActorLocation(FVector(-3800.f, SpawnY, FMath::Max(SpawnZ, 250.f)), false, nullptr, ETeleportType::ResetPhysics);
+            const FVector SpawnLocation = Island ? Island->FindSpawnPoint(SpawnY) : FVector(-3800.f, SpawnY, 500.f);
+            Pawn->SetActorLocation(SpawnLocation, false, nullptr, ETeleportType::ResetPhysics);
             if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(Pawn))
                 Character->SetSpectatorHidden(false);
         }

@@ -28,6 +28,7 @@ public:
 
     float HeightAt(float X, float Y) const;
     FVector FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight = 130.f) const;
+    FVector FindSpawnPoint(float LateralOffset = 0.f) const;
     FString GetShapeName() const;
 
 private:
