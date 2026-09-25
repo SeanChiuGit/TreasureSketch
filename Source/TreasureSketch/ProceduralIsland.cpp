@@ -10,11 +10,17 @@
 
 namespace
 {
-enum class EIslandShape : uint8 { Round, Long, Crescent, TwinCove, TriCape };
+enum class EIslandShape : uint8 { RoundBay, LongSpine, Crescent, TwinCove, TriCape, Hook, StarCove };
+enum class ETerrainProfile : uint8 { Flat, SinglePeak, TwinPeaks, Ridge, EdgeCliff, Basin, Rolling };
 
 EIslandShape ShapeFromSeed(int32 Seed)
 {
-    return static_cast<EIslandShape>(FMath::Abs(Seed) % 5);
+    return static_cast<EIslandShape>(FMath::Abs(Seed) % 7);
+}
+
+ETerrainProfile TerrainFromSeed(int32 Seed)
+{
+    return static_cast<ETerrainProfile>(FMath::Abs(Seed / 7) % 7);
 }
 
 float SeedNoise(float X, float Y, int32 Seed)
@@ -131,11 +137,13 @@ FString AProceduralIsland::GetShapeName() const
 {
     switch (ShapeFromSeed(Seed))
     {
-    case EIslandShape::Round: return TEXT("Round");
-    case EIslandShape::Long: return TEXT("Long");
+    case EIslandShape::RoundBay: return TEXT("RoundBay");
+    case EIslandShape::LongSpine: return TEXT("LongSpine");
     case EIslandShape::Crescent: return TEXT("Crescent");
     case EIslandShape::TwinCove: return TEXT("TwinCove");
-    default: return TEXT("TriCape");
+    case EIslandShape::TriCape: return TEXT("TriCape");
+    case EIslandShape::Hook: return TEXT("Hook");
+    default: return TEXT("StarCove");
     }
 }
 
@@ -151,7 +159,7 @@ float AProceduralIsland::NormalizedIslandDistance(float X, float Y) const
     const float Angle = FMath::Atan2(RY, RX);
     const EIslandShape Shape = ShapeFromSeed(Seed);
 
-    if (Shape == EIslandShape::Long)
+    if (Shape == EIslandShape::LongSpine)
     {
         const float Wobble = 1.f + 0.10f * FMath::Sin(4.f * Angle + Seed * 0.013f);
         return FMath::Sqrt(FMath::Square(RX / 1.34f) + FMath::Square(RY / 0.72f)) / (Radius * Wobble);
@@ -163,20 +171,42 @@ float AProceduralIsland::NormalizedIslandDistance(float X, float Y) const
         const float Bridge = FMath::Sqrt(FMath::Square(RX / 1.08f) + FMath::Square(RY / 0.42f)) / Radius;
         return FMath::Min(FMath::Min(Left, Right), Bridge);
     }
+    if (Shape == EIslandShape::Hook)
+    {
+        const float Main = FMath::Sqrt(FMath::Square((RX + Radius * 0.16f) / 1.05f) + FMath::Square(RY / 0.76f)) / Radius;
+        const float Tip = FMath::Sqrt(FMath::Square((RX - Radius * 0.58f) / 0.48f) + FMath::Square((RY + Radius * 0.42f) / 0.42f)) / Radius;
+        const float BayX = (RX - Radius * 0.43f) / (Radius * 0.34f);
+        const float BayY = (RY - Radius * 0.02f) / (Radius * 0.34f);
+        return FMath::Min(Main, Tip) + FMath::Exp(-(BayX * BayX + BayY * BayY) * 1.8f) * 0.78f;
+    }
 
     float Wobble = 1.f + 0.09f * FMath::Sin(5.f * Angle + Seed * 0.017f)
         + 0.055f * FMath::Sin(3.f * Angle - Seed * 0.011f);
     if (Shape == EIslandShape::TriCape)
         Wobble += 0.17f * FMath::Cos(3.f * Angle + Seed * 0.021f);
+    else if (Shape == EIslandShape::StarCove)
+        Wobble += 0.20f * FMath::Cos(4.f * Angle + Seed * 0.009f);
 
-    const float AxisX = Shape == EIslandShape::Round ? 1.05f : 1.12f;
-    const float AxisY = Shape == EIslandShape::Round ? 0.94f : 0.88f;
+    const float AxisX = Shape == EIslandShape::RoundBay ? 1.05f : 1.12f;
+    const float AxisY = Shape == EIslandShape::RoundBay ? 0.94f : 0.88f;
     float Distance = FMath::Sqrt(FMath::Square(RX / AxisX) + FMath::Square(RY / AxisY)) / (Radius * Wobble);
     if (Shape == EIslandShape::Crescent)
     {
         const float BayX = (RX - Radius * 0.50f) / (Radius * 0.47f);
         const float BayY = RY / (Radius * 0.52f);
         Distance += FMath::Exp(-(BayX * BayX + BayY * BayY) * 1.6f) * 0.73f;
+    }
+    else if (Shape == EIslandShape::RoundBay)
+    {
+        const float BayX = (RX + Radius * 0.72f) / (Radius * 0.28f);
+        const float BayY = (RY - Radius * 0.08f) / (Radius * 0.34f);
+        Distance += FMath::Exp(-(BayX * BayX + BayY * BayY) * 1.7f) * 0.58f;
+    }
+    else if (Shape == EIslandShape::StarCove)
+    {
+        const float BayX = (RX - Radius * 0.25f) / (Radius * 0.29f);
+        const float BayY = (RY + Radius * 0.70f) / (Radius * 0.25f);
+        Distance += FMath::Exp(-(BayX * BayX + BayY * BayY) * 1.8f) * 0.65f;
     }
     return Distance;
 }
@@ -189,21 +219,47 @@ float AProceduralIsland::HeightAt(float X, float Y) const
 
     const float Radius = CellSize * (GridSize - 1) * 0.46f;
     FRandomStream Profile(Seed ^ 0x2F6E2B1);
-    const FVector2D HillA(Profile.FRandRange(-0.34f, 0.34f) * Radius, Profile.FRandRange(-0.32f, 0.32f) * Radius);
-    const FVector2D HillB(Profile.FRandRange(-0.42f, 0.42f) * Radius, Profile.FRandRange(-0.38f, 0.38f) * Radius);
-    const float HillASize = Profile.FRandRange(1050.f, 1700.f);
-    const float HillBSize = Profile.FRandRange(900.f, 1450.f);
-    const float HillAHeight = Profile.FRandRange(290.f, 520.f);
-    const float HillBHeight = Profile.FRandRange(180.f, 390.f);
-    const float DXA = (X - HillA.X) / HillASize;
-    const float DYA = (Y - HillA.Y) / HillASize;
-    const float DXB = (X - HillB.X) / HillBSize;
-    const float DYB = (Y - HillB.Y) / HillBSize;
-    const float ShoreRise = 45.f + 300.f * FMath::Pow(FMath::Max(0.f, 1.f - Edge), 1.25f);
-    const float Hills = HillAHeight * FMath::Exp(-(DXA * DXA + DYA * DYA))
-        + HillBHeight * FMath::Exp(-(DXB * DXB + DYB * DYB));
-    const float Rolling = SeedNoise(X, Y, Seed) * 105.f * FMath::Clamp((1.f - Edge) * 2.2f, 0.f, 1.f);
-    return ShoreRise + Hills + Rolling;
+    const ETerrainProfile Terrain = TerrainFromSeed(Seed);
+    const float Interior = FMath::Clamp((1.f - Edge) * 2.4f, 0.f, 1.f);
+    const float ShoreRise = 42.f + 95.f * FMath::Pow(FMath::Max(0.f, 1.f - Edge), 0.75f);
+    auto Hill = [&](float CX, float CY, float SX, float SY, float Height)
+    {
+        const float DX = (X - CX) / SX;
+        const float DY = (Y - CY) / SY;
+        return Height * FMath::Exp(-(DX * DX + DY * DY));
+    };
+
+    float Relief = 0.f;
+    switch (Terrain)
+    {
+    case ETerrainProfile::Flat:
+        Relief = SeedNoise(X, Y, Seed) * 45.f;
+        break;
+    case ETerrainProfile::SinglePeak:
+        Relief = Hill(Profile.FRandRange(-0.58f, 0.58f) * Radius, Profile.FRandRange(-0.58f, 0.58f) * Radius,
+            Radius * 0.25f, Radius * 0.25f, 620.f);
+        break;
+    case ETerrainProfile::TwinPeaks:
+        Relief = Hill(-Radius * 0.34f, Radius * 0.18f, Radius * 0.22f, Radius * 0.25f, 510.f)
+            + Hill(Radius * 0.34f, -Radius * 0.20f, Radius * 0.24f, Radius * 0.21f, 470.f);
+        break;
+    case ETerrainProfile::Ridge:
+        Relief = Hill(0.f, 0.f, Radius * 0.62f, Radius * 0.13f, 500.f);
+        break;
+    case ETerrainProfile::EdgeCliff:
+        Relief = Hill(Radius * 0.52f, Radius * -0.18f, Radius * 0.28f, Radius * 0.48f, 610.f);
+        break;
+    case ETerrainProfile::Basin:
+        Relief = 330.f * Interior - Hill(0.f, 0.f, Radius * 0.25f, Radius * 0.25f, 285.f);
+        break;
+    default:
+        Relief = Hill(-Radius * 0.42f, -Radius * 0.28f, Radius * 0.20f, Radius * 0.19f, 270.f)
+            + Hill(Radius * 0.08f, Radius * 0.38f, Radius * 0.18f, Radius * 0.22f, 310.f)
+            + Hill(Radius * 0.45f, -Radius * 0.06f, Radius * 0.17f, Radius * 0.18f, 245.f);
+        break;
+    }
+    const float FineVariation = SeedNoise(X, Y, Seed + 419) * (Terrain == ETerrainProfile::Flat ? 35.f : 80.f) * Interior;
+    return ShoreRise + Relief * Interior + FineVariation;
 }
 
 float AProceduralIsland::SlopeAt(float X, float Y) const
@@ -230,7 +286,7 @@ FVector AProceduralIsland::FindRandomLandPoint(FRandomStream& Stream, float Mini
         const float X = Stream.FRandRange(-Extent, Extent);
         const float Y = Stream.FRandRange(-Extent, Extent);
         const float Z = HeightAt(X, Y);
-        const bool bAwayFromSpawn = FVector2D::DistSquared(FVector2D(X, Y), FVector2D(-2800.f, 0.f)) > FMath::Square(1700.f);
+        const bool bAwayFromSpawn = FVector2D::DistSquared(FVector2D(X, Y), FVector2D(-3800.f, 0.f)) > FMath::Square(1900.f);
         if (Z >= MinimumHeight && Z <= 760.f && SlopeAt(X, Y) < 0.42f
             && NormalizedIslandDistance(X, Y) < 0.84f && bAwayFromSpawn && IsClearOfDecorations(X, Y, 520.f))
             return GetActorLocation() + FVector(X, Y, Z);
@@ -335,7 +391,7 @@ void AProceduralIsland::BuildDecorations()
             const float Z = HeightAt(X, Y);
             if (Z < MinHeight || Z > MaxHeight || SlopeAt(X, Y) > MaxSlope || NormalizedIslandDistance(X, Y) >= 0.93f)
                 continue;
-            if (X < -2250.f && FMath::Abs(Y) < 900.f)
+            if (X < -3150.f && FMath::Abs(Y) < 1050.f)
                 continue;
             if (!IsClearOfDecorations(X, Y, MinSpacing))
                 continue;
@@ -383,7 +439,7 @@ void AProceduralIsland::BuildLandmarks(FRandomStream& Stream)
             const float Z = HeightAt(X, Y);
             if (Z < 115.f || Z > 610.f || SlopeAt(X, Y) > 0.30f || NormalizedIslandDistance(X, Y) > 0.80f)
                 continue;
-            if (X < -2600.f && FMath::Abs(Y) < 1050.f)
+            if (X < -3250.f && FMath::Abs(Y) < 1200.f)
                 continue;
             if (!IsClearOfDecorations(X, Y, 900.f))
                 continue;

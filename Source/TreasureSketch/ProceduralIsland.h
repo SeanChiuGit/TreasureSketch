@@ -21,10 +21,10 @@ public:
     int32 Seed = 1337;
 
     UPROPERTY(EditAnywhere, Category="Island", meta=(ClampMin="17", ClampMax="61"))
-    int32 GridSize = 35;
+    int32 GridSize = 39;
 
     UPROPERTY(EditAnywhere, Category="Island")
-    float CellSize = 300.f;
+    float CellSize = 330.f;
 
     float HeightAt(float X, float Y) const;
     FVector FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight = 130.f) const;
