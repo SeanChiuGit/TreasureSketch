@@ -188,22 +188,52 @@ float AProceduralIsland::NormalizedIslandDistance(float X, float Y) const
     }
     if (Shape == EIslandShape::MainAndSatellite)
     {
-        const float Main = FMath::Sqrt(FMath::Square((RX + Radius * 0.23f) / 0.68f) + FMath::Square(RY / 0.78f)) / Radius;
-        const float Satellite = FMath::Sqrt(FMath::Square((RX - Radius * 0.72f) / 0.22f) + FMath::Square((RY - Radius * 0.10f) / 0.30f)) / Radius;
-        return FMath::Min(Main, Satellite);
+        const float MainOffset = Profile.FRandRange(0.19f, 0.27f);
+        const float MainX = Profile.FRandRange(0.64f, 0.72f);
+        const float MainY = Profile.FRandRange(0.72f, 0.83f);
+        const float SatelliteOffset = Profile.FRandRange(0.68f, 0.76f);
+        const float SatelliteX = Profile.FRandRange(0.20f, 0.26f);
+        const float SatelliteY = Profile.FRandRange(0.26f, 0.34f);
+        const float SatelliteSide = Profile.FRandRange(-0.18f, 0.18f);
+        const float Coast = 1.f + 0.065f * FMath::Sin(5.f * Angle + Seed * 0.016f)
+            + 0.035f * FMath::Sin(3.f * Angle - Seed * 0.009f);
+        const float Main = FMath::Sqrt(FMath::Square((RX + Radius * MainOffset) / MainX) + FMath::Square(RY / MainY)) / Radius;
+        const float Satellite = FMath::Sqrt(FMath::Square((RX - Radius * SatelliteOffset) / SatelliteX)
+            + FMath::Square((RY - Radius * SatelliteSide) / SatelliteY)) / Radius;
+        return FMath::Min(Main, Satellite) / Coast;
     }
     if (Shape == EIslandShape::TwinIslands)
     {
-        const float A = FMath::Sqrt(FMath::Square((RX + Radius * 0.48f) / 0.43f) + FMath::Square((RY + Radius * 0.06f) / 0.65f)) / Radius;
-        const float B = FMath::Sqrt(FMath::Square((RX - Radius * 0.48f) / 0.43f) + FMath::Square((RY - Radius * 0.06f) / 0.65f)) / Radius;
-        return FMath::Min(A, B);
+        const float Separation = Profile.FRandRange(0.45f, 0.52f);
+        const float WidthA = Profile.FRandRange(0.39f, 0.45f);
+        const float WidthB = Profile.FRandRange(0.39f, 0.45f);
+        const float HeightA = Profile.FRandRange(0.58f, 0.69f);
+        const float HeightB = Profile.FRandRange(0.58f, 0.69f);
+        const float Stagger = Profile.FRandRange(0.02f, 0.13f);
+        const float Coast = 1.f + 0.06f * FMath::Sin(5.f * Angle + Seed * 0.015f);
+        const float A = FMath::Sqrt(FMath::Square((RX + Radius * Separation) / WidthA)
+            + FMath::Square((RY + Radius * Stagger) / HeightA)) / Radius;
+        const float B = FMath::Sqrt(FMath::Square((RX - Radius * Separation) / WidthB)
+            + FMath::Square((RY - Radius * Stagger) / HeightB)) / Radius;
+        return FMath::Min(A, B) / Coast;
     }
     if (Shape == EIslandShape::ThreeIslets)
     {
-        const float A = FMath::Sqrt(FMath::Square((RX + Radius * 0.43f) / 0.36f) + FMath::Square((RY + Radius * 0.25f) / 0.39f)) / Radius;
-        const float B = FMath::Sqrt(FMath::Square((RX - Radius * 0.43f) / 0.36f) + FMath::Square((RY + Radius * 0.25f) / 0.39f)) / Radius;
-        const float C = FMath::Sqrt(FMath::Square(RX / 0.39f) + FMath::Square((RY - Radius * 0.48f) / 0.34f)) / Radius;
-        return FMath::Min(FMath::Min(A, B), C);
+        const float Side = Profile.FRandRange(0.40f, 0.47f);
+        const float Bottom = Profile.FRandRange(0.21f, 0.29f);
+        const float Top = Profile.FRandRange(0.44f, 0.53f);
+        const float ScaleA = Profile.FRandRange(0.33f, 0.39f);
+        const float ScaleB = Profile.FRandRange(0.33f, 0.39f);
+        const float ScaleC = Profile.FRandRange(0.34f, 0.41f);
+        const float Coast = 1.f + 0.07f * FMath::Sin(5.f * Angle + Seed * 0.014f)
+            + 0.025f * FMath::Cos(3.f * Angle);
+        const float A = FMath::Sqrt(FMath::Square((RX + Radius * Side) / ScaleA)
+            + FMath::Square((RY + Radius * Bottom) / (ScaleA * 1.08f))) / Radius;
+        const float B = FMath::Sqrt(FMath::Square((RX - Radius * Side) / ScaleB)
+            + FMath::Square((RY + Radius * Bottom) / (ScaleB * 1.08f))) / Radius;
+        const float C = FMath::Sqrt(FMath::Square(RX / ScaleC)
+            + FMath::Square((RY - Radius * Top) / (ScaleC * 0.90f))) / Radius;
+        return FMath::Min(FMath::Min(A, B), C) / Coast;
     }
 
     float Wobble = 1.f + 0.09f * FMath::Sin(5.f * Angle + Seed * 0.017f)
