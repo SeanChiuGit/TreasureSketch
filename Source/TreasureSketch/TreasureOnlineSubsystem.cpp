@@ -7,6 +7,7 @@
 #include "OnlineSessionSettings.h"
 #include "OnlineSubsystem.h"
 #include "Online/OnlineSessionNames.h"
+#include "Kismet/GameplayStatics.h"
 
 void UTreasureOnlineSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -125,6 +126,38 @@ void UTreasureOnlineSubsystem::OnDestroySessionComplete(FName SessionName, bool 
 {
     SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroyHandle);
     if (bCreateAfterDestroy) { bCreateAfterDestroy = false; CreateSession(); }
+    else if (bReturnToMenuAfterDestroy)
+    {
+        bReturnToMenuAfterDestroy = false;
+        CompleteReturnToMenu();
+    }
+}
+
+void UTreasureOnlineSubsystem::LeaveRoom()
+{
+    Status = TEXT("正在离开房间……");
+    if (SessionInterface.IsValid() && SessionInterface->GetNamedSession(NAME_GameSession))
+    {
+        bCreateAfterDestroy = false;
+        bReturnToMenuAfterDestroy = true;
+        SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroyHandle);
+        DestroyHandle = SessionInterface->AddOnDestroySessionCompleteDelegate_Handle(
+            FOnDestroySessionCompleteDelegate::CreateUObject(this, &UTreasureOnlineSubsystem::OnDestroySessionComplete));
+        if (SessionInterface->DestroySession(NAME_GameSession)) return;
+        SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroyHandle);
+        bReturnToMenuAfterDestroy = false;
+    }
+    CompleteReturnToMenu();
+}
+
+void UTreasureOnlineSubsystem::CompleteReturnToMenu()
+{
+    RoomLines.Reset();
+    JoinableResultIndex = INDEX_NONE;
+    Status = TEXT("选择创建房间或加入房间");
+    AddDiagnostic(TEXT("LeaveRoom：已退出当前 Session，返回主页面"));
+    if (UWorld* World = GetWorld())
+        UGameplayStatics::OpenLevel(World, FName(TEXT("/Game/Maps/L_TreasureSketchDemo")), true);
 }
 
 void UTreasureOnlineSubsystem::FindAndJoinGame()

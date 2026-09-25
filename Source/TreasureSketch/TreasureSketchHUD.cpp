@@ -124,6 +124,7 @@ void ATreasureSketchHUD::DrawHUD()
                 DrawText(TEXT("已加入房间，等待房主开始游戏……"), FLinearColor(0.70f, 0.82f, 0.78f),
                     PanelX + 48.f, PanelY + 345.f, GEngine->GetMediumFont(), 0.9f);
             }
+            DrawMenuButton(TEXT("RoomBack"), TEXT("离开房间并返回主菜单"), PanelY + 545.f);
         }
         return;
     }

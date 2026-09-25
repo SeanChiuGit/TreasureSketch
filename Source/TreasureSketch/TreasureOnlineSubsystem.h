@@ -18,6 +18,7 @@ public:
     void FindAndJoinGame();
     void JoinFirstFoundGame();
     void OpenSteamInviteUI();
+    void LeaveRoom();
     FString GetStatus() const { return Status; }
     const TArray<FString>& GetRoomLines() const { return RoomLines; }
     const TArray<FString>& GetDiagnostics() const { return Diagnostics; }
@@ -33,6 +34,7 @@ private:
     TArray<FString> Diagnostics;
     int32 JoinableResultIndex = INDEX_NONE;
     bool bCreateAfterDestroy = false;
+    bool bReturnToMenuAfterDestroy = false;
     FDelegateHandle CreateHandle;
     FDelegateHandle DestroyHandle;
     FDelegateHandle FindHandle;
@@ -51,4 +53,5 @@ private:
     void OnTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString);
     void JoinSearchResult(const FOnlineSessionSearchResult& SearchResult, const FString& Source);
     void AddDiagnostic(const FString& Message);
+    void CompleteReturnToMenu();
 };

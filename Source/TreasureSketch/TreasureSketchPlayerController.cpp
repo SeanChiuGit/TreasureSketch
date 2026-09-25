@@ -154,6 +154,11 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
     else if (ActionName == TEXT("MenuBack")) OpenFrontEndPage(EFrontEndPage::MainMenu);
     else if (ActionName == TEXT("RoomInvite")) InviteSteamFriend();
     else if (ActionName == TEXT("RoomStart")) StartOnlineRound();
+    else if (ActionName == TEXT("RoomBack"))
+    {
+        if (UTreasureOnlineSubsystem* Online = GetGameInstance()->GetSubsystem<UTreasureOnlineSubsystem>())
+            Online->LeaveRoom();
+    }
     else if (ActionName == TEXT("MenuQuit")) ConsoleCommand(TEXT("quit"));
 }
 
