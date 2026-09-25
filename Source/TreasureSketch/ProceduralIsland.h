@@ -41,6 +41,9 @@ private:
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> PalmInstances;
 
     UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> PalmCollisionInstances;
+
+    UPROPERTY(VisibleAnywhere)
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> RockInstances;
 
     UPROPERTY(VisibleAnywhere)
@@ -54,6 +57,7 @@ private:
     void BuildIsland();
     void BuildWater();
     void BuildDecorations();
+    void ApplyDecorationMaterials();
     float NormalizedIslandDistance(float X, float Y) const;
     float SlopeAt(float X, float Y) const;
     bool IsClearOfDecorations(float X, float Y, float Radius) const;

@@ -48,6 +48,8 @@ AProceduralIsland::AProceduralIsland()
 
     PalmInstances = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("PalmInstances"));
     PalmInstances->SetupAttachment(RootComponent);
+    PalmCollisionInstances = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("PalmCollisionInstances"));
+    PalmCollisionInstances->SetupAttachment(RootComponent);
     RockInstances = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("RockInstances"));
     RockInstances->SetupAttachment(RootComponent);
     BushInstances = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("BushInstances"));
@@ -56,16 +58,22 @@ AProceduralIsland::AProceduralIsland()
     DriftwoodInstances->SetupAttachment(RootComponent);
 
     ConfigureInstances(PalmInstances);
+    ConfigureInstances(PalmCollisionInstances);
     ConfigureInstances(RockInstances);
     ConfigureInstances(BushInstances);
     ConfigureInstances(DriftwoodInstances);
     DriftwoodInstances->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    PalmInstances->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    PalmCollisionInstances->SetVisibility(false, true);
+    PalmCollisionInstances->SetHiddenInGame(true);
 
     static ConstructorHelpers::FObjectFinder<UStaticMesh> PalmMesh(TEXT("/Game/IslandAssets/Prototype/SM_PalmTree_A/StaticMeshes/SM_PalmTree_A.SM_PalmTree_A"));
     static ConstructorHelpers::FObjectFinder<UStaticMesh> RockMesh(TEXT("/Game/IslandAssets/Prototype/SM_RockCluster_A/StaticMeshes/SM_RockCluster_A.SM_RockCluster_A"));
     static ConstructorHelpers::FObjectFinder<UStaticMesh> BushMesh(TEXT("/Game/IslandAssets/Prototype/SM_Bush_A/StaticMeshes/SM_Bush_A.SM_Bush_A"));
     static ConstructorHelpers::FObjectFinder<UStaticMesh> DriftwoodMesh(TEXT("/Game/IslandAssets/Prototype/SM_Driftwood_A/StaticMeshes/SM_Driftwood_A.SM_Driftwood_A"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderMesh(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
     PalmInstances->SetStaticMesh(PalmMesh.Object);
+    PalmCollisionInstances->SetStaticMesh(CylinderMesh.Object);
     RockInstances->SetStaticMesh(RockMesh.Object);
     BushInstances->SetStaticMesh(BushMesh.Object);
     DriftwoodInstances->SetStaticMesh(DriftwoodMesh.Object);
@@ -273,10 +281,12 @@ void AProceduralIsland::BuildIsland()
 void AProceduralIsland::BuildDecorations()
 {
     PalmInstances->ClearInstances();
+    PalmCollisionInstances->ClearInstances();
     RockInstances->ClearInstances();
     BushInstances->ClearInstances();
     DriftwoodInstances->ClearInstances();
     OccupiedPoints.Reset();
+    ApplyDecorationMaterials();
 
     FRandomStream Stream(Seed ^ 0x79B4A31);
     const float Extent = CellSize * (GridSize - 1) * 0.43f;
@@ -299,7 +309,14 @@ void AProceduralIsland::BuildDecorations()
                 continue;
 
             const float UniformScale = Stream.FRandRange(ScaleRange.X, ScaleRange.Y);
-            Component->AddInstance(FTransform(FRotator(0.f, Stream.FRandRange(0.f, 360.f), 0.f), FVector(X, Y, Z), FVector(UniformScale)));
+            const FRotator Rotation(0.f, Stream.FRandRange(0.f, 360.f), 0.f);
+            Component->AddInstance(FTransform(Rotation, FVector(X, Y, Z), FVector(UniformScale)));
+            if (Component == PalmInstances)
+            {
+                const FVector CollisionLocation(X, Y, Z + 380.f * UniformScale);
+                const FVector CollisionScale(0.70f * UniformScale, 0.70f * UniformScale, 7.60f * UniformScale);
+                PalmCollisionInstances->AddInstance(FTransform(Rotation, CollisionLocation, CollisionScale));
+            }
             OccupiedPoints.Add(FVector2D(X, Y));
             ++Placed;
         }
@@ -312,6 +329,40 @@ void AProceduralIsland::BuildDecorations()
 
     UE_LOG(LogTemp, Display, TEXT("TREASURE_ISLAND_BUILT Seed=%d Shape=%s Palms=%d Rocks=%d Bushes=%d Driftwood=%d"),
         Seed, *GetShapeName(), PalmInstances->GetInstanceCount(), RockInstances->GetInstanceCount(), BushInstances->GetInstanceCount(), DriftwoodInstances->GetInstanceCount());
+}
+
+void AProceduralIsland::ApplyDecorationMaterials()
+{
+    UMaterialInterface* BaseMaterial = LoadObject<UMaterialInterface>(nullptr,
+        TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+    if (!BaseMaterial) return;
+
+    auto ApplyColors = [&](UHierarchicalInstancedStaticMeshComponent* Component)
+    {
+        UStaticMesh* Mesh = Component ? Component->GetStaticMesh() : nullptr;
+        if (!Mesh) return;
+        const TArray<FStaticMaterial>& Slots = Mesh->GetStaticMaterials();
+        for (int32 SlotIndex = 0; SlotIndex < Slots.Num(); ++SlotIndex)
+        {
+            const FString SlotName = Slots[SlotIndex].MaterialSlotName.ToString();
+            FColor SRGBColor(105, 112, 102);
+            if (SlotName.Contains(TEXT("LeafDark"))) SRGBColor = FColor(28, 82, 35);
+            else if (SlotName.Contains(TEXT("Leaf"))) SRGBColor = FColor(52, 137, 61);
+            else if (SlotName.Contains(TEXT("Driftwood"))) SRGBColor = FColor(142, 105, 70);
+            else if (SlotName.Contains(TEXT("Wood"))) SRGBColor = FColor(92, 48, 24);
+            else if (SlotName.Contains(TEXT("RockDark"))) SRGBColor = FColor(70, 76, 70);
+            else if (SlotName.Contains(TEXT("Rock"))) SRGBColor = FColor(112, 119, 108);
+
+            UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(BaseMaterial, this);
+            Material->SetVectorParameterValue(TEXT("Color"), FLinearColor::FromSRGBColor(SRGBColor));
+            Component->SetMaterial(SlotIndex, Material);
+        }
+    };
+
+    ApplyColors(PalmInstances);
+    ApplyColors(RockInstances);
+    ApplyColors(BushInstances);
+    ApplyColors(DriftwoodInstances);
 }
 
 void AProceduralIsland::BuildWater()
