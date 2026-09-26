@@ -83,22 +83,23 @@ def join_export(group, name):
     return result
 
 
-# Open-front explorer hut: readable interior, doorway, windows, partial roof and raised porch.
+# Explorer hut rebuilt on a single dimension grid so floors, walls, doorway and roof meet cleanly.
 g = collection("ExplorerHut")
-cube("Floor", (0, 0, 0.22), (2.7, 2.25, 0.22), STONE_DARK)
-cube("BackWall", (0, 2.05, 1.65), (2.7, 0.18, 1.65), STONE)
-cube("LeftWall", (-2.52, 0, 1.65), (0.18, 2.05, 1.65), STONE)
-cube("RightWall", (2.52, 0, 1.65), (0.18, 2.05, 1.65), STONE)
-cube("FrontLeft", (-1.75, -2.05, 1.65), (0.78, 0.18, 1.65), STONE)
-cube("FrontRight", (1.75, -2.05, 1.65), (0.78, 0.18, 1.65), STONE)
-cube("DoorLintel", (0, -2.05, 3.0), (0.98, 0.18, 0.30), STONE_LIGHT)
-cube("Table", (0.7, 0.55, 0.85), (0.9, 0.55, 0.12), WOOD)
-for x in (-2.2, 2.2):
-    cube("RoofBeam", (x, 0, 3.55), (0.12, 2.55, 0.12), WOOD)
-cube("BrokenRoofA", (-1.25, 0, 3.78), (1.35, 2.45, 0.12), ROOF, (0, math.radians(-10), 0))
-cube("BrokenRoofB", (1.65, 0.65, 3.66), (0.72, 1.75, 0.12), ROOF, (0, math.radians(12), 0))
+cube("Floor", (0, 0, 0.18), (6.4, 5.2, 0.36), STONE_DARK)
+cube("BackWall", (0, 2.45, 1.95), (6.4, 0.30, 3.2), STONE)
+cube("LeftWall", (-3.05, 0, 1.95), (0.30, 4.6, 3.2), STONE)
+cube("RightWall", (3.05, 0, 1.95), (0.30, 4.6, 3.2), STONE)
+cube("FrontLeft", (-2.2, -2.45, 1.95), (2.0, 0.30, 3.2), STONE)
+cube("FrontRight", (2.2, -2.45, 1.95), (2.0, 0.30, 3.2), STONE)
+cube("DoorLintel", (0, -2.45, 3.25), (2.4, 0.30, 0.60), STONE_LIGHT)
+cube("Porch", (0, -3.05, 0.12), (3.8, 1.0, 0.24), STONE_DARK)
+cube("Table", (0.8, 0.55, 0.82), (1.5, 0.9, 0.16), WOOD)
+for x in (-2.75, 2.75):
+    cube("RoofBeam", (x, 0, 3.72), (0.18, 5.5, 0.18), WOOD)
+cube("RoofLeft", (-1.55, 0, 4.02), (3.55, 5.8, 0.22), ROOF, (0, math.radians(-14), 0))
+cube("RoofRight", (1.55, 0, 4.02), (3.55, 5.8, 0.22), ROOF, (0, math.radians(14), 0))
 for z in (0.65, 1.3, 1.95):
-    cube("Moss", (-2.72, 0.9, z), (0.05, 0.55, 0.18), MOSS)
+    cube("Moss", (-3.22, 0.9, z), (0.06, 0.70, 0.18), MOSS)
 hut = join_export(g, "SM_RuinExplorerHut_A")
 
 

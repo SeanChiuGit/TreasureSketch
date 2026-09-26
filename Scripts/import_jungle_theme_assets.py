@@ -22,6 +22,13 @@ for group, files in GROUPS.items():
         task.replace_existing = True
         task.save = True
         unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
+        if group == "JungleRuins":
+            for object_path in task.imported_object_paths:
+                asset = unreal.EditorAssetLibrary.load_asset(object_path)
+                if isinstance(asset, unreal.StaticMesh):
+                    body_setup = asset.get_editor_property("body_setup")
+                    body_setup.set_editor_property("collision_trace_flag", unreal.CollisionTraceFlag.CTF_USE_COMPLEX_AS_SIMPLE)
+                    unreal.EditorAssetLibrary.save_loaded_asset(asset)
         unreal.log(f"IMPORTED_JUNGLE_THEME {filename}: {task.imported_object_paths}")
 
 unreal.EditorLoadingAndSavingUtils.save_dirty_packages(True, True)

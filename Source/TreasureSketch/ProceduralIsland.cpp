@@ -141,6 +141,13 @@ AProceduralIsland::AProceduralIsland()
     StoneRingInstances->SetStaticMesh(StoneRingMesh.Object);
     CampfireInstances->SetStaticMesh(CampfireMesh.Object);
 
+    JungleTreeCollisionInstances = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("JungleTreeCollisionInstances"));
+    JungleTreeCollisionInstances->SetupAttachment(RootComponent);
+    ConfigureInstances(JungleTreeCollisionInstances);
+    JungleTreeCollisionInstances->SetStaticMesh(CylinderMesh.Object);
+    JungleTreeCollisionInstances->SetVisibility(false, true);
+    JungleTreeCollisionInstances->SetHiddenInGame(true);
+
     const TCHAR* JunglePaths[JungleAssetCount] = {
         TEXT("/Game/IslandAssets/JungleNature/SM_ButtressTree_A/StaticMeshes/SM_ButtressTree_A.SM_ButtressTree_A"),
         TEXT("/Game/IslandAssets/JungleNature/SM_ForkedJungleTree_A/StaticMeshes/SM_ForkedJungleTree_A.SM_ForkedJungleTree_A"),
@@ -159,7 +166,8 @@ AProceduralIsland::AProceduralIsland()
             *FString::Printf(TEXT("JungleInstances_%d"), Index));
         Component->SetupAttachment(RootComponent);
         ConfigureInstances(Component);
-        if (Index == Fern || Index == JungleBush) Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        if (Index == ButtressTree || Index == ForkedTree || Index == Fern || Index == JungleBush)
+            Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         Component->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, JunglePaths[Index]));
         JungleInstances.Add(Component);
     }
@@ -507,9 +515,20 @@ void AProceduralIsland::BuildIsland()
             const float Slope = SlopeAt(WX, WY);
             const float Moisture = SeedNoise(WX + 1700.f, WY - 900.f, Seed + 73);
             int32 Section = 1;
-            if (Z < 125.f) Section = 0;
-            else if (Slope > 0.48f || Z > 650.f) Section = 3;
-            else if (Moisture > 0.18f) Section = 2;
+            if (Theme == EIslandTheme::JungleRuins)
+            {
+                // Ruins are a jungle island: sand is only a narrow outer shoreline.
+                const float Edge = NormalizedIslandDistance(WX, WY);
+                if (Edge > 0.91f) Section = 0;
+                else if (Slope > 0.46f) Section = 3;
+                else if (Moisture > 0.06f) Section = 2;
+            }
+            else
+            {
+                if (Z < 125.f) Section = 0;
+                else if (Slope > 0.48f || Z > 650.f) Section = 3;
+                else if (Moisture > 0.18f) Section = 2;
+            }
             SectionTriangles[Section].Append({ I, I + GridSize, I + 1, I + 1, I + GridSize, I + GridSize + 1 });
         }
     }
@@ -519,7 +538,7 @@ void AProceduralIsland::BuildIsland()
     const FLinearColor GrassColors[] = { FLinearColor(0.16f, 0.40f, 0.08f), FLinearColor(0.24f, 0.46f, 0.12f), FLinearColor(0.31f, 0.39f, 0.09f) };
     const FLinearColor DarkGrassColors[] = { FLinearColor(0.07f, 0.25f, 0.06f), FLinearColor(0.10f, 0.31f, 0.12f), FLinearColor(0.18f, 0.27f, 0.06f) };
     const FLinearColor RockColors[] = { FLinearColor(0.27f, 0.25f, 0.21f), FLinearColor(0.34f, 0.32f, 0.28f), FLinearColor(0.29f, 0.25f, 0.20f) };
-    const FLinearColor JungleColors[] = { FLinearColor(0.18f,0.14f,0.07f), FLinearColor(0.09f,0.26f,0.055f), FLinearColor(0.035f,0.16f,0.04f), FLinearColor(0.25f,0.30f,0.22f) };
+    const FLinearColor JungleColors[] = { FLinearColor(0.62f,0.48f,0.25f), FLinearColor(0.12f,0.34f,0.07f), FLinearColor(0.035f,0.20f,0.045f), FLinearColor(0.19f,0.27f,0.15f) };
     const FLinearColor BeachColors[] = { SandColors[Palette], GrassColors[Palette], DarkGrassColors[Palette], RockColors[Palette] };
     const FLinearColor* SurfaceColors = Theme == EIslandTheme::JungleRuins ? JungleColors : BeachColors;
 
@@ -552,6 +571,7 @@ void AProceduralIsland::BuildDecorations()
     StoneRingInstances->ClearInstances();
     CampfireInstances->ClearInstances();
     for (UHierarchicalInstancedStaticMeshComponent* Component : JungleInstances) Component->ClearInstances();
+    JungleTreeCollisionInstances->ClearInstances();
     OccupiedPoints.Reset();
     if (Theme == EIslandTheme::JungleRuins)
     {
@@ -620,7 +640,16 @@ void AProceduralIsland::BuildJungleDecorations()
             if (Z < 80.f || NormalizedIslandDistance(X,Y) > 0.86f || SlopeAt(X,Y) > MaxSlope
                 || (X < -3150.f && FMath::Abs(Y) < 1050.f) || !IsClearOfDecorations(X,Y,Spacing)) continue;
             const float S = Stream.FRandRange(ScaleRange.X, ScaleRange.Y);
-            JungleInstances[Asset]->AddInstance(FTransform(FRotator(0,Stream.FRandRange(0,360),0), FVector(X,Y,Z), FVector(S)));
+            const FRotator Rotation(0, Stream.FRandRange(0,360), 0);
+            JungleInstances[Asset]->AddInstance(FTransform(Rotation, FVector(X,Y,Z), FVector(S)));
+            if (Asset == ButtressTree || Asset == ForkedTree)
+            {
+                const float Height = Asset == ButtressTree ? 760.f : 620.f;
+                const float RadiusScale = Asset == ButtressTree ? 1.05f : 0.80f;
+                const FVector CollisionLocation(X, Y, Z + Height * S * 0.5f);
+                const FVector CollisionScale(RadiusScale * S, RadiusScale * S, Height * S / 100.f);
+                JungleTreeCollisionInstances->AddInstance(FTransform(Rotation, CollisionLocation, CollisionScale));
+            }
             OccupiedPoints.Add(FVector2D(X,Y)); ++Placed;
         }
     };

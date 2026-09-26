@@ -89,6 +89,9 @@ private:
     UPROPERTY()
     TArray<TObjectPtr<UHierarchicalInstancedStaticMeshComponent>> JungleInstances;
 
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> JungleTreeCollisionInstances;
+
     TArray<FVector2D> OccupiedPoints;
 
     void BuildIsland();
