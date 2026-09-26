@@ -107,6 +107,9 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
 {
     if (!HasAuthority()) return;
 
+    // The menu preview may already have revealed the previous round's marker while the
+    // local player was assigned Scout. Remove it before replacing the island/treasure.
+    HideTreasureFromScout();
     if (Island) Island->Destroy();
     FRandomStream Stream(FDateTime::Now().GetTicks());
     IslandSeed = Stream.RandRange(1000, 999999);
@@ -141,6 +144,9 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
                 Character->SetSpectatorHidden(false);
             PC->GetPawn()->SetActorLocation(Island->FindSpawnPoint(), false, nullptr, ETeleportType::ResetPhysics);
         }
+        // Solo map testing deliberately shows the exact marker and its debug cylinder.
+        // It must use the newly generated treasure location, not the menu preview location.
+        if (PC) PC->ClientRevealTreasure(TreasureLocation);
     }
     UE_LOG(LogTemp, Display, TEXT("TREASURE_SOLO_TEST Seed=%d Theme=%s Shape=%s"),
         IslandSeed, *Island->GetThemeName(), *Island->GetShapeName());
