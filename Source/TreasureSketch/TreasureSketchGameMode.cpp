@@ -136,7 +136,11 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
         ATreasureSketchPlayerState* PS = PC ? PC->GetPlayerState<ATreasureSketchPlayerState>() : nullptr;
         if (PS) PS->PlayerRole = ETreasurePlayerRole::Hunter;
         if (PC && PC->GetPawn())
+        {
+            if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(PC->GetPawn()))
+                Character->SetSpectatorHidden(false);
             PC->GetPawn()->SetActorLocation(Island->FindSpawnPoint(), false, nullptr, ETeleportType::ResetPhysics);
+        }
     }
     UE_LOG(LogTemp, Display, TEXT("TREASURE_SOLO_TEST Seed=%d Theme=%s Shape=%s"),
         IslandSeed, *Island->GetThemeName(), *Island->GetShapeName());

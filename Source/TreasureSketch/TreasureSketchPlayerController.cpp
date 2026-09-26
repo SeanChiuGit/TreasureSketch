@@ -77,6 +77,7 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
     UpdateReplayInput();
     UpdateSpectatorCamera(DeltaTime);
     ApplyPhaseInputRules();
+    ApplyKeyboardMovementFallback();
     if (!StatusMessage.IsEmpty() && GetWorld()->GetTimeSeconds() >= StatusUntil)
         StatusMessage.Empty();
     if (!bMapOpen || !IsLocalScout()) { bWasDrawing = false; return; }
@@ -120,13 +121,33 @@ void ATreasureSketchPlayerController::UpdateFrontEnd()
     {
         FrontEndPage = EFrontEndPage::None;
         bShowMouseCursor = false;
-        SetIgnoreMoveInput(false);
-        SetIgnoreLookInput(false);
+        ResetIgnoreMoveInput();
+        ResetIgnoreLookInput();
+        bInputLocked = false;
         SetInputMode(FInputModeGameOnly());
         if (GetPawn()) SetViewTarget(GetPawn());
         if (MenuCamera) MenuCamera->Destroy();
         MenuCamera = nullptr;
     }
+}
+
+void ATreasureSketchPlayerController::ApplyKeyboardMovementFallback()
+{
+    // UE 5.6 projects using EnhancedPlayerInput can stop forwarding legacy AxisMappings
+    // after switching from a GameAndUI menu back to gameplay. Polling the four movement
+    // keys here keeps the prototype and packaged builds controllable without an IMC asset.
+    APawn* ControlledPawn = GetPawn();
+    if (!ControlledPawn || IsMoveInputIgnored() || bMapOpen) return;
+
+    const float Forward = (IsInputKeyDown(EKeys::W) ? 1.f : 0.f)
+        - (IsInputKeyDown(EKeys::S) ? 1.f : 0.f);
+    const float Right = (IsInputKeyDown(EKeys::D) ? 1.f : 0.f)
+        - (IsInputKeyDown(EKeys::A) ? 1.f : 0.f);
+    const FRotator Yaw(0.f, GetControlRotation().Yaw, 0.f);
+    if (!FMath::IsNearlyZero(Forward))
+        ControlledPawn->AddMovementInput(FRotationMatrix(Yaw).GetUnitAxis(EAxis::X), Forward);
+    if (!FMath::IsNearlyZero(Right))
+        ControlledPawn->AddMovementInput(FRotationMatrix(Yaw).GetUnitAxis(EAxis::Y), Right);
 }
 
 void ATreasureSketchPlayerController::OpenFrontEndPage(EFrontEndPage NewPage)

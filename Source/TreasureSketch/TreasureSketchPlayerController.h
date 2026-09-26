@@ -115,6 +115,7 @@ private:
     void ToggleSpectatorTreasure();
     bool IsPointOnPaper(const FVector2D& Point) const;
     void ApplyPhaseInputRules();
+    void ApplyKeyboardMovementFallback();
     void UpdateReplayInput();
     void UpdateSpectatorCamera(float DeltaTime);
     void StartSpectating();
