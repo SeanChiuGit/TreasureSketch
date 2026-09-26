@@ -6,6 +6,7 @@
 #include "TreasureSketchHUD.h"
 #include "TreasureSketchPlayerController.h"
 #include "TreasureSketchPlayerState.h"
+#include "TreasureRules.h"
 #include "Engine/World.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
@@ -210,10 +211,12 @@ void ATreasureSketchGameMode::HandoffToHunter(const TArray<FSketchStroke>& Submi
 bool ATreasureSketchGameMode::TryDig(const FVector& WorldLocation, float& OutDistance)
 {
     OutDistance = FVector::Dist2D(WorldLocation, TreasureLocation);
+    const float VerticalDistance = FMath::Abs(WorldLocation.Z - TreasureLocation.Z);
     if (FinishIfTimeExpired()) return false;
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (!GS || GS->Phase != ETreasureRoundPhase::HunterSearching) return false;
-    if (OutDistance <= 425.f)
+    if (OutDistance <= TreasureRules::DigHorizontalRadius
+        && VerticalDistance <= TreasureRules::DigVerticalHalfHeight)
     {
         GS->Phase = ETreasureRoundPhase::Won;
         UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_FOUND Distance=%.1f"), OutDistance);

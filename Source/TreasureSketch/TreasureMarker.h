@@ -14,6 +14,7 @@ class TREASURESKETCH_API ATreasureMarker : public AActor
 public:
     ATreasureMarker();
     virtual void BeginPlay() override;
+    virtual void Tick(float DeltaSeconds) override;
 
 private:
     UPROPERTY()

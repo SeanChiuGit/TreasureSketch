@@ -1,11 +1,14 @@
 #include "TreasureMarker.h"
+#include "TreasureRules.h"
 
 #include "Components/StaticMeshComponent.h"
+#include "DrawDebugHelpers.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
 
 ATreasureMarker::ATreasureMarker()
 {
+    PrimaryActorTick.bCanEverTick = true;
     bReplicates = false;
     SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
     SetRootComponent(SceneRoot);
@@ -27,6 +30,20 @@ ATreasureMarker::ATreasureMarker()
     BarB->SetRelativeRotation(FRotator(0.f, -45.f, 0.f));
     BarB->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     BarB->SetMaterial(0, BaseMaterial.Object);
+}
+
+void ATreasureMarker::Tick(float DeltaSeconds)
+{
+    Super::Tick(DeltaSeconds);
+    if (!GetWorld()) return;
+
+    const FVector Center = GetActorLocation();
+    const FVector Bottom = Center - FVector(0.f, 0.f, TreasureRules::DigVerticalHalfHeight);
+    const FVector Top = Center + FVector(0.f, 0.f, TreasureRules::DigVerticalHalfHeight);
+    DrawDebugCylinder(GetWorld(), Bottom, Top, TreasureRules::DigHorizontalRadius, 48,
+        FColor(255, 45, 25), false, 0.f, 0, 7.f);
+    DrawDebugCircle(GetWorld(), Center, TreasureRules::DigHorizontalRadius, 64,
+        FColor(255, 220, 40), false, 0.f, 0, 10.f, FVector(1.f, 0.f, 0.f), FVector(0.f, 1.f, 0.f), false);
 }
 
 void ATreasureMarker::BeginPlay()
