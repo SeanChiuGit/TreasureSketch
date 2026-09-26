@@ -7,6 +7,13 @@
 class UProceduralMeshComponent;
 class UHierarchicalInstancedStaticMeshComponent;
 
+UENUM(BlueprintType)
+enum class EIslandTheme : uint8
+{
+    PirateBeach,
+    JungleRuins
+};
+
 UCLASS()
 class TREASURESKETCH_API AProceduralIsland : public AActor
 {
@@ -20,6 +27,9 @@ public:
     UPROPERTY(EditAnywhere, ReplicatedUsing=OnRep_Seed, Category="Island")
     int32 Seed = 1337;
 
+    UPROPERTY(EditAnywhere, ReplicatedUsing=OnRep_Seed, Category="Island")
+    EIslandTheme Theme = EIslandTheme::PirateBeach;
+
     UPROPERTY(EditAnywhere, Category="Island", meta=(ClampMin="17", ClampMax="61"))
     int32 GridSize = 39;
 
@@ -30,6 +40,8 @@ public:
     FVector FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight = 130.f) const;
     FVector FindSpawnPoint(float LateralOffset = 0.f) const;
     FString GetShapeName() const;
+    FString GetThemeName() const;
+    static EIslandTheme SelectThemeFromTable(int32 InSeed, bool bIncludeLockedThemes = true);
 
 private:
     UPROPERTY(VisibleAnywhere)
@@ -74,12 +86,16 @@ private:
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> CampfireInstances;
 
+    UPROPERTY()
+    TArray<TObjectPtr<UHierarchicalInstancedStaticMeshComponent>> JungleInstances;
+
     TArray<FVector2D> OccupiedPoints;
 
     void BuildIsland();
     void BuildWater();
     void BuildDecorations();
     void BuildLandmarks(FRandomStream& Stream);
+    void BuildJungleDecorations();
     void ApplyDecorationMaterials();
     float NormalizedIslandDistance(float X, float Y) const;
     float SlopeAt(float X, float Y) const;

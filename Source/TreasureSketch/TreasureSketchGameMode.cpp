@@ -66,6 +66,12 @@ void ATreasureSketchGameMode::BuildRound()
     Stream.Initialize(IslandSeed ^ 0x35D1A7);
     Island = GetWorld()->SpawnActorDeferred<AProceduralIsland>(AProceduralIsland::StaticClass(), FTransform::Identity);
     Island->Seed = IslandSeed;
+    FString RequestedTheme;
+    if (FParse::Value(FCommandLine::Get(), TEXT("IslandTheme="), RequestedTheme))
+        Island->Theme = RequestedTheme.Equals(TEXT("Ruins"), ESearchCase::IgnoreCase)
+            ? EIslandTheme::JungleRuins : EIslandTheme::PirateBeach;
+    else
+        Island->Theme = AProceduralIsland::SelectThemeFromTable(IslandSeed);
     Island->FinishSpawning(FTransform::Identity);
 
     TreasureLocation = Island->FindRandomLandPoint(Stream, 170.f) + FVector(0.f, 0.f, 35.f);
@@ -77,8 +83,8 @@ void ATreasureSketchGameMode::BuildRound()
         GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + PhaseDurationSeconds;
         GS->bGameStarted = false;
     }
-    UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_ROUND_READY Seed=%d Shape=%s Treasure=%s"),
-        IslandSeed, *Island->GetShapeName(), *TreasureLocation.ToCompactString());
+    UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_ROUND_READY Seed=%d Theme=%s Shape=%s Treasure=%s"),
+        IslandSeed, *Island->GetThemeName(), *Island->GetShapeName(), *TreasureLocation.ToCompactString());
 }
 
 void ATreasureSketchGameMode::StartHostedRound()

@@ -10,6 +10,32 @@
 
 namespace
 {
+struct FIslandThemeDefinition
+{
+    EIslandTheme Theme;
+    const TCHAR* Name;
+    int32 SelectionWeight;
+    bool bUnlockedByDefault;
+    float TreeDensity;
+    float BushDensity;
+    float TerrainRelief;
+};
+
+const FIslandThemeDefinition ThemeTable[] = {
+    // Theme, display/internal name, random weight, default unlock, trees, undergrowth, relief.
+    // Add future themes here first; their generator can then branch on the enum below.
+    { EIslandTheme::PirateBeach, TEXT("PirateBeach"), 60, true,  1.00f, 1.00f, 1.00f },
+    { EIslandTheme::JungleRuins, TEXT("JungleRuins"), 40, false, 1.45f, 2.20f, 0.38f },
+};
+
+const FIslandThemeDefinition& GetThemeDefinition(EIslandTheme Theme)
+{
+    for (const FIslandThemeDefinition& Definition : ThemeTable)
+        if (Definition.Theme == Theme) return Definition;
+    return ThemeTable[0];
+}
+
+enum EJungleAsset : int32 { ButtressTree, ForkedTree, Fern, JungleBush, FallenLog, ExplorerHut, Temple, Watchtower, ShrineHall, Crypt, JungleAssetCount };
 enum class EIslandShape : uint8
 {
     RoundBay, LongSpine, Crescent, TwinCove, TriCape, Hook, StarCove,
@@ -114,12 +140,58 @@ AProceduralIsland::AProceduralIsland()
     BrokenMastInstances->SetStaticMesh(MastMesh.Object);
     StoneRingInstances->SetStaticMesh(StoneRingMesh.Object);
     CampfireInstances->SetStaticMesh(CampfireMesh.Object);
+
+    const TCHAR* JunglePaths[JungleAssetCount] = {
+        TEXT("/Game/IslandAssets/JungleNature/SM_ButtressTree_A/StaticMeshes/SM_ButtressTree_A.SM_ButtressTree_A"),
+        TEXT("/Game/IslandAssets/JungleNature/SM_ForkedJungleTree_A/StaticMeshes/SM_ForkedJungleTree_A.SM_ForkedJungleTree_A"),
+        TEXT("/Game/IslandAssets/JungleNature/SM_FernCluster_A/StaticMeshes/SM_FernCluster_A.SM_FernCluster_A"),
+        TEXT("/Game/IslandAssets/JungleNature/SM_JungleBush_A/StaticMeshes/SM_JungleBush_A.SM_JungleBush_A"),
+        TEXT("/Game/IslandAssets/JungleNature/SM_FallenJungleLog_A/StaticMeshes/SM_FallenJungleLog_A.SM_FallenJungleLog_A"),
+        TEXT("/Game/IslandAssets/JungleRuins/SM_RuinExplorerHut_A/StaticMeshes/SM_RuinExplorerHut_A.SM_RuinExplorerHut_A"),
+        TEXT("/Game/IslandAssets/JungleRuins/SM_RuinTwoLevelTemple_A/StaticMeshes/SM_RuinTwoLevelTemple_A.SM_RuinTwoLevelTemple_A"),
+        TEXT("/Game/IslandAssets/JungleRuins/SM_RuinWatchtower_A/StaticMeshes/SM_RuinWatchtower_A.SM_RuinWatchtower_A"),
+        TEXT("/Game/IslandAssets/JungleRuins/SM_RuinShrineHall_A/StaticMeshes/SM_RuinShrineHall_A.SM_RuinShrineHall_A"),
+        TEXT("/Game/IslandAssets/JungleRuins/SM_RuinCryptEntrance_A/StaticMeshes/SM_RuinCryptEntrance_A.SM_RuinCryptEntrance_A")
+    };
+    for (int32 Index = 0; Index < JungleAssetCount; ++Index)
+    {
+        UHierarchicalInstancedStaticMeshComponent* Component = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(
+            *FString::Printf(TEXT("JungleInstances_%d"), Index));
+        Component->SetupAttachment(RootComponent);
+        ConfigureInstances(Component);
+        if (Index == Fern || Index == JungleBush) Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Component->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, JunglePaths[Index]));
+        JungleInstances.Add(Component);
+    }
 }
 
 void AProceduralIsland::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
     DOREPLIFETIME(AProceduralIsland, Seed);
+    DOREPLIFETIME(AProceduralIsland, Theme);
+}
+
+EIslandTheme AProceduralIsland::SelectThemeFromTable(int32 InSeed, bool bIncludeLockedThemes)
+{
+    int32 TotalWeight = 0;
+    for (const FIslandThemeDefinition& Definition : ThemeTable)
+        if (bIncludeLockedThemes || Definition.bUnlockedByDefault) TotalWeight += Definition.SelectionWeight;
+    int32 Pick = FMath::Abs(InSeed / 10) % TotalWeight;
+    for (const FIslandThemeDefinition& Definition : ThemeTable)
+    {
+        if (!bIncludeLockedThemes && !Definition.bUnlockedByDefault) continue;
+        if (Pick < Definition.SelectionWeight) return Definition.Theme;
+        Pick -= Definition.SelectionWeight;
+    }
+    return EIslandTheme::PirateBeach;
+}
+
+FString AProceduralIsland::GetThemeName() const
+{
+    for (const FIslandThemeDefinition& Definition : ThemeTable)
+        if (Definition.Theme == Theme) return Definition.Name;
+    return TEXT("Unknown");
 }
 
 void AProceduralIsland::OnRep_Seed()
@@ -282,6 +354,17 @@ float AProceduralIsland::HeightAt(float X, float Y) const
     }
 
     const float Radius = CellSize * (GridSize - 1) * 0.46f;
+    if (Theme == EIslandTheme::JungleRuins)
+    {
+        const float ReliefScale = GetThemeDefinition(Theme).TerrainRelief;
+        const float Interior = FMath::Clamp((1.f - Edge) * 2.7f, 0.f, 1.f);
+        const float TerraceA = 115.f * FMath::Exp(-(FMath::Square((X + Radius * 0.23f) / (Radius * 0.34f))
+            + FMath::Square((Y - Radius * 0.08f) / (Radius * 0.30f))));
+        const float TerraceB = 75.f * FMath::Exp(-(FMath::Square((X - Radius * 0.34f) / (Radius * 0.28f))
+            + FMath::Square((Y + Radius * 0.22f) / (Radius * 0.25f))));
+        return 72.f + (TerraceA + TerraceB + SeedNoise(X, Y, Seed + 911) * 42.f)
+            * Interior * ReliefScale;
+    }
     FRandomStream Profile(Seed ^ 0x2F6E2B1);
     const ETerrainProfile Terrain = TerrainFromSeed(Seed);
     const float Interior = FMath::Clamp((1.f - Edge) * 2.4f, 0.f, 1.f);
@@ -436,7 +519,9 @@ void AProceduralIsland::BuildIsland()
     const FLinearColor GrassColors[] = { FLinearColor(0.16f, 0.40f, 0.08f), FLinearColor(0.24f, 0.46f, 0.12f), FLinearColor(0.31f, 0.39f, 0.09f) };
     const FLinearColor DarkGrassColors[] = { FLinearColor(0.07f, 0.25f, 0.06f), FLinearColor(0.10f, 0.31f, 0.12f), FLinearColor(0.18f, 0.27f, 0.06f) };
     const FLinearColor RockColors[] = { FLinearColor(0.27f, 0.25f, 0.21f), FLinearColor(0.34f, 0.32f, 0.28f), FLinearColor(0.29f, 0.25f, 0.20f) };
-    const FLinearColor SurfaceColors[] = { SandColors[Palette], GrassColors[Palette], DarkGrassColors[Palette], RockColors[Palette] };
+    const FLinearColor JungleColors[] = { FLinearColor(0.18f,0.14f,0.07f), FLinearColor(0.09f,0.26f,0.055f), FLinearColor(0.035f,0.16f,0.04f), FLinearColor(0.25f,0.30f,0.22f) };
+    const FLinearColor BeachColors[] = { SandColors[Palette], GrassColors[Palette], DarkGrassColors[Palette], RockColors[Palette] };
+    const FLinearColor* SurfaceColors = Theme == EIslandTheme::JungleRuins ? JungleColors : BeachColors;
 
     UMaterialInterface* BaseMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
     for (int32 Section = 0; Section < 4; ++Section)
@@ -466,7 +551,13 @@ void AProceduralIsland::BuildDecorations()
     BrokenMastInstances->ClearInstances();
     StoneRingInstances->ClearInstances();
     CampfireInstances->ClearInstances();
+    for (UHierarchicalInstancedStaticMeshComponent* Component : JungleInstances) Component->ClearInstances();
     OccupiedPoints.Reset();
+    if (Theme == EIslandTheme::JungleRuins)
+    {
+        BuildJungleDecorations();
+        return;
+    }
     ApplyDecorationMaterials();
 
     FRandomStream Stream(Seed ^ 0x79B4A31);
@@ -512,6 +603,38 @@ void AProceduralIsland::BuildDecorations()
 
     UE_LOG(LogTemp, Display, TEXT("TREASURE_ISLAND_BUILT Seed=%d Shape=%s Palms=%d Rocks=%d Bushes=%d Driftwood=%d Landmarks=7"),
         Seed, *GetShapeName(), PalmInstances->GetInstanceCount(), RockInstances->GetInstanceCount(), BushInstances->GetInstanceCount(), DriftwoodInstances->GetInstanceCount());
+}
+
+void AProceduralIsland::BuildJungleDecorations()
+{
+    FRandomStream Stream(Seed ^ 0x4A71C9);
+    const FIslandThemeDefinition& Definition = GetThemeDefinition(Theme);
+    const float Extent = CellSize * (GridSize - 1) * 0.39f;
+    auto Place = [&](int32 Asset, int32 Count, float Spacing, float MaxSlope, FVector2D ScaleRange)
+    {
+        int32 Placed = 0;
+        for (int32 Attempt = 0; Attempt < Count * 70 && Placed < Count; ++Attempt)
+        {
+            const float X = Stream.FRandRange(-Extent, Extent), Y = Stream.FRandRange(-Extent, Extent);
+            const float Z = HeightAt(X, Y);
+            if (Z < 80.f || NormalizedIslandDistance(X,Y) > 0.86f || SlopeAt(X,Y) > MaxSlope
+                || (X < -3150.f && FMath::Abs(Y) < 1050.f) || !IsClearOfDecorations(X,Y,Spacing)) continue;
+            const float S = Stream.FRandRange(ScaleRange.X, ScaleRange.Y);
+            JungleInstances[Asset]->AddInstance(FTransform(FRotator(0,Stream.FRandRange(0,360),0), FVector(X,Y,Z), FVector(S)));
+            OccupiedPoints.Add(FVector2D(X,Y)); ++Placed;
+        }
+    };
+    Place(Temple, 1, 1800.f, 0.16f, FVector2D(0.95f,1.08f));
+    Place(Watchtower, 1, 1500.f, 0.18f, FVector2D(0.92f,1.05f));
+    Place(ExplorerHut, 1, 1300.f, 0.20f, FVector2D(0.92f,1.08f));
+    Place(ShrineHall, 1, 1550.f, 0.17f, FVector2D(0.92f,1.04f));
+    Place(Crypt, 1, 1300.f, 0.22f, FVector2D(0.92f,1.08f));
+    Place(ButtressTree, FMath::RoundToInt(20 * Definition.TreeDensity), 560.f, 0.30f, FVector2D(0.82f,1.16f));
+    Place(ForkedTree, FMath::RoundToInt(25 * Definition.TreeDensity), 480.f, 0.34f, FVector2D(0.80f,1.18f));
+    Place(JungleBush, FMath::RoundToInt(70 * Definition.BushDensity), 210.f, 0.42f, FVector2D(0.72f,1.30f));
+    Place(Fern, FMath::RoundToInt(95 * Definition.BushDensity), 125.f, 0.48f, FVector2D(0.65f,1.25f));
+    Place(FallenLog, 8, 620.f, 0.28f, FVector2D(0.85f,1.20f));
+    UE_LOG(LogTemp, Display, TEXT("TREASURE_JUNGLE_BUILT Seed=%d Theme=%s"), Seed, *GetThemeName());
 }
 
 void AProceduralIsland::BuildLandmarks(FRandomStream& Stream)
@@ -593,6 +716,8 @@ void AProceduralIsland::ApplyDecorationMaterials()
     ApplyColors(BrokenMastInstances);
     ApplyColors(StoneRingInstances);
     ApplyColors(CampfireInstances);
+    for (UHierarchicalInstancedStaticMeshComponent* JungleComponent : JungleInstances)
+        ApplyColors(JungleComponent);
 }
 
 void AProceduralIsland::BuildWater()
