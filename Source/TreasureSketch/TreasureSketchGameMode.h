@@ -24,6 +24,7 @@ public:
     bool TryDig(const FVector& WorldLocation, float& OutDistance);
     void StartNewRound(bool bSwapRoles = false);
     void StartHostedRound();
+    void StartSoloTest(int32 ThemeChoice);
 
 private:
     UPROPERTY()

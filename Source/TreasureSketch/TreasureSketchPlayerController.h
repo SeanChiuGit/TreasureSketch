@@ -21,7 +21,7 @@ enum class EFrontEndPage : uint8
     MainMenu,
     JoinBrowser,
     RoomLobby,
-    SoloComingSoon,
+    SoloTest,
     Settings
 };
 

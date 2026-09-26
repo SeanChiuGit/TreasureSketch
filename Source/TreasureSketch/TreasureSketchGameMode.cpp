@@ -103,6 +103,45 @@ void ATreasureSketchGameMode::StartHostedRound()
     }
 }
 
+void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
+{
+    if (!HasAuthority()) return;
+
+    if (Island) Island->Destroy();
+    FRandomStream Stream(FDateTime::Now().GetTicks());
+    IslandSeed = Stream.RandRange(1000, 999999);
+    Stream.Initialize(IslandSeed ^ 0x35D1A7);
+
+    Island = GetWorld()->SpawnActorDeferred<AProceduralIsland>(AProceduralIsland::StaticClass(), FTransform::Identity);
+    Island->Seed = IslandSeed;
+    Island->Theme = ThemeChoice == 0 ? EIslandTheme::PirateBeach
+        : ThemeChoice == 1 ? EIslandTheme::JungleRuins
+        : AProceduralIsland::SelectThemeFromTable(IslandSeed, true);
+    Island->FinishSpawning(FTransform::Identity);
+    TreasureLocation = Island->FindRandomLandPoint(Stream, 170.f) + FVector(0.f, 0.f, 35.f);
+
+    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (GS)
+    {
+        GS->IslandSeed = IslandSeed;
+        ++GS->RoundSerial;
+        GS->Phase = ETreasureRoundPhase::HunterSearching;
+        GS->bGameStarted = true;
+        GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + 3600.f;
+    }
+
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get());
+        ATreasureSketchPlayerState* PS = PC ? PC->GetPlayerState<ATreasureSketchPlayerState>() : nullptr;
+        if (PS) PS->PlayerRole = ETreasurePlayerRole::Hunter;
+        if (PC && PC->GetPawn())
+            PC->GetPawn()->SetActorLocation(Island->FindSpawnPoint(), false, nullptr, ETeleportType::ResetPhysics);
+    }
+    UE_LOG(LogTemp, Display, TEXT("TREASURE_SOLO_TEST Seed=%d Theme=%s Shape=%s"),
+        IslandSeed, *Island->GetThemeName(), *Island->GetShapeName());
+}
+
 void ATreasureSketchGameMode::PostLogin(APlayerController* NewPlayer)
 {
     Super::PostLogin(NewPlayer);

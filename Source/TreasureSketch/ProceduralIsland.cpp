@@ -682,7 +682,19 @@ void AProceduralIsland::ApplyDecorationMaterials()
         {
             const FString SlotName = Slots[SlotIndex].MaterialSlotName.ToString();
             FColor SRGBColor(105, 112, 102);
-            if (SlotName.Contains(TEXT("Flame"))) SRGBColor = FColor(255, 132, 16);
+            if (SlotName.Contains(TEXT("RuinInterior"))) SRGBColor = FColor(16, 21, 18);
+            else if (SlotName.Contains(TEXT("RuinStoneLight"))) SRGBColor = FColor(142, 148, 119);
+            else if (SlotName.Contains(TEXT("RuinStoneDark"))) SRGBColor = FColor(55, 65, 55);
+            else if (SlotName.Contains(TEXT("RuinStone"))) SRGBColor = FColor(96, 108, 86);
+            else if (SlotName.Contains(TEXT("RuinMoss")) || SlotName.Contains(TEXT("JungleMoss"))) SRGBColor = FColor(37, 103, 34);
+            else if (SlotName.Contains(TEXT("RuinWood"))) SRGBColor = FColor(88, 47, 23);
+            else if (SlotName.Contains(TEXT("RuinRoof"))) SRGBColor = FColor(70, 49, 31);
+            else if (SlotName.Contains(TEXT("JungleBarkLight"))) SRGBColor = FColor(107, 64, 31);
+            else if (SlotName.Contains(TEXT("JungleBark"))) SRGBColor = FColor(67, 39, 22);
+            else if (SlotName.Contains(TEXT("JungleLeafDark"))) SRGBColor = FColor(18, 68, 27);
+            else if (SlotName.Contains(TEXT("JungleLeaf"))) SRGBColor = FColor(34, 124, 47);
+            else if (SlotName.Contains(TEXT("JungleFern"))) SRGBColor = FColor(45, 151, 55);
+            else if (SlotName.Contains(TEXT("Flame"))) SRGBColor = FColor(255, 132, 16);
             else if (SlotName.Contains(TEXT("Ember"))) SRGBColor = FColor(235, 48, 8);
             else if (SlotName.Contains(TEXT("TornSail"))) SRGBColor = FColor(92, 25, 21);
             else if (SlotName.Contains(TEXT("PirateMoss"))) SRGBColor = FColor(33, 93, 32);

@@ -61,14 +61,23 @@ void ATreasureSketchHUD::DrawHUD()
             DrawText(TEXT("双人合作寻宝原型"), FLinearColor(0.55f, 0.70f, 0.68f),
                 PanelX + 48.f, PanelY + PanelH - 45.f, GEngine->GetSmallFont(), 0.9f);
         }
-        else if (Page == EFrontEndPage::SoloComingSoon || Page == EFrontEndPage::Settings)
+        else if (Page == EFrontEndPage::SoloTest)
         {
-            const FString Heading = Page == EFrontEndPage::SoloComingSoon ? TEXT("单人探险") : TEXT("设置");
-            const FString Message = Page == EFrontEndPage::SoloComingSoon
-                ? TEXT("单人探险仍在开发中") : TEXT("设置页面仍在开发中");
-            DrawText(Heading, FLinearColor::White, PanelX + 48.f, PanelY + 185.f,
+            DrawText(TEXT("单人地图测试"), FLinearColor::White, PanelX + 48.f, PanelY + 150.f,
                 GEngine->GetLargeFont(), 1.25f);
-            DrawText(Message, FLinearColor(0.75f, 0.84f, 0.82f), PanelX + 48.f, PanelY + 250.f,
+            DrawText(TEXT("选择主题后直接进入岛屿，可自由行走并检查碰撞与场景"),
+                FLinearColor(0.75f, 0.84f, 0.82f), PanelX + 48.f, PanelY + 205.f,
+                GEngine->GetSmallFont(), 0.9f);
+            DrawMenuButton(TEXT("SoloRuins"), TEXT("测试遗迹岛"), PanelY + 255.f, true);
+            DrawMenuButton(TEXT("SoloBeach"), TEXT("测试海盗沙滩岛"), PanelY + 323.f);
+            DrawMenuButton(TEXT("SoloRandom"), TEXT("随机主题与新种子"), PanelY + 391.f);
+            DrawMenuButton(TEXT("MenuBack"), TEXT("返回主页面"), PanelY + 485.f);
+        }
+        else if (Page == EFrontEndPage::Settings)
+        {
+            DrawText(TEXT("设置"), FLinearColor::White, PanelX + 48.f, PanelY + 185.f,
+                GEngine->GetLargeFont(), 1.25f);
+            DrawText(TEXT("设置页面仍在开发中"), FLinearColor(0.75f, 0.84f, 0.82f), PanelX + 48.f, PanelY + 250.f,
                 GEngine->GetMediumFont(), 1.f);
             DrawMenuButton(TEXT("MenuBack"), TEXT("返回主页面"), PanelY + 330.f, true);
         }
@@ -129,7 +138,7 @@ void ATreasureSketchHUD::DrawHUD()
         return;
     }
 
-    if (GetNetMode() == NM_Standalone)
+    if (GetNetMode() == NM_Standalone && !GS->bGameStarted)
     {
         const UTreasureOnlineSubsystem* Online = GetGameInstance()->GetSubsystem<UTreasureOnlineSubsystem>();
         const FString OnlineText = Online ? Online->GetStatus() : TEXT("Steam 在线服务未初始化");
