@@ -66,7 +66,7 @@ void ATreasureSketchHUD::DrawHUD()
                     if (bEnabled) AddHitBox(FVector2D(X, Y + 3.f), FVector2D(38.f, 34.f), I == 0 ? Less : More, true, 10);
                 }
             };
-            DrawRoomSetting(TEXT("边长倍数："), SettingsY, TEXT("RoomMapSmaller"), TEXT("RoomMapLarger"), GS->RoomMapScale > GS->MinMapScale, GS->RoomMapScale < GS->MaxMapScale);
+            DrawRoomSetting(TEXT("面积倍数："), SettingsY, TEXT("RoomMapSmaller"), TEXT("RoomMapLarger"), GS->RoomMapScale > GS->MinMapScale, GS->RoomMapScale < GS->MaxMapScale);
             const float InputX = SettingsX + 110.f;
             const float InputW = SettingsW - 202.f;
             const bool bEditingScale = PC->IsMapScaleEditing();
@@ -120,7 +120,7 @@ void ATreasureSketchHUD::DrawHUD()
             AddHitBox(FVector2D(SeedX, SeedY + 40.f), FVector2D(SeedW, 54.f), TEXT("TestSeedInput"), true, 10);
             DrawText(TEXT("数字键输入，退格删除，Enter完成"), FLinearColor(0.75f, 0.84f, 0.82f),
                 SeedX, SeedY + 110.f, GEngine->GetSmallFont(), 0.9f);
-            DrawText(TEXT("边长0.5至5倍；点击输入，Enter确认"), FLinearColor(0.75f, 0.84f, 0.82f),
+            DrawText(TEXT("面积0.5至5倍；点击输入，Enter确认"), FLinearColor(0.75f, 0.84f, 0.82f),
                 SeedX, SeedY + 138.f, GEngine->GetSmallFont(), 0.9f);
             DrawRect(FLinearColor(0.09f, 0.17f, 0.18f), SeedX, SeedY + 170.f, 130.f, 44.f);
             DrawText(TEXT("清空种子"), FLinearColor::White, SeedX + 12.f, SeedY + 180.f, GEngine->GetMediumFont(), 1.f);
@@ -191,7 +191,7 @@ void ATreasureSketchHUD::DrawHUD()
                 AddHitBox(FVector2D(ModeX, PanelY + 180.f), FVector2D(ModeW, 30.f), TEXT("RoomModeCoop"), true, 10);
             DrawDifficultySettings(ModeX, PanelY + 290.f, ModeW, bHost);
             float PlayerY = PanelY + 500.f;
-            DrawText(bHost ? TEXT("边长0.5至5倍，Enter确认；重玩沿用") : TEXT("房主调整设置；开局生效"), FLinearColor(0.75f, 0.84f, 0.82f), ModeX, PanelY + 480.f, GEngine->GetSmallFont(), 0.85f);
+            DrawText(bHost ? TEXT("面积0.5至5倍，Enter确认；重玩沿用") : TEXT("房主调整设置；开局生效"), FLinearColor(0.75f, 0.84f, 0.82f), ModeX, PanelY + 480.f, GEngine->GetSmallFont(), 0.85f);
             for (APlayerState* State : GS->PlayerArray)
                 if (const ATreasureSketchPlayerState* Member = Cast<ATreasureSketchPlayerState>(State))
                 {

@@ -67,12 +67,11 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
         TestNotNull(TEXT("Island generated"), ActiveIsland);
         if (ActiveIsland)
         {
-            const bool bForest = ActiveIsland->Theme == EIslandTheme::MistForest;
-            const int32 BaseCells = bForest ? 60 : 38;
-            const float BaseExtent = bForest ? 24600.f : 12540.f;
-            TestEqual(TEXT("Terrain uses selected size"), ActiveIsland->GridSize, FMath::RoundToInt(BaseCells * Scales[I]) + 1);
+            const int32 BaseCells = 38;
+            const float BaseExtent = 12540.f;
+            TestEqual(TEXT("Terrain uses selected size"), ActiveIsland->GridSize, FMath::RoundToInt(BaseCells * FMath::Sqrt(Scales[I])) + 1);
             TestTrue(TEXT("Terrain extent matches exact multiplier"), FMath::IsNearlyEqual(
-                (ActiveIsland->GridSize - 1) * ActiveIsland->CellSize, BaseExtent * Scales[I], 0.01f));
+                (ActiveIsland->GridSize - 1) * ActiveIsland->CellSize, BaseExtent * FMath::Sqrt(Scales[I]), 0.01f));
         }
         GS->bGameStarted = false;
     }
@@ -98,7 +97,7 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     GM->StartSoloTest(-2);
     TestEqual(TEXT("Explorer test uses searching setting"), GS->GetSecondsRemaining(), 600);
     for (TActorIterator<AProceduralIsland> It(World); It; ++It)
-        if (!It->IsActorBeingDestroyed()) TestEqual(TEXT("Solo terrain uses selected size"), It->GridSize, It->Theme == EIslandTheme::MistForest ? 301 : 191);
+        if (!It->IsActorBeingDestroyed()) TestEqual(TEXT("Solo terrain uses selected size"), It->GridSize, FMath::RoundToInt(38.f * FMath::Sqrt(5.f)) + 1);
     GM->StartSoloTest(0);
     TestEqual(TEXT("Map preview timer remains unchanged"), GS->GetSecondsRemaining(), 3600);
     for (TActorIterator<AProceduralIsland> It(World); It; ++It)

@@ -147,7 +147,7 @@ bool ATreasureSketchGameMode::SetRoomMapScale(float Scale)
     if (!HasAuthority() || !GS || GS->bGameStarted || GetNetMode() == NM_DedicatedServer
         || !FMath::IsFinite(Scale) || Scale < GS->MinMapScale || Scale > GS->MaxMapScale) return false;
     GS->RoomMapScale = Scale;
-    // Each theme applies this multiplier to its native extent and mesh spacing.
+    // Each theme converts the area multiplier to a length multiplier when generating terrain.
     GS->ForceNetUpdate();
     return true;
 }

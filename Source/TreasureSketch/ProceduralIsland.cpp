@@ -25,15 +25,17 @@ struct FIslandThemeDefinition
     float TerrainRelief;
     int32 GridSize;
     float CellSize;
+    float ResourceCountScale;
 };
 
 const FIslandThemeDefinition ThemeTable[] = {
     // Theme, display/internal name, random weight, default unlock, trees, undergrowth, relief.
     // Add future themes here first; their generator can then branch on the enum below.
-    { EIslandTheme::PirateBeach, TEXT("PirateBeach"), 60, true,  1.00f, 1.00f, 1.00f, 39, 330.f },
-    { EIslandTheme::JungleRuins, TEXT("JungleRuins"), 0, false, 1.45f, 2.20f, 0.38f, 39, 330.f },
-    // Nearly twice the width and length of the beach map: approximately four times the area.
-    { EIslandTheme::MistForest, TEXT("MistForest"), 50, true, 3.60f, 3.80f, 1.00f, 61, 410.f },
+    { EIslandTheme::PirateBeach, TEXT("PirateBeach"), 60, true,  1.00f, 1.00f, 1.00f, 39, 330.f, 1.f },
+    { EIslandTheme::JungleRuins, TEXT("JungleRuins"), 0, false, 1.45f, 2.20f, 0.38f, 39, 330.f, 1.f },
+    // Same starting extent as the beach; preserve the density of the original 246m forest.
+    { EIslandTheme::MistForest, TEXT("MistForest"), 50, true, 3.60f, 3.80f, 1.00f, 39, 330.f,
+        (12540.f * 12540.f) / (24600.f * 24600.f) },
 };
 
 const FIslandThemeDefinition& GetThemeDefinition(EIslandTheme Theme)
@@ -217,13 +219,14 @@ void AProceduralIsland::ConfigureThemeParameters()
 {
     const FIslandThemeDefinition& Definition = GetThemeDefinition(Theme);
     MapScale = FMath::IsFinite(MapScale) ? FMath::Clamp(MapScale, 0.5f, 5.f) : 1.f;
-    GridSize = FMath::RoundToInt((Definition.GridSize - 1) * MapScale) + 1;
-    CellSize = Definition.CellSize * (Definition.GridSize - 1) * MapScale / (GridSize - 1);
+    const float LengthScale = FMath::Sqrt(MapScale);
+    GridSize = FMath::RoundToInt((Definition.GridSize - 1) * LengthScale) + 1;
+    CellSize = Definition.CellSize * (Definition.GridSize - 1) * LengthScale / (GridSize - 1);
 }
 
 int32 AProceduralIsland::ScaledDecorationCount(int32 BaseCount) const
 {
-    return FMath::Max(1, FMath::RoundToInt(BaseCount * FMath::Square(MapScale)));
+    return FMath::Max(1, FMath::RoundToInt(BaseCount * GetThemeDefinition(Theme).ResourceCountScale * MapScale));
 }
 
 void AProceduralIsland::BeginPlay()
