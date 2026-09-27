@@ -68,13 +68,17 @@ void ATreasureSketchGameMode::BuildRound()
     Island->Seed = IslandSeed;
     FString RequestedTheme;
     if (FParse::Value(FCommandLine::Get(), TEXT("IslandTheme="), RequestedTheme))
-        Island->Theme = RequestedTheme.Equals(TEXT("Ruins"), ESearchCase::IgnoreCase)
-            ? EIslandTheme::JungleRuins : EIslandTheme::PirateBeach;
+        Island->Theme = RequestedTheme.Equals(TEXT("Forest"), ESearchCase::IgnoreCase)
+            ? EIslandTheme::MistForest
+            : RequestedTheme.Equals(TEXT("Ruins"), ESearchCase::IgnoreCase)
+                ? EIslandTheme::JungleRuins : EIslandTheme::PirateBeach;
     else
         Island->Theme = AProceduralIsland::SelectThemeFromTable(IslandSeed);
+    Island->ConfigureThemeParameters();
     Island->FinishSpawning(FTransform::Identity);
 
-    TreasureLocation = Island->FindRandomLandPoint(Stream, 170.f) + FVector(0.f, 0.f, 35.f);
+    TreasureLocation = Island->FindRandomLandPoint(Stream,
+        Island->Theme == EIslandTheme::MistForest ? 105.f : 170.f) + FVector(0.f, 0.f, 35.f);
     if (ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>())
     {
         GS->IslandSeed = IslandSeed;
@@ -118,10 +122,12 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
     Island = GetWorld()->SpawnActorDeferred<AProceduralIsland>(AProceduralIsland::StaticClass(), FTransform::Identity);
     Island->Seed = IslandSeed;
     Island->Theme = ThemeChoice == 0 ? EIslandTheme::PirateBeach
-        : ThemeChoice == 1 ? EIslandTheme::JungleRuins
+        : ThemeChoice == 1 ? EIslandTheme::MistForest
         : AProceduralIsland::SelectThemeFromTable(IslandSeed, true);
+    Island->ConfigureThemeParameters();
     Island->FinishSpawning(FTransform::Identity);
-    TreasureLocation = Island->FindRandomLandPoint(Stream, 170.f) + FVector(0.f, 0.f, 35.f);
+    TreasureLocation = Island->FindRandomLandPoint(Stream,
+        Island->Theme == EIslandTheme::MistForest ? 105.f : 170.f) + FVector(0.f, 0.f, 35.f);
 
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (GS)

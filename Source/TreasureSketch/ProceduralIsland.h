@@ -12,7 +12,8 @@ UENUM(BlueprintType)
 enum class EIslandTheme : uint8
 {
     PirateBeach,
-    JungleRuins
+    JungleRuins,
+    MistForest
 };
 
 UCLASS()
@@ -43,6 +44,7 @@ public:
     FString GetShapeName() const;
     FString GetThemeName() const;
     static EIslandTheme SelectThemeFromTable(int32 InSeed, bool bIncludeLockedThemes = true);
+    void ConfigureThemeParameters();
     bool ToggleDebugFog();
     bool IsWeatherFogEnabled() const;
 
@@ -95,6 +97,9 @@ private:
     UPROPERTY()
     TArray<TObjectPtr<UHierarchicalInstancedStaticMeshComponent>> JungleInstances;
 
+    UPROPERTY()
+    TArray<TObjectPtr<UHierarchicalInstancedStaticMeshComponent>> ForestInstances;
+
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> JungleTreeCollisionInstances;
 
@@ -105,6 +110,7 @@ private:
     void BuildDecorations();
     void BuildLandmarks(FRandomStream& Stream);
     void BuildJungleDecorations();
+    void BuildForestDecorations();
     void ApplyDecorationMaterials();
     float NormalizedIslandDistance(float X, float Y) const;
     float SlopeAt(float X, float Y) const;

@@ -184,12 +184,12 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
     }
     else if (ActionName == TEXT("MenuJoinFirst")) ConfirmJoinOnlineGame();
     else if (ActionName == TEXT("MenuSolo")) OpenFrontEndPage(EFrontEndPage::SoloTest);
-    else if (ActionName == TEXT("SoloBeach") || ActionName == TEXT("SoloRuins") || ActionName == TEXT("SoloRandom"))
+    else if (ActionName == TEXT("SoloBeach") || ActionName == TEXT("SoloForest") || ActionName == TEXT("SoloRandom"))
     {
         if (ATreasureSketchGameMode* GameMode = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
         {
             const int32 ThemeChoice = ActionName == TEXT("SoloBeach") ? 0
-                : ActionName == TEXT("SoloRuins") ? 1 : -1;
+                : ActionName == TEXT("SoloForest") ? 1 : -1;
             GameMode->StartSoloTest(ThemeChoice);
         }
     }

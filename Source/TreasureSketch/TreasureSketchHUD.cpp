@@ -68,7 +68,7 @@ void ATreasureSketchHUD::DrawHUD()
             DrawText(TEXT("选择主题后直接进入岛屿，可自由行走并检查碰撞与场景"),
                 FLinearColor(0.75f, 0.84f, 0.82f), PanelX + 48.f, PanelY + 205.f,
                 GEngine->GetSmallFont(), 0.9f);
-            DrawMenuButton(TEXT("SoloRuins"), TEXT("测试遗迹岛"), PanelY + 255.f, true);
+            DrawMenuButton(TEXT("SoloForest"), TEXT("测试迷雾森林（大型地图）"), PanelY + 255.f, true);
             DrawMenuButton(TEXT("SoloBeach"), TEXT("测试海盗沙滩岛"), PanelY + 323.f);
             DrawMenuButton(TEXT("SoloRandom"), TEXT("随机主题与新种子"), PanelY + 391.f);
             DrawMenuButton(TEXT("MenuBack"), TEXT("返回主页面"), PanelY + 485.f);
