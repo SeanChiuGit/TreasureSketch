@@ -6,12 +6,14 @@
 
 class UProceduralMeshComponent;
 class UHierarchicalInstancedStaticMeshComponent;
+class AExponentialHeightFog;
 
 UENUM(BlueprintType)
 enum class EIslandTheme : uint8
 {
     PirateBeach,
-    JungleRuins
+    JungleRuins,
+    MistForest
 };
 
 UCLASS()
@@ -21,6 +23,8 @@ class TREASURESKETCH_API AProceduralIsland : public AActor
 
 public:
     AProceduralIsland();
+    virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void OnConstruction(const FTransform& Transform) override;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -30,11 +34,14 @@ public:
     UPROPERTY(EditAnywhere, ReplicatedUsing=OnRep_Seed, Category="Island")
     EIslandTheme Theme = EIslandTheme::PirateBeach;
 
-    UPROPERTY(EditAnywhere, ReplicatedUsing=OnRep_Seed, Category="Island", meta=(ClampMin="17", ClampMax="191"))
+    UPROPERTY(EditAnywhere, ReplicatedUsing=OnRep_Seed, Category="Island", meta=(ClampMin="17", ClampMax="301"))
     int32 GridSize = 39;
 
     UPROPERTY(EditAnywhere, ReplicatedUsing=OnRep_Seed, Category="Island")
     float CellSize = 330.f;
+
+    UPROPERTY(EditAnywhere, ReplicatedUsing=OnRep_Seed, Category="Island", meta=(ClampMin="0.5", ClampMax="5"))
+    float MapScale = 1.f;
 
     float HeightAt(float X, float Y) const;
     FVector FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight = 130.f) const;
@@ -42,6 +49,9 @@ public:
     FString GetShapeName() const;
     FString GetThemeName() const;
     static EIslandTheme SelectThemeFromTable(int32 InSeed, bool bIncludeLockedThemes = true);
+    void ConfigureThemeParameters();
+    bool ToggleDebugFog();
+    bool IsWeatherFogEnabled() const;
 
 private:
     UPROPERTY(VisibleAnywhere)
@@ -49,6 +59,9 @@ private:
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UProceduralMeshComponent> WaterMesh;
+
+    UPROPERTY(Transient)
+    TObjectPtr<AExponentialHeightFog> WeatherFogActor;
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> PalmInstances;
@@ -89,20 +102,27 @@ private:
     UPROPERTY()
     TArray<TObjectPtr<UHierarchicalInstancedStaticMeshComponent>> JungleInstances;
 
+    UPROPERTY()
+    TArray<TObjectPtr<UHierarchicalInstancedStaticMeshComponent>> ForestInstances;
+
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> JungleTreeCollisionInstances;
 
-    TArray<FVector2D> OccupiedPoints;
+    TMap<FIntPoint, TArray<FVector2D>> OccupiedBuckets;
+    void RecordDecoration(float X, float Y);
 
     void BuildIsland();
     void BuildWater();
     void BuildDecorations();
+    void CreateRuntimeForestFog();
     void BuildLandmarks(FRandomStream& Stream);
     void BuildJungleDecorations();
+    void BuildForestDecorations();
     void ApplyDecorationMaterials();
     float NormalizedIslandDistance(float X, float Y) const;
     float SlopeAt(float X, float Y) const;
     bool IsClearOfDecorations(float X, float Y, float Radius) const;
+    int32 ScaledDecorationCount(int32 BaseCount) const;
 
     UFUNCTION()
     void OnRep_Seed();

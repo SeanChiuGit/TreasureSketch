@@ -11,6 +11,16 @@ GROUPS = {
         "SM_ButtressTree_A.glb", "SM_ForkedJungleTree_A.glb", "SM_FernCluster_A.glb",
         "SM_JungleBush_A.glb", "SM_FallenJungleLog_A.glb",
     ),
+    "MistForest": (
+        "SM_MistForestAncientOak_A.glb", "SM_MistForestTwinTrunk_A.glb",
+        "SM_MistForestSpreadingBeech_A.glb", "SM_MistForestWeepingTree_A.glb",
+    ),
+    "MistForestLandmarks": (
+        "SM_MistForestMossBoulder_A.glb", "SM_MistForestSplitBoulder_A.glb",
+        "SM_MistForestThreeStoneStack_A.glb", "SM_MistForestFlatStoneSlab_A.glb",
+        "SM_MistForestSmallPond_A.glb", "SM_MistForestReedCluster_A.glb",
+        "SM_MistForestHollowStump_A.glb", "SM_MistForestMushroomRing_A.glb",
+    ),
 }
 
 for group, files in GROUPS.items():
@@ -22,7 +32,7 @@ for group, files in GROUPS.items():
         task.replace_existing = True
         task.save = True
         unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
-        if group == "JungleRuins":
+        if group in ("JungleRuins", "MistForestLandmarks"):
             for object_path in task.imported_object_paths:
                 asset = unreal.EditorAssetLibrary.load_asset(object_path)
                 if isinstance(asset, unreal.StaticMesh):

@@ -101,7 +101,7 @@ void ATreasureSketchHUD::DrawHUD()
             DrawText(TEXT("地图测试显示宝藏；玩法测试可调大小和时间"),
                 FLinearColor(0.75f, 0.84f, 0.82f), PanelX + 48.f, PanelY + 205.f,
                 GEngine->GetSmallFont(), 0.9f);
-            DrawMenuButton(TEXT("SoloRuins"), TEXT("测试遗迹岛"), PanelY + 225.f, true);
+            DrawMenuButton(TEXT("SoloForest"), TEXT("测试雾森林"), PanelY + 225.f, true);
             DrawMenuButton(TEXT("SoloBeach"), TEXT("测试海盗沙滩岛"), PanelY + 285.f);
             DrawMenuButton(TEXT("SoloRandom"), TEXT("随机主题与新种子"), PanelY + 345.f);
             DrawMenuButton(TEXT("SoloHunter"), TEXT("探索者玩法测试"), PanelY + 405.f, true);

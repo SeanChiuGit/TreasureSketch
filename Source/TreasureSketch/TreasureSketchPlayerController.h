@@ -144,6 +144,7 @@ private:
     void InviteSteamFriend();
     void ToggleSpectatorView();
     void ToggleSpectatorTreasure();
+    void ToggleWeatherFog();
     bool IsPointOnPaper(const FVector2D& Point) const;
     void ApplyPhaseInputRules();
     void ApplyKeyboardMovementFallback();

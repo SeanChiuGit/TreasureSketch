@@ -1,6 +1,10 @@
 #include "ProceduralIsland.h"
 
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
+#include "Components/ExponentialHeightFogComponent.h"
+#include "Engine/ExponentialHeightFog.h"
+#include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
@@ -19,13 +23,17 @@ struct FIslandThemeDefinition
     float TreeDensity;
     float BushDensity;
     float TerrainRelief;
+    int32 GridSize;
+    float CellSize;
 };
 
 const FIslandThemeDefinition ThemeTable[] = {
     // Theme, display/internal name, random weight, default unlock, trees, undergrowth, relief.
     // Add future themes here first; their generator can then branch on the enum below.
-    { EIslandTheme::PirateBeach, TEXT("PirateBeach"), 60, true,  1.00f, 1.00f, 1.00f },
-    { EIslandTheme::JungleRuins, TEXT("JungleRuins"), 40, false, 1.45f, 2.20f, 0.38f },
+    { EIslandTheme::PirateBeach, TEXT("PirateBeach"), 60, true,  1.00f, 1.00f, 1.00f, 39, 330.f },
+    { EIslandTheme::JungleRuins, TEXT("JungleRuins"), 0, false, 1.45f, 2.20f, 0.38f, 39, 330.f },
+    // Nearly twice the width and length of the beach map: approximately four times the area.
+    { EIslandTheme::MistForest, TEXT("MistForest"), 50, true, 3.60f, 3.80f, 1.00f, 61, 410.f },
 };
 
 const FIslandThemeDefinition& GetThemeDefinition(EIslandTheme Theme)
@@ -36,6 +44,12 @@ const FIslandThemeDefinition& GetThemeDefinition(EIslandTheme Theme)
 }
 
 enum EJungleAsset : int32 { ButtressTree, ForkedTree, Fern, JungleBush, FallenLog, ExplorerHut, Temple, Watchtower, ShrineHall, Crypt, JungleAssetCount };
+enum EForestAsset : int32
+{
+    AncientOak, TwinTrunk, SpreadingBeech, WeepingTree,
+    MossBoulder, SplitBoulder, ThreeStoneStack, FlatStoneSlab,
+    SmallPond, ReedCluster, HollowStump, MushroomRing, ForestAssetCount
+};
 enum class EIslandShape : uint8
 {
     RoundBay, LongSpine, Crescent, TwinCove, TriCape, Hook, StarCove,
@@ -171,6 +185,131 @@ AProceduralIsland::AProceduralIsland()
         Component->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, JunglePaths[Index]));
         JungleInstances.Add(Component);
     }
+
+    const TCHAR* ForestPaths[ForestAssetCount] = {
+        TEXT("/Game/IslandAssets/MistForest/SM_MistForestAncientOak_A/StaticMeshes/SM_MistForestAncientOak_A.SM_MistForestAncientOak_A"),
+        TEXT("/Game/IslandAssets/MistForest/SM_MistForestTwinTrunk_A/StaticMeshes/SM_MistForestTwinTrunk_A.SM_MistForestTwinTrunk_A"),
+        TEXT("/Game/IslandAssets/MistForest/SM_MistForestSpreadingBeech_A/StaticMeshes/SM_MistForestSpreadingBeech_A.SM_MistForestSpreadingBeech_A"),
+        TEXT("/Game/IslandAssets/MistForest/SM_MistForestWeepingTree_A/StaticMeshes/SM_MistForestWeepingTree_A.SM_MistForestWeepingTree_A"),
+        TEXT("/Game/IslandAssets/MistForestLandmarks/SM_MistForestMossBoulder_A/StaticMeshes/SM_MistForestMossBoulder_A.SM_MistForestMossBoulder_A"),
+        TEXT("/Game/IslandAssets/MistForestLandmarks/SM_MistForestSplitBoulder_A/StaticMeshes/SM_MistForestSplitBoulder_A.SM_MistForestSplitBoulder_A"),
+        TEXT("/Game/IslandAssets/MistForestLandmarks/SM_MistForestThreeStoneStack_A/StaticMeshes/SM_MistForestThreeStoneStack_A.SM_MistForestThreeStoneStack_A"),
+        TEXT("/Game/IslandAssets/MistForestLandmarks/SM_MistForestFlatStoneSlab_A/StaticMeshes/SM_MistForestFlatStoneSlab_A.SM_MistForestFlatStoneSlab_A"),
+        TEXT("/Game/IslandAssets/MistForestLandmarks/SM_MistForestSmallPond_A/StaticMeshes/SM_MistForestSmallPond_A.SM_MistForestSmallPond_A"),
+        TEXT("/Game/IslandAssets/MistForestLandmarks/SM_MistForestReedCluster_A/StaticMeshes/SM_MistForestReedCluster_A.SM_MistForestReedCluster_A"),
+        TEXT("/Game/IslandAssets/MistForestLandmarks/SM_MistForestHollowStump_A/StaticMeshes/SM_MistForestHollowStump_A.SM_MistForestHollowStump_A"),
+        TEXT("/Game/IslandAssets/MistForestLandmarks/SM_MistForestMushroomRing_A/StaticMeshes/SM_MistForestMushroomRing_A.SM_MistForestMushroomRing_A")
+    };
+    for (int32 Index = 0; Index < ForestAssetCount; ++Index)
+    {
+        UHierarchicalInstancedStaticMeshComponent* Component = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(
+            *FString::Printf(TEXT("ForestInstances_%d"), Index));
+        Component->SetupAttachment(RootComponent);
+        ConfigureInstances(Component);
+        if (Index <= WeepingTree || Index == SmallPond || Index == ReedCluster || Index == MushroomRing)
+            Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Component->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, ForestPaths[Index]));
+        ForestInstances.Add(Component);
+    }
+}
+
+void AProceduralIsland::ConfigureThemeParameters()
+{
+    const FIslandThemeDefinition& Definition = GetThemeDefinition(Theme);
+    MapScale = FMath::IsFinite(MapScale) ? FMath::Clamp(MapScale, 0.5f, 5.f) : 1.f;
+    GridSize = FMath::RoundToInt((Definition.GridSize - 1) * MapScale) + 1;
+    CellSize = Definition.CellSize * (Definition.GridSize - 1) * MapScale / (GridSize - 1);
+}
+
+int32 AProceduralIsland::ScaledDecorationCount(int32 BaseCount) const
+{
+    return FMath::Max(1, FMath::RoundToInt(BaseCount * FMath::Square(MapScale)));
+}
+
+void AProceduralIsland::BeginPlay()
+{
+    Super::BeginPlay();
+    CreateRuntimeForestFog();
+}
+
+void AProceduralIsland::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    if (WeatherFogActor)
+    {
+        WeatherFogActor->Destroy();
+        WeatherFogActor = nullptr;
+    }
+    Super::EndPlay(EndPlayReason);
+}
+
+void AProceduralIsland::CreateRuntimeForestFog()
+{
+    if (Theme != EIslandTheme::MistForest)
+    {
+        if (WeatherFogActor)
+        {
+            WeatherFogActor->Destroy();
+            WeatherFogActor = nullptr;
+        }
+        return;
+    }
+    if (WeatherFogActor || !GetWorld()) return;
+
+    // PIE inherits editor viewport show flags. If Fog was unchecked in the editor's Show menu,
+    // even a valid registered fog actor is deliberately skipped by the renderer.
+    if (GEngine && GEngine->GameViewport)
+    {
+        GEngine->GameViewport->EngineShowFlags.SetFog(true);
+        GEngine->GameViewport->EngineShowFlags.SetVolumetricFog(true);
+    }
+
+    // A world fog actor is used deliberately. A fog component nested inside the procedural
+    // island was reporting visible but was not consistently registered in the renderer.
+    FActorSpawnParameters SpawnParameters;
+    SpawnParameters.Owner = this;
+    SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    WeatherFogActor = GetWorld()->SpawnActor<AExponentialHeightFog>(
+        AExponentialHeightFog::StaticClass(), GetActorLocation() + FVector(0.f, 0.f, 900.f),
+        FRotator::ZeroRotator, SpawnParameters);
+    UExponentialHeightFogComponent* Fog = WeatherFogActor ? WeatherFogActor->GetComponent() : nullptr;
+    if (!Fog) return;
+
+    Fog->SetFogDensity(0.20f);
+    Fog->SetFogHeightFalloff(0.10f);
+    Fog->SetFogMaxOpacity(1.0f);
+    Fog->SetStartDistance(0.f);
+    Fog->SetEndDistance(30000.f);
+    Fog->SetFogInscatteringColor(FLinearColor(0.30f, 0.36f, 0.33f));
+    Fog->SetVolumetricFog(true);
+    Fog->SetVolumetricFogExtinctionScale(8.0f);
+    Fog->SetVolumetricFogDistance(30000.f);
+    Fog->SetVisibility(true, true);
+    Fog->MarkRenderStateDirty();
+
+    const bool bFogShowFlag = GEngine && GEngine->GameViewport
+        ? GEngine->GameViewport->EngineShowFlags.Fog : false;
+    const bool bVolumetricShowFlag = GEngine && GEngine->GameViewport
+        ? GEngine->GameViewport->EngineShowFlags.VolumetricFog : false;
+    UE_LOG(LogTemp, Warning, TEXT("TREASURE_FOREST_FOG NetMode=%d Actor=%s Registered=%s Visible=%s ShowFog=%s ShowVolumetric=%s Density=0.20 Extinction=8.0 Height=%.0f"),
+        static_cast<int32>(GetNetMode()),
+        *GetNameSafe(WeatherFogActor), Fog->IsRegistered() ? TEXT("YES") : TEXT("NO"),
+        Fog->IsVisible() ? TEXT("YES") : TEXT("NO"), bFogShowFlag ? TEXT("YES") : TEXT("NO"),
+        bVolumetricShowFlag ? TEXT("YES") : TEXT("NO"), Fog->GetComponentLocation().Z);
+}
+
+bool AProceduralIsland::ToggleDebugFog()
+{
+    if (!WeatherFogActor) CreateRuntimeForestFog();
+    UExponentialHeightFogComponent* Fog = WeatherFogActor ? WeatherFogActor->GetComponent() : nullptr;
+    if (!Fog) return false;
+    const bool bEnable = !Fog->IsVisible();
+    Fog->SetVisibility(bEnable, true);
+    return bEnable;
+}
+
+bool AProceduralIsland::IsWeatherFogEnabled() const
+{
+    return WeatherFogActor && WeatherFogActor->GetComponent() && WeatherFogActor->GetComponent()->IsVisible();
 }
 
 void AProceduralIsland::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -180,6 +319,7 @@ void AProceduralIsland::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
     DOREPLIFETIME(AProceduralIsland, Theme);
     DOREPLIFETIME(AProceduralIsland, GridSize);
     DOREPLIFETIME(AProceduralIsland, CellSize);
+    DOREPLIFETIME(AProceduralIsland, MapScale);
 }
 
 EIslandTheme AProceduralIsland::SelectThemeFromTable(int32 InSeed, bool bIncludeLockedThemes)
@@ -206,6 +346,10 @@ FString AProceduralIsland::GetThemeName() const
 
 void AProceduralIsland::OnRep_Seed()
 {
+    ConfigureThemeParameters();
+    // Clients often begin play while Theme still has its default value. Create their local
+    // rendering-only fog after the replicated forest theme arrives, not only on BeginPlay.
+    CreateRuntimeForestFog();
     BuildIsland();
     BuildWater();
     BuildDecorations();
@@ -214,6 +358,7 @@ void AProceduralIsland::OnRep_Seed()
 void AProceduralIsland::OnConstruction(const FTransform& Transform)
 {
     Super::OnConstruction(Transform);
+    ConfigureThemeParameters();
     BuildIsland();
     BuildWater();
     BuildDecorations();
@@ -364,6 +509,22 @@ float AProceduralIsland::HeightAt(float X, float Y) const
     }
 
     const float Radius = CellSize * (GridSize - 1) * 0.46f;
+    if (Theme == EIslandTheme::MistForest)
+    {
+        const float ReliefScale = GetThemeDefinition(Theme).TerrainRelief;
+        const float Interior = FMath::Clamp((1.f - Edge) * 3.2f, 0.f, 1.f);
+        const float BroadRoll = 165.f * FMath::Sin(X / (Radius * 0.22f) + Seed * 0.013f)
+            * FMath::Cos(Y / (Radius * 0.27f) - Seed * 0.017f);
+        const float HighHill = 610.f * FMath::Exp(-(FMath::Square((X + Radius * 0.27f) / (Radius * 0.20f))
+            + FMath::Square((Y - Radius * 0.20f) / (Radius * 0.24f))));
+        const float LongRidge = 390.f * FMath::Exp(-(FMath::Square((X - Radius * 0.24f) / (Radius * 0.13f))
+            + FMath::Square((Y + Radius * 0.08f) / (Radius * 0.48f))));
+        const float Valley = -245.f * FMath::Exp(-(FMath::Square((X + Radius * 0.02f) / (Radius * 0.24f))
+            + FMath::Square((Y + Radius * 0.30f) / (Radius * 0.18f))));
+        const float RollingNoise = SeedNoise(X, Y, Seed + 1733) * 105.f;
+        return 105.f + (BroadRoll + HighHill + LongRidge + Valley + RollingNoise)
+            * Interior * ReliefScale;
+    }
     if (Theme == EIslandTheme::JungleRuins)
     {
         const float ReliefScale = GetThemeDefinition(Theme).TerrainRelief;
@@ -429,21 +590,36 @@ float AProceduralIsland::SlopeAt(float X, float Y) const
 
 bool AProceduralIsland::IsClearOfDecorations(float X, float Y, float Radius) const
 {
-    for (const FVector2D& Point : OccupiedPoints)
-        if (FVector2D::DistSquared(Point, FVector2D(X, Y)) < Radius * Radius)
-            return false;
+    constexpr float BucketSize = 1000.f;
+    const int32 MinX = FMath::FloorToInt((X - Radius) / BucketSize);
+    const int32 MaxX = FMath::FloorToInt((X + Radius) / BucketSize);
+    const int32 MinY = FMath::FloorToInt((Y - Radius) / BucketSize);
+    const int32 MaxY = FMath::FloorToInt((Y + Radius) / BucketSize);
+    for (int32 BX = MinX; BX <= MaxX; ++BX)
+        for (int32 BY = MinY; BY <= MaxY; ++BY)
+            if (const TArray<FVector2D>* Points = OccupiedBuckets.Find(FIntPoint(BX, BY)))
+                for (const FVector2D& Point : *Points)
+                    if (FVector2D::DistSquared(Point, FVector2D(X, Y)) < Radius * Radius) return false;
     return true;
+}
+
+void AProceduralIsland::RecordDecoration(float X, float Y)
+{
+    OccupiedBuckets.FindOrAdd(FIntPoint(FMath::FloorToInt(X / 1000.f), FMath::FloorToInt(Y / 1000.f)))
+        .Add(FVector2D(X, Y));
 }
 
 FVector AProceduralIsland::FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight) const
 {
     const float Extent = CellSize * (GridSize - 1) * 0.42f;
+    const float Radius = CellSize * (GridSize - 1) * 0.46f;
     for (int32 Attempt = 0; Attempt < 500; ++Attempt)
     {
         const float X = Stream.FRandRange(-Extent, Extent);
         const float Y = Stream.FRandRange(-Extent, Extent);
         const float Z = HeightAt(X, Y);
-        const bool bAwayFromSpawn = FVector2D::DistSquared(FVector2D(X, Y), FVector2D(-3800.f, 0.f)) > FMath::Square(1900.f);
+        const bool bAwayFromSpawn = FVector2D::DistSquared(FVector2D(X, Y), FVector2D(-Radius * 0.68f, 0.f))
+            > FMath::Square(1900.f);
         if (Z >= MinimumHeight && Z <= 760.f && SlopeAt(X, Y) < 0.42f
             && NormalizedIslandDistance(X, Y) < 0.84f && bAwayFromSpawn && IsClearOfDecorations(X, Y, 520.f))
             return GetActorLocation() + FVector(X, Y, Z);
@@ -517,7 +693,14 @@ void AProceduralIsland::BuildIsland()
             const float Slope = SlopeAt(WX, WY);
             const float Moisture = SeedNoise(WX + 1700.f, WY - 900.f, Seed + 73);
             int32 Section = 1;
-            if (Theme == EIslandTheme::JungleRuins)
+            if (Theme == EIslandTheme::MistForest)
+            {
+                const float Edge = NormalizedIslandDistance(WX, WY);
+                if (Edge > 0.94f) Section = 3;
+                else if (Slope > 0.40f) Section = 3;
+                else if (Moisture > 0.10f) Section = 2;
+            }
+            else if (Theme == EIslandTheme::JungleRuins)
             {
                 // Ruins are a jungle island: sand is only a narrow outer shoreline.
                 const float Edge = NormalizedIslandDistance(WX, WY);
@@ -541,8 +724,10 @@ void AProceduralIsland::BuildIsland()
     const FLinearColor DarkGrassColors[] = { FLinearColor(0.07f, 0.25f, 0.06f), FLinearColor(0.10f, 0.31f, 0.12f), FLinearColor(0.18f, 0.27f, 0.06f) };
     const FLinearColor RockColors[] = { FLinearColor(0.27f, 0.25f, 0.21f), FLinearColor(0.34f, 0.32f, 0.28f), FLinearColor(0.29f, 0.25f, 0.20f) };
     const FLinearColor JungleColors[] = { FLinearColor(0.62f,0.48f,0.25f), FLinearColor(0.12f,0.34f,0.07f), FLinearColor(0.035f,0.20f,0.045f), FLinearColor(0.19f,0.27f,0.15f) };
+    const FLinearColor ForestColors[] = { FLinearColor(0.08f,0.17f,0.045f), FLinearColor(0.07f,0.22f,0.055f), FLinearColor(0.025f,0.13f,0.035f), FLinearColor(0.13f,0.18f,0.12f) };
     const FLinearColor BeachColors[] = { SandColors[Palette], GrassColors[Palette], DarkGrassColors[Palette], RockColors[Palette] };
-    const FLinearColor* SurfaceColors = Theme == EIslandTheme::JungleRuins ? JungleColors : BeachColors;
+    const FLinearColor* SurfaceColors = Theme == EIslandTheme::MistForest ? ForestColors
+        : Theme == EIslandTheme::JungleRuins ? JungleColors : BeachColors;
 
     UMaterialInterface* BaseMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
     for (int32 Section = 0; Section < 4; ++Section)
@@ -573,11 +758,17 @@ void AProceduralIsland::BuildDecorations()
     StoneRingInstances->ClearInstances();
     CampfireInstances->ClearInstances();
     for (UHierarchicalInstancedStaticMeshComponent* Component : JungleInstances) Component->ClearInstances();
+    for (UHierarchicalInstancedStaticMeshComponent* Component : ForestInstances) Component->ClearInstances();
     JungleTreeCollisionInstances->ClearInstances();
-    OccupiedPoints.Reset();
+    OccupiedBuckets.Reset();
     if (Theme == EIslandTheme::JungleRuins)
     {
         BuildJungleDecorations();
+        return;
+    }
+    if (Theme == EIslandTheme::MistForest)
+    {
+        BuildForestDecorations();
         return;
     }
     ApplyDecorationMaterials();
@@ -587,6 +778,7 @@ void AProceduralIsland::BuildDecorations()
     auto TryPlace = [&](UHierarchicalInstancedStaticMeshComponent* Component, int32 TargetCount,
         float MinHeight, float MaxHeight, float MaxSlope, float MinSpacing, FVector2D ScaleRange, bool bBeachOnly)
     {
+        TargetCount = ScaledDecorationCount(TargetCount);
         int32 Placed = 0;
         for (int32 Attempt = 0; Attempt < TargetCount * 35 && Placed < TargetCount; ++Attempt)
         {
@@ -611,7 +803,7 @@ void AProceduralIsland::BuildDecorations()
                 const FVector CollisionScale(0.70f * UniformScale, 0.70f * UniformScale, 7.60f * UniformScale);
                 PalmCollisionInstances->AddInstance(FTransform(Rotation, CollisionLocation, CollisionScale));
             }
-            OccupiedPoints.Add(FVector2D(X, Y));
+            RecordDecoration(X, Y);
             ++Placed;
         }
     };
@@ -634,6 +826,7 @@ void AProceduralIsland::BuildJungleDecorations()
     const float Extent = CellSize * (GridSize - 1) * 0.39f;
     auto Place = [&](int32 Asset, int32 Count, float Spacing, float MaxSlope, FVector2D ScaleRange)
     {
+        Count = ScaledDecorationCount(Count);
         int32 Placed = 0;
         for (int32 Attempt = 0; Attempt < Count * 70 && Placed < Count; ++Attempt)
         {
@@ -652,7 +845,7 @@ void AProceduralIsland::BuildJungleDecorations()
                 const FVector CollisionScale(RadiusScale * S, RadiusScale * S, Height * S / 100.f);
                 JungleTreeCollisionInstances->AddInstance(FTransform(Rotation, CollisionLocation, CollisionScale));
             }
-            OccupiedPoints.Add(FVector2D(X,Y)); ++Placed;
+            RecordDecoration(X, Y); ++Placed;
         }
     };
     Place(Temple, 1, 1800.f, 0.16f, FVector2D(0.95f,1.08f));
@@ -668,6 +861,86 @@ void AProceduralIsland::BuildJungleDecorations()
     UE_LOG(LogTemp, Display, TEXT("TREASURE_JUNGLE_BUILT Seed=%d Theme=%s"), Seed, *GetThemeName());
 }
 
+void AProceduralIsland::BuildForestDecorations()
+{
+    FRandomStream Stream(Seed ^ 0x71F09B);
+    const float Radius = CellSize * (GridSize - 1) * 0.46f;
+    const float Extent = Radius * 0.90f;
+    const FVector2D Clearings[] = {
+        FVector2D(-Radius * 0.28f, Radius * 0.18f),
+        FVector2D(Radius * 0.08f, -Radius * 0.22f),
+        FVector2D(Radius * 0.34f, Radius * 0.20f)
+    };
+    auto IsForestOpening = [&](float X, float Y, float ExtraRadius)
+    {
+        const float PathY = FMath::Sin(X * 0.00055f + Seed * 0.031f) * Radius * 0.11f;
+        if (FMath::Abs(Y - PathY) < 380.f + ExtraRadius) return true;
+        for (const FVector2D& Clearing : Clearings)
+            if (FVector2D::DistSquared(FVector2D(X,Y), Clearing) < FMath::Square(1050.f + ExtraRadius))
+                return true;
+        return false;
+    };
+
+    auto Place = [&](UHierarchicalInstancedStaticMeshComponent* Component, int32 AssetIndex,
+        int32 Count, float Spacing, float MaxSlope, FVector2D ScaleRange, bool bAvoidOpenings, bool bTree)
+    {
+        Count = ScaledDecorationCount(Count);
+        int32 Placed = 0;
+        for (int32 Attempt = 0; Attempt < Count * 80 && Placed < Count; ++Attempt)
+        {
+            const float X = Stream.FRandRange(-Extent, Extent);
+            const float Y = Stream.FRandRange(-Extent, Extent);
+            const float Z = HeightAt(X, Y);
+            if (Z < 65.f || NormalizedIslandDistance(X,Y) > 0.89f || SlopeAt(X,Y) > MaxSlope
+                || (bAvoidOpenings && IsForestOpening(X,Y,0.f)) || !IsClearOfDecorations(X,Y,Spacing)) continue;
+            const float S = Stream.FRandRange(ScaleRange.X, ScaleRange.Y);
+            const float Yaw = Stream.FRandRange(0.f,360.f);
+            FRotator Rotation(0.f, Yaw, 0.f);
+            // Trees remain upright; low ground props follow the local slope so they do not float or cut across it.
+            if (!bTree && AssetIndex != HollowStump)
+            {
+                constexpr float NormalStep = 120.f;
+                const FVector SurfaceNormal(
+                    HeightAt(X - NormalStep, Y) - HeightAt(X + NormalStep, Y),
+                    HeightAt(X, Y - NormalStep) - HeightAt(X, Y + NormalStep),
+                    NormalStep * 2.f);
+                Rotation = FRotationMatrix::MakeFromZ(SurfaceNormal.GetSafeNormal()).Rotator();
+                Rotation.Yaw += Yaw;
+            }
+            Component->AddInstance(FTransform(Rotation, FVector(X,Y,Z), FVector(S)));
+            if (bTree)
+            {
+                const FVector CollisionLocation(X, Y, Z + 400.f * S);
+                JungleTreeCollisionInstances->AddInstance(FTransform(Rotation, CollisionLocation,
+                    FVector(1.05f * S, 1.05f * S, 8.0f * S)));
+            }
+            RecordDecoration(X, Y);
+            ++Placed;
+        }
+    };
+
+    // Large landmarks first, then dense canopy. Clearings and the winding path remain readable.
+    Place(ForestInstances[SmallPond], SmallPond, 2, 2600.f, 0.12f, FVector2D(1.05f,1.45f), false, false);
+    Place(ForestInstances[HollowStump], HollowStump, 7, 1250.f, 0.24f, FVector2D(0.90f,1.30f), false, false);
+    Place(ForestInstances[MushroomRing], MushroomRing, 10, 950.f, 0.28f, FVector2D(0.85f,1.20f), false, false);
+    Place(ForestInstances[MossBoulder], MossBoulder, 18, 720.f, 0.34f, FVector2D(0.85f,1.45f), false, false);
+    Place(ForestInstances[SplitBoulder], SplitBoulder, 12, 900.f, 0.30f, FVector2D(0.90f,1.35f), false, false);
+    Place(ForestInstances[ThreeStoneStack], ThreeStoneStack, 9, 1100.f, 0.25f, FVector2D(0.90f,1.25f), false, false);
+    Place(ForestInstances[FlatStoneSlab], FlatStoneSlab, 13, 900.f, 0.30f, FVector2D(0.90f,1.35f), false, false);
+    Place(ForestInstances[AncientOak], AncientOak, 105, 520.f, 0.30f, FVector2D(0.88f,1.28f), true, true);
+    Place(ForestInstances[TwinTrunk], TwinTrunk, 115, 460.f, 0.32f, FVector2D(0.85f,1.25f), true, true);
+    Place(ForestInstances[SpreadingBeech], SpreadingBeech, 125, 440.f, 0.30f, FVector2D(0.82f,1.22f), true, true);
+    Place(ForestInstances[WeepingTree], WeepingTree, 90, 560.f, 0.28f, FVector2D(0.88f,1.24f), true, true);
+    Place(ForestInstances[ReedCluster], ReedCluster, 80, 190.f, 0.38f, FVector2D(0.75f,1.35f), false, false);
+    Place(JungleInstances[JungleBush], -1, 180, 180.f, 0.40f, FVector2D(0.70f,1.25f), true, false);
+    Place(JungleInstances[Fern], -1, 240, 120.f, 0.44f, FVector2D(0.65f,1.25f), true, false);
+    ApplyDecorationMaterials();
+    UE_LOG(LogTemp, Display, TEXT("TREASURE_FOREST_BUILT Seed=%d Trees=%d MapDiameter=%.0fm"),
+        Seed, ForestInstances[AncientOak]->GetInstanceCount() + ForestInstances[TwinTrunk]->GetInstanceCount()
+        + ForestInstances[SpreadingBeech]->GetInstanceCount() + ForestInstances[WeepingTree]->GetInstanceCount(),
+        Radius * 2.f / 100.f);
+}
+
 void AProceduralIsland::BuildLandmarks(FRandomStream& Stream)
 {
     UHierarchicalInstancedStaticMeshComponent* LandmarkComponents[] = {
@@ -677,23 +950,26 @@ void AProceduralIsland::BuildLandmarks(FRandomStream& Stream)
     const float Extent = CellSize * (GridSize - 1) * 0.40f;
     for (int32 Index = 0; Index < UE_ARRAY_COUNT(LandmarkComponents); ++Index)
     {
-        for (int32 Attempt = 0; Attempt < 180; ++Attempt)
+        for (int32 Copy = 0; Copy < ScaledDecorationCount(1); ++Copy)
         {
-            const float X = Stream.FRandRange(-Extent, Extent);
-            const float Y = Stream.FRandRange(-Extent, Extent);
-            const float Z = HeightAt(X, Y);
-            if (Z < 115.f || Z > 610.f || SlopeAt(X, Y) > 0.30f || NormalizedIslandDistance(X, Y) > 0.80f)
-                continue;
-            if (X < -3250.f && FMath::Abs(Y) < 1200.f)
-                continue;
-            if (!IsClearOfDecorations(X, Y, 900.f))
-                continue;
+            for (int32 Attempt = 0; Attempt < 180; ++Attempt)
+            {
+                const float X = Stream.FRandRange(-Extent, Extent);
+                const float Y = Stream.FRandRange(-Extent, Extent);
+                const float Z = HeightAt(X, Y);
+                if (Z < 115.f || Z > 610.f || SlopeAt(X, Y) > 0.30f || NormalizedIslandDistance(X, Y) > 0.80f)
+                    continue;
+                if (X < -3250.f && FMath::Abs(Y) < 1200.f)
+                    continue;
+                if (!IsClearOfDecorations(X, Y, 900.f))
+                    continue;
 
-            const float Scale = Stream.FRandRange(0.90f, 1.18f);
-            const FRotator Rotation(0.f, Stream.FRandRange(0.f, 360.f), 0.f);
-            LandmarkComponents[Index]->AddInstance(FTransform(Rotation, FVector(X, Y, Z), FVector(Scale)));
-            OccupiedPoints.Add(FVector2D(X, Y));
-            break;
+                const float Scale = Stream.FRandRange(0.90f, 1.18f);
+                const FRotator Rotation(0.f, Stream.FRandRange(0.f, 360.f), 0.f);
+                LandmarkComponents[Index]->AddInstance(FTransform(Rotation, FVector(X, Y, Z), FVector(Scale)));
+                RecordDecoration(X, Y);
+                break;
+            }
         }
     }
 }
@@ -725,6 +1001,20 @@ void AProceduralIsland::ApplyDecorationMaterials()
             else if (SlotName.Contains(TEXT("JungleLeafDark"))) SRGBColor = FColor(18, 68, 27);
             else if (SlotName.Contains(TEXT("JungleLeaf"))) SRGBColor = FColor(34, 124, 47);
             else if (SlotName.Contains(TEXT("JungleFern"))) SRGBColor = FColor(45, 151, 55);
+            else if (SlotName.Contains(TEXT("ForestBarkMoss"))) SRGBColor = FColor(55, 92, 34);
+            else if (SlotName.Contains(TEXT("ForestBark")) || SlotName.Contains(TEXT("StumpBark"))) SRGBColor = FColor(57, 33, 20);
+            else if (SlotName.Contains(TEXT("ForestLeafLight"))) SRGBColor = FColor(53, 137, 56);
+            else if (SlotName.Contains(TEXT("ForestLeafDark"))) SRGBColor = FColor(12, 58, 23);
+            else if (SlotName.Contains(TEXT("ForestLeaf"))) SRGBColor = FColor(25, 105, 39);
+            else if (SlotName.Contains(TEXT("ForestMoss"))) SRGBColor = FColor(47, 116, 31);
+            else if (SlotName.Contains(TEXT("ForestRockLight"))) SRGBColor = FColor(112, 122, 104);
+            else if (SlotName.Contains(TEXT("ForestRockDark"))) SRGBColor = FColor(48, 55, 49);
+            else if (SlotName.Contains(TEXT("ForestRock"))) SRGBColor = FColor(79, 89, 76);
+            else if (SlotName.Contains(TEXT("ForestPondWater"))) SRGBColor = FColor(20, 104, 116);
+            else if (SlotName.Contains(TEXT("ForestReed"))) SRGBColor = FColor(71, 126, 35);
+            else if (SlotName.Contains(TEXT("ForestLily"))) SRGBColor = FColor(38, 137, 45);
+            else if (SlotName.Contains(TEXT("ForestMushroomCap"))) SRGBColor = FColor(168, 35, 25);
+            else if (SlotName.Contains(TEXT("ForestMushroomStem")) || SlotName.Contains(TEXT("StumpCut"))) SRGBColor = FColor(185, 147, 86);
             else if (SlotName.Contains(TEXT("Flame"))) SRGBColor = FColor(255, 132, 16);
             else if (SlotName.Contains(TEXT("Ember"))) SRGBColor = FColor(235, 48, 8);
             else if (SlotName.Contains(TEXT("TornSail"))) SRGBColor = FColor(92, 25, 21);
@@ -761,6 +1051,8 @@ void AProceduralIsland::ApplyDecorationMaterials()
     ApplyColors(CampfireInstances);
     for (UHierarchicalInstancedStaticMeshComponent* JungleComponent : JungleInstances)
         ApplyColors(JungleComponent);
+    for (UHierarchicalInstancedStaticMeshComponent* ForestComponent : ForestInstances)
+        ApplyColors(ForestComponent);
 }
 
 void AProceduralIsland::BuildWater()

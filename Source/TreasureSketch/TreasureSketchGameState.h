@@ -55,9 +55,6 @@ public:
 
     // Room settings survive replay and are authoritative on the host.
     UPROPERTY(Replicated, BlueprintReadOnly)
-    int32 RoomGridSize = 39;
-
-    UPROPERTY(Replicated, BlueprintReadOnly)
     float RoomMapScale = 1.f;
 
     UPROPERTY(Replicated, BlueprintReadOnly)
@@ -68,7 +65,6 @@ public:
 
     static constexpr float MinMapScale = 0.5f;
     static constexpr float MaxMapScale = 5.f;
-    float GetRoomCellSize() const { return 330.f * 38.f * RoomMapScale / (RoomGridSize - 1); }
     static constexpr int32 MinPhaseSeconds = 30;
     static constexpr int32 MaxPhaseSeconds = 600;
     static constexpr int32 PhaseSecondsStep = 30;

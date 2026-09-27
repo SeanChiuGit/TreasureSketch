@@ -5,6 +5,7 @@
 #include "TreasureSketchPlayerState.h"
 #include "TreasureSketchCharacter.h"
 #include "TreasureMarker.h"
+#include "ProceduralIsland.h"
 #include "TreasureOnlineSubsystem.h"
 #include "Camera/CameraActor.h"
 #include "Engine/Engine.h"
@@ -122,6 +123,18 @@ void ATreasureSketchPlayerController::SetupInputComponent()
     InputComponent->BindAction("InviteSteamFriend", IE_Pressed, this, &ATreasureSketchPlayerController::InviteSteamFriend);
     InputComponent->BindAction("ToggleSpectatorView", IE_Pressed, this, &ATreasureSketchPlayerController::ToggleSpectatorView);
     InputComponent->BindAction("ToggleTreasureMarker", IE_Pressed, this, &ATreasureSketchPlayerController::ToggleSpectatorTreasure);
+    InputComponent->BindAction("ToggleWeatherFog", IE_Pressed, this, &ATreasureSketchPlayerController::ToggleWeatherFog);
+}
+
+void ATreasureSketchPlayerController::ToggleWeatherFog()
+{
+    for (TActorIterator<AProceduralIsland> It(GetWorld()); It; ++It)
+    {
+        const bool bEnabled = It->ToggleDebugFog();
+        StatusMessage = bEnabled ? TEXT("调试天气：迷雾已开启（F 关闭）") : TEXT("调试天气：迷雾已关闭（F 开启）");
+        StatusUntil = GetWorld()->GetTimeSeconds() + 4.f;
+        break;
+    }
 }
 
 FVector2D ATreasureSketchPlayerController::GetPaperMin() const
@@ -280,12 +293,12 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
     }
     else if (ActionName == TEXT("MenuJoinFirst")) ConfirmJoinOnlineGame();
     else if (ActionName == TEXT("MenuSolo")) OpenFrontEndPage(EFrontEndPage::SoloTest);
-    else if (ActionName == TEXT("SoloBeach") || ActionName == TEXT("SoloRuins") || ActionName == TEXT("SoloRandom") || ActionName == TEXT("SoloHunter") || ActionName == TEXT("SoloFullFlow"))
+    else if (ActionName == TEXT("SoloBeach") || ActionName == TEXT("SoloForest") || ActionName == TEXT("SoloRandom") || ActionName == TEXT("SoloHunter") || ActionName == TEXT("SoloFullFlow"))
     {
         if (ATreasureSketchGameMode* GameMode = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
         {
             const int32 ThemeChoice = ActionName == TEXT("SoloBeach") ? 0
-                : ActionName == TEXT("SoloRuins") ? 1 : ActionName == TEXT("SoloHunter") ? -2
+                : ActionName == TEXT("SoloForest") ? 1 : ActionName == TEXT("SoloHunter") ? -2
                 : ActionName == TEXT("SoloFullFlow") ? -3 : -1;
             if (ThemeChoice <= -2 && !TestSeedText.IsEmpty() && GetTestSeed() == 0) return;
             GameMode->StartSoloTest(ThemeChoice);

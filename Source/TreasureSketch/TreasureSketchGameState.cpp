@@ -12,7 +12,6 @@ void ATreasureSketchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProper
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
     DOREPLIFETIME(ATreasureSketchGameState, RoomMode);
     DOREPLIFETIME(ATreasureSketchGameState, bSurfacePaintEnabled);
-    DOREPLIFETIME(ATreasureSketchGameState, RoomGridSize);
     DOREPLIFETIME(ATreasureSketchGameState, RoomMapScale);
     DOREPLIFETIME(ATreasureSketchGameState, DrawingDurationSeconds);
     DOREPLIFETIME(ATreasureSketchGameState, SearchingDurationSeconds);

@@ -57,7 +57,6 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     GS->Phase = ETreasureRoundPhase::ScoutDrawing;
     // Visit both size bounds and verify the actual generated terrain, not just lobby state.
     const float Scales[] = {0.5f, 1.f, 1.37f, 2.f};
-    const int32 ExpectedSizes[] = {20, 39, 53, 77};
     for (int32 I = 0; I < 4; ++I)
     {
         TestTrue(TEXT("Custom scale accepted"), GM->SetRoomMapScale(Scales[I]));
@@ -68,9 +67,12 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
         TestNotNull(TEXT("Island generated"), ActiveIsland);
         if (ActiveIsland)
         {
-            TestEqual(TEXT("Terrain uses selected size"), ActiveIsland->GridSize, ExpectedSizes[I]);
+            const bool bForest = ActiveIsland->Theme == EIslandTheme::MistForest;
+            const int32 BaseCells = bForest ? 60 : 38;
+            const float BaseExtent = bForest ? 24600.f : 12540.f;
+            TestEqual(TEXT("Terrain uses selected size"), ActiveIsland->GridSize, FMath::RoundToInt(BaseCells * Scales[I]) + 1);
             TestTrue(TEXT("Terrain extent matches exact multiplier"), FMath::IsNearlyEqual(
-                (ActiveIsland->GridSize - 1) * ActiveIsland->CellSize, 12540.f * Scales[I], 0.01f));
+                (ActiveIsland->GridSize - 1) * ActiveIsland->CellSize, BaseExtent * Scales[I], 0.01f));
         }
         GS->bGameStarted = false;
     }
@@ -96,7 +98,7 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     GM->StartSoloTest(-2);
     TestEqual(TEXT("Explorer test uses searching setting"), GS->GetSecondsRemaining(), 600);
     for (TActorIterator<AProceduralIsland> It(World); It; ++It)
-        if (!It->IsActorBeingDestroyed()) TestEqual(TEXT("Solo terrain uses selected size"), It->GridSize, 191);
+        if (!It->IsActorBeingDestroyed()) TestEqual(TEXT("Solo terrain uses selected size"), It->GridSize, It->Theme == EIslandTheme::MistForest ? 301 : 191);
     GM->StartSoloTest(0);
     TestEqual(TEXT("Map preview timer remains unchanged"), GS->GetSecondsRemaining(), 3600);
     for (TActorIterator<AProceduralIsland> It(World); It; ++It)

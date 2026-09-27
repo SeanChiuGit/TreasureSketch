@@ -105,18 +105,21 @@ void ATreasureSketchGameMode::BuildRound()
     Island->Seed = IslandSeed;
     if (const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>())
     {
-        Island->GridSize = GS->RoomGridSize;
-        Island->CellSize = GS->GetRoomCellSize();
+        Island->MapScale = GS->RoomMapScale;
     }
     FString RequestedTheme;
     if (FParse::Value(FCommandLine::Get(), TEXT("IslandTheme="), RequestedTheme))
-        Island->Theme = RequestedTheme.Equals(TEXT("Ruins"), ESearchCase::IgnoreCase)
-            ? EIslandTheme::JungleRuins : EIslandTheme::PirateBeach;
+        Island->Theme = RequestedTheme.Equals(TEXT("Forest"), ESearchCase::IgnoreCase)
+            ? EIslandTheme::MistForest
+            : RequestedTheme.Equals(TEXT("Ruins"), ESearchCase::IgnoreCase)
+                ? EIslandTheme::JungleRuins : EIslandTheme::PirateBeach;
     else
         Island->Theme = AProceduralIsland::SelectThemeFromTable(IslandSeed);
+    Island->ConfigureThemeParameters();
     Island->FinishSpawning(FTransform::Identity);
 
-    TreasureLocation = Island->FindRandomLandPoint(Stream, 170.f) + FVector(0.f, 0.f, 35.f);
+    TreasureLocation = Island->FindRandomLandPoint(Stream,
+        Island->Theme == EIslandTheme::MistForest ? 105.f : 170.f) + FVector(0.f, 0.f, 35.f);
     if (ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>())
     {
         GS->IslandSeed = IslandSeed;
@@ -144,8 +147,7 @@ bool ATreasureSketchGameMode::SetRoomMapScale(float Scale)
     if (!HasAuthority() || !GS || GS->bGameStarted || GetNetMode() == NM_DedicatedServer
         || !FMath::IsFinite(Scale) || Scale < GS->MinMapScale || Scale > GS->MaxMapScale) return false;
     GS->RoomMapScale = Scale;
-    // Keep mesh cells near the existing 3.3m spacing while matching the requested extent exactly.
-    GS->RoomGridSize = FMath::RoundToInt(38.f * Scale) + 1;
+    // Each theme applies this multiplier to its native extent and mesh spacing.
     GS->ForceNetUpdate();
     return true;
 }
@@ -206,7 +208,7 @@ void ATreasureSketchGameMode::StartHostedRound()
             { Scouts += PS->PlayerRole == ETreasurePlayerRole::Scout; Hunters += PS->PlayerRole == ETreasurePlayerRole::Hunter; }
         if (Scouts != 1 || Hunters != GS->PlayerArray.Num() - 1) return;
         // Lobby previews may have been built before the host changed map size.
-        if (!Island || Island->GridSize != GS->RoomGridSize || !FMath::IsNearlyEqual(Island->CellSize, GS->GetRoomCellSize()))
+        if (!Island || !FMath::IsNearlyEqual(Island->MapScale, GS->RoomMapScale))
         {
             HideTreasureFromScout();
             if (Island) Island->Destroy();
@@ -225,7 +227,7 @@ void ATreasureSketchGameMode::StartHostedRound()
         GS->ForceNetUpdate();
         GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + GS->DrawingDurationSeconds;
         UE_LOG(LogTemp, Display, TEXT("TREASURE_ONLINE_START players=%d grid=%d drawing=%d searching=%d"),
-            GS->PlayerArray.Num(), GS->RoomGridSize, GS->DrawingDurationSeconds, GS->SearchingDurationSeconds);
+            GS->PlayerArray.Num(), Island->GridSize, GS->DrawingDurationSeconds, GS->SearchingDurationSeconds);
     }
 }
 
@@ -252,18 +254,17 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
     Island = GetWorld()->SpawnActorDeferred<AProceduralIsland>(AProceduralIsland::StaticClass(), FTransform::Identity);
     Island->Seed = IslandSeed;
     Island->Theme = ThemeChoice == 0 ? EIslandTheme::PirateBeach
-        : ThemeChoice == 1 ? EIslandTheme::JungleRuins
+        : ThemeChoice == 1 ? EIslandTheme::MistForest
         : AProceduralIsland::SelectThemeFromTable(IslandSeed, true);
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (GS && (bHunterGameplayTest || bFullFlowTest))
     {
-        Island->GridSize = GS->RoomGridSize;
-        Island->CellSize = GS->GetRoomCellSize();
+        Island->MapScale = GS->RoomMapScale;
     }
     Island->FinishSpawning(FTransform::Identity);
     if (bHunterGameplayTest) Island->Tags.Add(TEXT("SoloHunterGameplayTest"));
     if (bFullFlowTest) Island->Tags.Add(TEXT("SoloFullFlowTest"));
-    TreasureLocation = Island->FindRandomLandPoint(Stream, 170.f) + FVector(0.f, 0.f, 35.f);
+    TreasureLocation = Island->FindRandomLandPoint(Stream, Island->Theme == EIslandTheme::MistForest ? 105.f : 170.f) + FVector(0.f, 0.f, 35.f);
 
     if (GS)
     {
