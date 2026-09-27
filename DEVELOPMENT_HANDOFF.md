@@ -92,3 +92,12 @@
 - 森林资源基础目标数量按新面积相对原始 246 米森林的比例同步缩小，保留原密度；实际摆放数量仍受坡度、间距及尝试次数影响。
 - RoomSettings.RoundFlow 的随机主题尺寸断言已改为分别校验沙滩/森林的基准边长，另验证森林 1 倍和 2 倍面积设置。
 - UE 5.6 TreasureSketchEditor Win64 Development 编译成功；无窗口 `TreasureSketch.RoomSettings.MultiMapmaker` 和 `TreasureSketch.RoomSettings.RoundFlow` 测试均通过，日志位于 `Saved/CodexRelease/forest-75-tests.log`。用户负责游玩观感测试。
+
+## 最新 Windows 测试 Release
+
+- 用户要求打包 Release，已发布预发布版本 `v0.9.0-multimap-review-rc1`：https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.9.0-multimap-review-rc1
+- 源码提交 `799620e`，包含多地图师模式、等待时实时画纸、结算后岛上复盘和森林 1 倍边长缩小为旧版的 75%。
+- 附件 `TreasureSketch-v0.9.0-multimap-review-rc1-799620e-Windows.zip`，387136326 字节；SHA-256：`d5b35fbf29499afbf76c9d029b55a75fd22ce81743723ffb2ae80624a950f725`。
+- UE 5.6 编辑器及 Win64 Development 游戏编译、Build/Cook/Stage/Pak/Archive 成功；两个 RoomSettings 无窗口自动化测试通过。ZIP 检查包含游戏 EXE、Steam DLL、steam_appid、PAK 和测试说明，远端附件大小和摘要已核对。
+- 打包使用版本库配置，结束后逐字节恢复本机 `Config/DefaultEngine.ini`，该本机文件未提交或包含于分发包。没有进行游戏窗口或多人交互测试，仍由用户负责。
+- 本机归档位于 `Builds/TreasureSketch-v0.9.0-multimap-review-rc1-799620e`，日志位于 `Saved/CodexRelease/package-v0.9.log` 和 `Saved/CodexRelease/publish-v0.9.log`。
