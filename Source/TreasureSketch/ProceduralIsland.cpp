@@ -238,7 +238,16 @@ void AProceduralIsland::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void AProceduralIsland::CreateRuntimeForestFog()
 {
-    if (Theme != EIslandTheme::MistForest || WeatherFogActor || !GetWorld()) return;
+    if (Theme != EIslandTheme::MistForest)
+    {
+        if (WeatherFogActor)
+        {
+            WeatherFogActor->Destroy();
+            WeatherFogActor = nullptr;
+        }
+        return;
+    }
+    if (WeatherFogActor || !GetWorld()) return;
 
     // PIE inherits editor viewport show flags. If Fog was unchecked in the editor's Show menu,
     // even a valid registered fog actor is deliberately skipped by the renderer.
@@ -275,7 +284,8 @@ void AProceduralIsland::CreateRuntimeForestFog()
         ? GEngine->GameViewport->EngineShowFlags.Fog : false;
     const bool bVolumetricShowFlag = GEngine && GEngine->GameViewport
         ? GEngine->GameViewport->EngineShowFlags.VolumetricFog : false;
-    UE_LOG(LogTemp, Warning, TEXT("TREASURE_FOREST_FOG Actor=%s Registered=%s Visible=%s ShowFog=%s ShowVolumetric=%s Density=0.20 Extinction=8.0 Height=%.0f"),
+    UE_LOG(LogTemp, Warning, TEXT("TREASURE_FOREST_FOG NetMode=%d Actor=%s Registered=%s Visible=%s ShowFog=%s ShowVolumetric=%s Density=0.20 Extinction=8.0 Height=%.0f"),
+        static_cast<int32>(GetNetMode()),
         *GetNameSafe(WeatherFogActor), Fog->IsRegistered() ? TEXT("YES") : TEXT("NO"),
         Fog->IsVisible() ? TEXT("YES") : TEXT("NO"), bFogShowFlag ? TEXT("YES") : TEXT("NO"),
         bVolumetricShowFlag ? TEXT("YES") : TEXT("NO"), Fog->GetComponentLocation().Z);
@@ -328,6 +338,9 @@ FString AProceduralIsland::GetThemeName() const
 void AProceduralIsland::OnRep_Seed()
 {
     ConfigureThemeParameters();
+    // Clients often begin play while Theme still has its default value. Create their local
+    // rendering-only fog after the replicated forest theme arrives, not only on BeginPlay.
+    CreateRuntimeForestFog();
     BuildIsland();
     BuildWater();
     BuildDecorations();
