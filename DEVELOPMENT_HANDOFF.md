@@ -101,3 +101,10 @@
 - UE 5.6 编辑器及 Win64 Development 游戏编译、Build/Cook/Stage/Pak/Archive 成功；两个 RoomSettings 无窗口自动化测试通过。ZIP 检查包含游戏 EXE、Steam DLL、steam_appid、PAK 和测试说明，远端附件大小和摘要已核对。
 - 打包使用版本库配置，结束后逐字节恢复本机 `Config/DefaultEngine.ini`，该本机文件未提交或包含于分发包。没有进行游戏窗口或多人交互测试，仍由用户负责。
 - 本机归档位于 `Builds/TreasureSketch-v0.9.0-multimap-review-rc1-799620e`，日志位于 `Saved/CodexRelease/package-v0.9.log` 和 `Saved/CodexRelease/publish-v0.9.log`。
+
+## 房间地图池
+
+- 房主可在房间大厅启用/排除海盗沙滩和迷雾森林，默认两者都启用；至少保留一种。遗迹仍为未开放主题，不在房间地图池中。
+- 选择复制给全员，开局后不可修改；每局按当前地图池随机选主题，重玩和返回大厅保留设置。若大厅预览地图被排除，会立即重建为允许的主题。
+- 此功能在 `v0.9.0-multimap-review-rc1` 发布之后开发，尚未打入该 Release；交互测试仍由用户负责。
+- UE 5.6 TreasureSketchEditor Win64 Development 编译成功；无窗口 `TreasureSketch.RoomSettings.MultiMapmaker` 和 `TreasureSketch.RoomSettings.RoundFlow` 测试通过，日志位于 `Saved/CodexRelease/map-pool-tests.log`。测试覆盖默认池、单主题筛选、禁止清空、开局锁定、重玩/回大厅保留和预览切换。

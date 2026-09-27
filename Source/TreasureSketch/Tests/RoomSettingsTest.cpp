@@ -32,6 +32,17 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     GS->PlayerArray.AddUnique(Hunter);
 
     TestEqual(TEXT("Host world"), World->GetNetMode(), NM_ListenServer);
+    TestTrue(TEXT("Beach is in the default room map pool"), GS->bBeachInMapPool);
+    TestTrue(TEXT("Forest is in the default room map pool"), GS->bForestInMapPool);
+    TestTrue(TEXT("Host can remove beach from the map pool"), GM->ToggleRoomMapPool(EIslandTheme::PirateBeach));
+    TestFalse(TEXT("Beach selection is removed"), GS->bBeachInMapPool);
+    TestFalse(TEXT("Cannot remove the last available map"), GM->ToggleRoomMapPool(EIslandTheme::MistForest));
+    TestEqual(TEXT("Beach-only pool always selects beach"),
+        AProceduralIsland::SelectThemeFromTable(1000, false, 1u << static_cast<uint8>(EIslandTheme::PirateBeach)),
+        EIslandTheme::PirateBeach);
+    TestEqual(TEXT("Forest-only pool always selects forest"),
+        AProceduralIsland::SelectThemeFromTable(1000, false, 1u << static_cast<uint8>(EIslandTheme::MistForest)),
+        EIslandTheme::MistForest);
     GM->AdjustRoomSetting(TEXT("TreasureRange"), 1);
     GM->AdjustRoomSetting(TEXT("SpreadPlayerSpawns"), 1);
     TestFalse(TEXT("Can hide treasure range without hiding marker"), GS->bTreasureRangeVisible);
@@ -40,6 +51,9 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     GM->AdjustRoomSetting(TEXT("SearchingTime"), 1);
     GM->StartHostedRound();
     TestTrue(TEXT("Two-player round starts"), GS->bGameStarted);
+    for (TActorIterator<AProceduralIsland> It(World); It; ++It)
+        if (!It->IsActorBeingDestroyed()) TestEqual(TEXT("Forest-only room generates forest"), It->Theme, EIslandTheme::MistForest);
+    TestFalse(TEXT("Map pool is locked after start"), GM->ToggleRoomMapPool(EIslandTheme::PirateBeach));
     TestEqual(TEXT("Drawing uses independent limit"), GS->GetSecondsRemaining(), 90);
     GM->AdjustRoomSetting(TEXT("DrawingTime"), 1);
     TestEqual(TEXT("Cannot change settings during round"), GS->DrawingDurationSeconds, 90);
@@ -58,10 +72,18 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     GM->Tick(0.f);
     TestEqual(TEXT("Searching timeout still finishes round"), GS->Phase, ETreasureRoundPhase::HunterTimedOut);
     GM->StartNewRound();
+    TestFalse(TEXT("Replay retains beach exclusion"), GS->bBeachInMapPool);
+    TestTrue(TEXT("Replay retains forest selection"), GS->bForestInMapPool);
     TestEqual(TEXT("Replay returns to configured drawing time"), GS->GetSecondsRemaining(), 90);
     TestEqual(TEXT("Replay keeps searching setting"), GS->SearchingDurationSeconds, 150);
     GS->Phase = ETreasureRoundPhase::Won;
     GM->ReturnToSetup();
+    TestFalse(TEXT("Lobby return retains beach exclusion"), GS->bBeachInMapPool);
+    TestTrue(TEXT("Host can add beach back in lobby"), GM->ToggleRoomMapPool(EIslandTheme::PirateBeach));
+    TestTrue(TEXT("Host can exclude forest when beach is available"), GM->ToggleRoomMapPool(EIslandTheme::MistForest));
+    for (TActorIterator<AProceduralIsland> It(World); It; ++It)
+        if (!It->IsActorBeingDestroyed()) TestEqual(TEXT("Excluded lobby preview changes to beach"), It->Theme, EIslandTheme::PirateBeach);
+    TestTrue(TEXT("Host can restore both maps"), GM->ToggleRoomMapPool(EIslandTheme::MistForest));
     TestFalse(TEXT("Return to setup stops round without removing party"), GS->bGameStarted);
     TestEqual(TEXT("Return keeps party"), GS->PlayerArray.Num(), 2);
     TestEqual(TEXT("Return keeps settings"), GS->SearchingDurationSeconds, 150);

@@ -35,6 +35,13 @@ public:
     ETreasureRoomMode RoomMode = ETreasureRoomMode::OneMapmaker;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+    // The room's random map pool. Ruins remain outside the normal pool.
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    bool bBeachInMapPool = true;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    bool bForestInMapPool = true;
+
     UPROPERTY(Replicated, BlueprintReadOnly)
     int32 IslandSeed = 0;
 

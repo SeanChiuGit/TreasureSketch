@@ -9,6 +9,7 @@
 class AProceduralIsland;
 class ATreasureSurfacePaint;
 class ATreasureSketchPlayerState;
+enum class EIslandTheme : uint8;
 
 UCLASS()
 class TREASURESKETCH_API ATreasureSketchGameMode : public AGameModeBase
@@ -34,6 +35,7 @@ public:
     void SetRoundReview(bool bReviewing);
     void StartHostedRound();
     bool SelectRoomMode(ETreasureRoomMode Mode);
+    bool ToggleRoomMapPool(EIslandTheme Theme);
     void NormalizeRoomRoles(APlayerState* Excluded = nullptr, ATreasureSketchPlayerState* PreferredSinglePlayer = nullptr);
     void AdjustRoomSetting(FName Setting, int32 Direction);
     bool SetRoomMapScale(float Scale);

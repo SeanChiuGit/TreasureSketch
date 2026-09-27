@@ -12,6 +12,20 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 
+namespace
+{
+uint8 GetRoomMapPoolMask(const ATreasureSketchGameState* GS)
+{
+    return GS ? (GS->bBeachInMapPool ? 1u << static_cast<uint8>(EIslandTheme::PirateBeach) : 0u)
+        | (GS->bForestInMapPool ? 1u << static_cast<uint8>(EIslandTheme::MistForest) : 0u) : 0xff;
+}
+
+bool IsThemeInRoomMapPool(const ATreasureSketchGameState* GS, EIslandTheme Theme)
+{
+    return (GetRoomMapPoolMask(GS) & (1u << static_cast<uint8>(Theme))) != 0;
+}
+}
+
 ATreasureSketchGameMode::ATreasureSketchGameMode()
 {
     PrimaryActorTick.bCanEverTick = true;
@@ -134,7 +148,8 @@ void ATreasureSketchGameMode::BuildRound()
             : RequestedTheme.Equals(TEXT("Ruins"), ESearchCase::IgnoreCase)
                 ? EIslandTheme::JungleRuins : EIslandTheme::PirateBeach;
     else
-        Island->Theme = AProceduralIsland::SelectThemeFromTable(IslandSeed);
+        Island->Theme = AProceduralIsland::SelectThemeFromTable(IslandSeed, false,
+            GetRoomMapPoolMask(GetGameState<ATreasureSketchGameState>()));
     Island->ConfigureThemeParameters();
     Island->FinishSpawning(FTransform::Identity);
 
@@ -170,6 +185,33 @@ bool ATreasureSketchGameMode::SelectRoomMode(ETreasureRoomMode Mode)
     NormalizeRoomRoles(nullptr, SinglePlayer);
     RevealTreasureToScout();
     GS->ForceNetUpdate();
+    return true;
+}
+
+bool ATreasureSketchGameMode::ToggleRoomMapPool(EIslandTheme Theme)
+{
+    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!HasAuthority() || !GS || GS->bGameStarted
+        || (GetNetMode() != NM_ListenServer && GetNetMode() != NM_Standalone)) return false;
+    bool* Selected = Theme == EIslandTheme::PirateBeach ? &GS->bBeachInMapPool
+        : Theme == EIslandTheme::MistForest ? &GS->bForestInMapPool : nullptr;
+    if (!Selected || (*Selected && !(Theme == EIslandTheme::PirateBeach
+        ? GS->bForestInMapPool : GS->bBeachInMapPool))) return false;
+    *Selected = !*Selected;
+    GS->ForceNetUpdate();
+
+    FString RequestedTheme;
+    if (Island && !FParse::Value(FCommandLine::Get(), TEXT("IslandTheme="), RequestedTheme)
+        && !IsThemeInRoomMapPool(GS, Island->Theme))
+    {
+        HideTreasureFromScout();
+        Island->Destroy();
+        BuildRound();
+        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+            if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
+                PC->ClientStartNewRound(GS->RoundSerial);
+        RevealTreasureToScout();
+    }
     return true;
 }
 
@@ -300,7 +342,10 @@ void ATreasureSketchGameMode::StartHostedRound()
         const int32 ExpectedScouts = GS->RoomMode == ETreasureRoomMode::OneExplorer ? GS->PlayerArray.Num() - 1 : 1;
         if (Scouts != ExpectedScouts || Hunters != GS->PlayerArray.Num() - ExpectedScouts) return;
         // Lobby previews may have been built before the host changed map size.
-        if (!Island || !FMath::IsNearlyEqual(Island->MapScale, GS->RoomMapScale))
+        FString RequestedTheme;
+        const bool bThemeForced = FParse::Value(FCommandLine::Get(), TEXT("IslandTheme="), RequestedTheme);
+        if (!Island || !FMath::IsNearlyEqual(Island->MapScale, GS->RoomMapScale)
+            || (!bThemeForced && !IsThemeInRoomMapPool(GS, Island->Theme)))
         {
             HideTreasureFromScout();
             if (Island) Island->Destroy();

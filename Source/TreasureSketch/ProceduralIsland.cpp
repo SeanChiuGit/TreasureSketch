@@ -325,15 +325,18 @@ void AProceduralIsland::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
     DOREPLIFETIME(AProceduralIsland, MapScale);
 }
 
-EIslandTheme AProceduralIsland::SelectThemeFromTable(int32 InSeed, bool bIncludeLockedThemes)
+EIslandTheme AProceduralIsland::SelectThemeFromTable(int32 InSeed, bool bIncludeLockedThemes, uint8 AllowedThemesMask)
 {
     int32 TotalWeight = 0;
     for (const FIslandThemeDefinition& Definition : ThemeTable)
-        if (bIncludeLockedThemes || Definition.bUnlockedByDefault) TotalWeight += Definition.SelectionWeight;
+        if ((AllowedThemesMask & (1u << static_cast<uint8>(Definition.Theme)))
+            && (bIncludeLockedThemes || Definition.bUnlockedByDefault)) TotalWeight += Definition.SelectionWeight;
+    if (TotalWeight <= 0) return EIslandTheme::PirateBeach;
     int32 Pick = FMath::Abs(InSeed / 10) % TotalWeight;
     for (const FIslandThemeDefinition& Definition : ThemeTable)
     {
-        if (!bIncludeLockedThemes && !Definition.bUnlockedByDefault) continue;
+        if (!(AllowedThemesMask & (1u << static_cast<uint8>(Definition.Theme)))
+            || (!bIncludeLockedThemes && !Definition.bUnlockedByDefault)) continue;
         if (Pick < Definition.SelectionWeight) return Definition.Theme;
         Pick -= Definition.SelectionWeight;
     }

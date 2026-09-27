@@ -216,6 +216,24 @@ void ATreasureSketchHUD::DrawHUD()
             DrawText(Online ? Online->GetStatus() : TEXT("正在建立 Steam 房间……"),
                 FLinearColor(0.96f, 0.79f, 0.40f), PanelX + 48.f, PanelY + 265.f,
                 GEngine->GetSmallFont(), 0.9f);
+            const float PoolX = PanelX + 48.f;
+            const float PoolY = PanelY + 294.f;
+            const float PoolButtonW = (PanelW - 181.f) * 0.5f;
+            DrawText(TEXT("地图池"), FLinearColor::White, PoolX, PoolY + 8.f, GEngine->GetSmallFont(), 0.9f);
+            for (int32 PoolIndex = 0; PoolIndex < 2; ++PoolIndex)
+            {
+                const bool bSelected = PoolIndex == 0 ? GS->bBeachInMapPool : GS->bForestInMapPool;
+                const bool bOtherSelected = PoolIndex == 0 ? GS->bForestInMapPool : GS->bBeachInMapPool;
+                const float ButtonX = PoolX + 75.f + PoolIndex * (PoolButtonW + 10.f);
+                DrawRect(bSelected ? FLinearColor(0.53f, 0.36f, 0.14f) : FLinearColor(0.08f, 0.12f, 0.13f),
+                    ButtonX, PoolY, PoolButtonW, 30.f);
+                DrawText(PoolIndex == 0 ? (bSelected ? TEXT("沙滩 ✓") : TEXT("沙滩 ○"))
+                    : (bSelected ? TEXT("森林 ✓") : TEXT("森林 ○")),
+                    FLinearColor::White, ButtonX + 9.f, PoolY + 8.f, GEngine->GetSmallFont(), 0.9f);
+                if (bHost && (bOtherSelected || !bSelected))
+                    AddHitBox(FVector2D(ButtonX, PoolY), FVector2D(PoolButtonW, 30.f),
+                        PoolIndex == 0 ? TEXT("RoomPoolBeach") : TEXT("RoomPoolForest"), true, 10);
+            }
             if (GetNetMode() == NM_ListenServer)
             {
                 DrawMenuButton(TEXT("RoomInvite"), TEXT("邀请 Steam 好友"), PanelY + 335.f, true);

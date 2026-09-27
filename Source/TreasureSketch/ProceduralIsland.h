@@ -49,7 +49,7 @@ public:
     FVector FindSpawnPoint(float LateralOffset = 0.f) const;
     FString GetShapeName() const;
     FString GetThemeName() const;
-    static EIslandTheme SelectThemeFromTable(int32 InSeed, bool bIncludeLockedThemes = true);
+    static EIslandTheme SelectThemeFromTable(int32 InSeed, bool bIncludeLockedThemes = true, uint8 AllowedThemesMask = 0xff);
     void ConfigureThemeParameters();
     bool ToggleDebugFog();
     bool IsWeatherFogEnabled() const;

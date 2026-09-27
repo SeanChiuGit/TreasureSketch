@@ -402,6 +402,12 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
         if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
             GM->SelectRoomMode(ActionName == TEXT("RoomModeOneExplorer") ? ETreasureRoomMode::OneExplorer : ETreasureRoomMode::OneMapmaker);
     }
+    else if (ActionName == TEXT("RoomPoolBeach") || ActionName == TEXT("RoomPoolForest"))
+    {
+        if (!IsLocalController() || FrontEndPage != EFrontEndPage::RoomLobby) return;
+        if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
+            GM->ToggleRoomMapPool(ActionName == TEXT("RoomPoolBeach") ? EIslandTheme::PirateBeach : EIslandTheme::MistForest);
+    }
     else if (ActionName == TEXT("RoomStart")) StartOnlineRound();
     else if (ActionName == TEXT("ReturnToSetup"))
     {
