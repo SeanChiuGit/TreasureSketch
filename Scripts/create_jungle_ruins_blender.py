@@ -56,7 +56,7 @@ def stair_run(origin, count, direction=(1, 0), width=2.3, tread=0.48, rise=0.34,
     dx, dy = direction
     for i in range(count):
         cube("WalkableStep", (ox + dx * tread * i, oy + dy * tread * i, oz + rise * (i + 1) * 0.5),
-             (tread * 0.52 if dx else width * 0.5, tread * 0.52 if dy else width * 0.5, rise * (i + 1) * 0.5), material)
+             (tread * 1.04 if dx else width, tread * 1.04 if dy else width, rise * (i + 1)), material)
 
 
 def join_export(group, name):
@@ -103,80 +103,85 @@ for z in (0.65, 1.3, 1.95):
 hut = join_export(g, "SM_RuinExplorerHut_A")
 
 
-# Two-level stepped temple with broad stairs, upper terrace and open shrine room.
+# Coherent two-level temple: one readable stepped mass with a complete upper shrine.
 g = collection("TwoLevelTemple")
-cube("LowerPlatform", (0, 0.4, 0.35), (4.7, 4.0, 0.35), STONE_DARK)
-cube("UpperPlatform", (0, 1.2, 2.15), (3.5, 2.9, 0.35), STONE)
-stair_run((-0.2, -4.25, 0), 7, direction=(0, 1), width=2.5, tread=0.55, rise=0.28)
-cube("ShrineBack", (0, 3.7, 4.05), (3.25, 0.22, 1.55), STONE)
-cube("ShrineLeft", (-3.2, 2.25, 4.05), (0.22, 1.45, 1.55), STONE)
-cube("ShrineRight", (3.2, 2.25, 4.05), (0.22, 1.45, 1.55), STONE)
-for x in (-2.45, 2.45):
-    cylinder("TempleColumn", (x, -0.15, 3.8), 0.32, 3.4, STONE_LIGHT, 8)
-cube("Altar", (0, 2.7, 2.95), (1.1, 0.7, 0.45), STONE_LIGHT)
-cube("MossBand", (-1.6, 3.45, 4.8), (0.75, 0.06, 0.18), MOSS)
+cube("LowerPlatform", (0, 0.35, 0.35), (9.6, 8.0, 0.70), STONE_DARK)
+cube("MiddlePlatform", (0, 0.75, 1.15), (8.2, 6.8, 0.90), STONE)
+cube("UpperPlatform", (0, 1.20, 2.0), (6.8, 5.5, 0.80), STONE_LIGHT)
+stair_run((0, -4.10, 0), 8, direction=(0, 1), width=2.8, tread=0.48, rise=0.25)
+cube("ShrineBack", (0, 3.55, 3.85), (6.2, 0.35, 3.7), STONE)
+cube("ShrineLeft", (-2.92, 2.15, 3.85), (0.35, 2.8, 3.7), STONE)
+cube("ShrineRight", (2.92, 2.15, 3.85), (0.35, 2.8, 3.7), STONE)
+for x in (-2.25, 2.25):
+    cylinder("TempleColumn", (x, 0.52, 3.85), 0.34, 3.7, STONE_LIGHT, 8)
+cube("ShrineRoof", (0, 2.05, 5.85), (6.8, 3.8, 0.42), STONE_DARK)
+cube("Altar", (0, 2.75, 2.75), (2.0, 1.15, 0.75), STONE_LIGHT)
+cube("MossBand", (-1.55, 3.34, 4.75), (1.2, 0.06, 0.24), MOSS)
 temple = join_export(g, "SM_RuinTwoLevelTemple_A")
 
 
-# Broken watchtower with accessible interior and an exterior stair to its second floor.
+# Square watchtower with continuous walls, a real doorway, upper floor and restrained damage.
 g = collection("Watchtower")
-cube("GroundFloor", (0, 0, 0.25), (2.65, 2.65, 0.25), STONE_DARK)
-cube("UpperFloor", (0, 0, 3.2), (2.55, 2.55, 0.22), STONE)
-for x in (-2.35, 2.35):
-    for y in (-2.35, 2.35):
-        cylinder("TowerCorner", (x, y, 2.9), 0.34, 5.8, STONE, 8)
-cube("BackWallLow", (0, 2.4, 1.6), (2.25, 0.18, 1.35), STONE)
-cube("BackWallHigh", (-0.7, 2.4, 4.35), (1.55, 0.18, 1.0), STONE)
-stair_run((-4.25, -1.7, 0), 9, direction=(1, 0), width=1.35, tread=0.48, rise=0.34)
-cube("StairLanding", (0.15, -1.7, 3.12), (1.1, 0.75, 0.18), STONE)
-for x, y in ((-2.35, -2.35), (2.35, -2.35), (-2.35, 2.35)):
-    cube("BrokenCrenel", (x, y, 5.75), (0.48, 0.48, 0.65), STONE_LIGHT)
+cube("GroundFloor", (0, 0, 0.22), (5.6, 5.6, 0.44), STONE_DARK)
+cube("BackWall", (0, 2.60, 3.0), (5.6, 0.38, 5.6), STONE)
+cube("LeftWall", (-2.60, 0, 3.0), (0.38, 5.2, 5.6), STONE)
+cube("RightWall", (2.60, 0, 3.0), (0.38, 5.2, 5.6), STONE)
+cube("FrontLeft", (-1.85, -2.60, 3.0), (1.8, 0.38, 5.6), STONE)
+cube("FrontRight", (1.85, -2.60, 3.0), (1.8, 0.38, 5.6), STONE)
+cube("DoorLintel", (0, -2.60, 5.0), (1.9, 0.38, 1.6), STONE_LIGHT)
+cube("UpperFloor", (0, 0, 3.25), (5.0, 5.0, 0.32), STONE_DARK)
+stair_run((-4.65, -1.75, 0), 9, direction=(1, 0), width=1.35, tread=0.48, rise=0.36)
+cube("StairLanding", (-0.45, -1.75, 3.28), (1.3, 1.55, 0.30), STONE)
+for x, y in ((-2.35, -2.35), (0, -2.35), (2.35, -2.35), (-2.35, 2.35), (0, 2.35)):
+    cube("Crenellation", (x, y, 6.25), (0.72, 0.72, 0.9), STONE_LIGHT)
 tower = join_export(g, "SM_RuinWatchtower_A")
 
 
-# Open shrine hall: obvious indoor space, side chambers and a raised altar.
+# Roofed shrine hall with a continuous room and a clear front colonnade.
 g = collection("ShrineHall")
-cube("HallFloor", (0, 0, 0.18), (4.2, 3.2, 0.18), STONE_DARK)
-cube("HallBack", (0, 3.0, 2.0), (4.2, 0.2, 2.0), STONE)
-cube("HallLeft", (-4.0, 0.3, 2.0), (0.2, 2.7, 2.0), STONE)
-cube("HallRight", (4.0, 0.3, 2.0), (0.2, 2.7, 2.0), STONE)
-for x in (-2.6, -0.85, 0.85, 2.6):
-    cylinder("FrontColumn", (x, -2.8, 2.05), 0.28, 4.1, STONE_LIGHT, 8)
-cube("RoofLeft", (-2.3, 0.3, 4.15), (1.65, 2.9, 0.18), STONE)
-cube("RoofRightBroken", (2.85, 1.25, 4.05), (0.85, 1.7, 0.18), STONE)
-cube("RaisedAltar", (0, 2.05, 0.72), (1.25, 0.8, 0.52), STONE_LIGHT)
-cube("DarkNiche", (0, 2.78, 2.05), (1.05, 0.05, 1.15), VOID)
+cube("HallFloor", (0, 0, 0.22), (8.4, 6.4, 0.44), STONE_DARK)
+cube("HallBack", (0, 3.0, 2.25), (8.4, 0.40, 4.1), STONE)
+cube("HallLeft", (-4.0, 0.3, 2.25), (0.40, 5.8, 4.1), STONE)
+cube("HallRight", (4.0, 0.3, 2.25), (0.40, 5.8, 4.1), STONE)
+for x in (-3.0, -1.0, 1.0, 3.0):
+    cylinder("FrontColumn", (x, -2.72, 2.3), 0.34, 4.2, STONE_LIGHT, 8)
+cube("Roof", (0, 0.25, 4.48), (8.8, 6.3, 0.42), STONE_DARK)
+cube("RaisedAltar", (0, 2.0, 0.82), (2.3, 1.4, 0.95), STONE_LIGHT)
+cube("DarkNiche", (0, 2.78, 2.35), (1.9, 0.06, 2.0), VOID)
+cube("BrokenRoofGap", (3.35, -1.85, 4.72), (1.35, 1.15, 0.18), MOSS)
 hall = join_export(g, "SM_RuinShrineHall_A")
 
 
-# Crypt facade: interior-ready entrance that can later connect to a true underground room.
+# Solid crypt entrance with retaining walls, deep doorway and one continuous roof mass.
 g = collection("CryptEntrance")
-cube("MoundBase", (0, 1.0, 0.35), (3.5, 3.0, 0.35), STONE_DARK)
-cube("FacadeLeft", (-1.75, -1.65, 1.9), (1.0, 0.35, 1.9), STONE)
-cube("FacadeRight", (1.75, -1.65, 1.9), (1.0, 0.35, 1.9), STONE)
-cube("FacadeTop", (0, -1.65, 3.45), (2.75, 0.35, 0.45), STONE_LIGHT)
-cube("DarkDoor", (0, -1.99, 1.55), (0.75, 0.05, 1.5), VOID)
+cube("MoundBase", (0, 0.9, 0.35), (7.2, 6.4, 0.70), STONE_DARK)
+cube("CryptBody", (0, 1.25, 2.0), (6.4, 5.0, 3.3), STONE)
+cube("FacadeLeft", (-2.05, -1.45, 2.0), (2.0, 0.55, 3.3), STONE_LIGHT)
+cube("FacadeRight", (2.05, -1.45, 2.0), (2.0, 0.55, 3.3), STONE_LIGHT)
+cube("FacadeTop", (0, -1.45, 3.65), (6.1, 0.55, 0.75), STONE_LIGHT)
+cube("DarkDoor", (0, -1.76, 1.75), (1.8, 0.08, 2.8), VOID)
+cube("StoneRoof", (0, 1.0, 3.95), (7.0, 5.8, 0.55), STONE_DARK)
 for i in range(5):
-    cube("DownStep", (0, -3.1 + i * 0.42, 0.05 - i * 0.10), (1.05, 0.24, 0.12), STONE)
-for x in (-2.7, 2.7):
-    cylinder("MarkerPillar", (x, -1.5, 1.65), 0.30, 3.3, STONE, 7)
-cube("CryptMoss", (1.65, -2.02, 3.0), (0.65, 0.04, 0.16), MOSS)
+    cube("DownStep", (0, -3.0 + i * 0.42, 0.10 - i * 0.08), (2.2, 0.46, 0.22), STONE)
+for x in (-3.1, 3.1):
+    cylinder("MarkerPillar", (x, -1.5, 1.8), 0.34, 3.6, STONE, 8)
+cube("CryptMoss", (1.65, -1.77, 3.25), (1.1, 0.05, 0.22), MOSS)
 crypt = join_export(g, "SM_RuinCryptEntrance_A")
 
 
 placements = {
-    hut: (-8.5, 4.5, 0), temple: (0, 4.5, 0), tower: (8.5, 4.3, 0),
-    hall: (-4.8, -5.0, 0), crypt: (5.8, -5.0, 0),
+    hut: (-11.5, 6.5, 0), temple: (0, 6.2, 0), tower: (11.0, 6.0, 0),
+    hall: (-6.5, -6.0, 0), crypt: (7.0, -6.0, 0),
 }
 for obj, pos in placements.items():
     obj.location = pos
 
-bpy.ops.mesh.primitive_plane_add(size=34, location=(0, 0, -0.05))
+bpy.ops.mesh.primitive_plane_add(size=42, location=(0, 0, -0.05))
 bpy.context.object.data.materials.append(mat("M_RuinPreviewGround", (0.16, 0.25, 0.09)))
 bpy.ops.object.light_add(type="SUN", location=(0, 0, 18))
 bpy.context.object.rotation_euler = (math.radians(28), math.radians(-18), math.radians(24))
 bpy.context.object.data.energy = 3.4
-bpy.ops.object.camera_add(location=(22, -30, 21))
+bpy.ops.object.camera_add(location=(27, -36, 25))
 camera = bpy.context.object
 camera.rotation_euler = ((Vector((0, 0, 2.1)) - camera.location).to_track_quat("-Z", "Y").to_euler())
 bpy.context.scene.camera = camera
