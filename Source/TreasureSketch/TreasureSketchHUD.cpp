@@ -63,15 +63,16 @@ void ATreasureSketchHUD::DrawHUD()
         }
         else if (Page == EFrontEndPage::SoloTest)
         {
-            DrawText(TEXT("单人地图测试"), FLinearColor::White, PanelX + 48.f, PanelY + 150.f,
+            DrawText(TEXT("单人测试"), FLinearColor::White, PanelX + 48.f, PanelY + 150.f,
                 GEngine->GetLargeFont(), 1.25f);
-            DrawText(TEXT("选择主题后直接进入岛屿，可自由行走并检查碰撞与场景"),
+            DrawText(TEXT("地图测试显示宝藏；玩法测试：空白图、隐藏宝藏、120秒"),
                 FLinearColor(0.75f, 0.84f, 0.82f), PanelX + 48.f, PanelY + 205.f,
                 GEngine->GetSmallFont(), 0.9f);
             DrawMenuButton(TEXT("SoloRuins"), TEXT("测试遗迹岛"), PanelY + 255.f, true);
             DrawMenuButton(TEXT("SoloBeach"), TEXT("测试海盗沙滩岛"), PanelY + 323.f);
             DrawMenuButton(TEXT("SoloRandom"), TEXT("随机主题与新种子"), PanelY + 391.f);
-            DrawMenuButton(TEXT("MenuBack"), TEXT("返回主页面"), PanelY + 485.f);
+            DrawMenuButton(TEXT("SoloHunter"), TEXT("探索者玩法测试"), PanelY + 459.f, true);
+            DrawMenuButton(TEXT("MenuBack"), TEXT("返回主页面"), PanelY + 527.f);
         }
         else if (Page == EFrontEndPage::Settings)
         {
@@ -218,7 +219,9 @@ void ATreasureSketchHUD::DrawHUD()
         DrawText(Hint, FLinearColor::White, CenterX - TextWidth * 0.5f,
             CenterY - 72.f, GEngine->GetMediumFont(), 1.f);
 
-        const FString ChoiceHint = TEXT("任一人选择后，双方立即开始新的一局");
+        const bool bSolo = GS->PlayerArray.Num() == 1;
+        const FString ChoiceHint = bSolo ? TEXT("单人测试：再玩一次会开始新的岛屿")
+            : TEXT("任一人选择后，双方立即开始新的一局");
         GetTextSize(ChoiceHint, TextWidth, TextHeight, GEngine->GetSmallFont(), 1.f);
         DrawText(ChoiceHint, FLinearColor(0.7f, 0.8f, 0.9f), CenterX - TextWidth * 0.5f,
             CenterY - 30.f, GEngine->GetSmallFont(), 1.f);
@@ -232,6 +235,7 @@ void ATreasureSketchHUD::DrawHUD()
             SameRolesButtonMin.Y + (ButtonHeight - TextHeight) * 0.5f, GEngine->GetLargeFont(), 1.f);
         AddHitBox(SameRolesButtonMin, FVector2D(ButtonWidth, ButtonHeight), SameRolesButtonName, true, 0);
 
+        if (bSolo) return;
         const bool bSwapRolesHovered = HitBoxesOver.Contains(SwapRolesButtonName);
         DrawRect(bSwapRolesHovered ? FLinearColor(0.30f, 0.57f, 0.82f) : FLinearColor(0.20f, 0.42f, 0.67f),
             SwapRolesButtonMin.X, SwapRolesButtonMin.Y, ButtonWidth, ButtonHeight);

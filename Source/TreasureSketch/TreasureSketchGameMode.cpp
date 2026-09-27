@@ -106,6 +106,7 @@ void ATreasureSketchGameMode::StartHostedRound()
 void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
 {
     if (!HasAuthority()) return;
+    const bool bHunterGameplayTest = ThemeChoice == -2;
 
     // The menu preview may already have revealed the previous round's marker while the
     // local player was assigned Scout. Remove it before replacing the island/treasure.
@@ -121,6 +122,7 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
         : ThemeChoice == 1 ? EIslandTheme::JungleRuins
         : AProceduralIsland::SelectThemeFromTable(IslandSeed, true);
     Island->FinishSpawning(FTransform::Identity);
+    if (bHunterGameplayTest) Island->Tags.Add(TEXT("SoloHunterGameplayTest"));
     TreasureLocation = Island->FindRandomLandPoint(Stream, 170.f) + FVector(0.f, 0.f, 35.f);
 
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
@@ -130,7 +132,7 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
         ++GS->RoundSerial;
         GS->Phase = ETreasureRoundPhase::HunterSearching;
         GS->bGameStarted = true;
-        GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + 3600.f;
+        GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + (bHunterGameplayTest ? PhaseDurationSeconds : 3600.f);
     }
 
     for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
@@ -146,7 +148,12 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
         }
         // Solo map testing deliberately shows the exact marker and its debug cylinder.
         // It must use the newly generated treasure location, not the menu preview location.
-        if (PC) PC->ClientRevealTreasure(TreasureLocation);
+        if (PC)
+        {
+            PC->ClientStartNewRound(GS ? GS->RoundSerial : 0);
+            PC->ClientReceiveSketch(TArray<FSketchStroke>());
+            if (!bHunterGameplayTest) PC->ClientRevealTreasure(TreasureLocation);
+        }
     }
     UE_LOG(LogTemp, Display, TEXT("TREASURE_SOLO_TEST Seed=%d Theme=%s Shape=%s"),
         IslandSeed, *Island->GetThemeName(), *Island->GetShapeName());
@@ -284,6 +291,11 @@ void ATreasureSketchGameMode::StartNewRound(bool bSwapRoles)
 {
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (!GS) return;
+    if (Island && Island->Tags.Contains(TEXT("SoloHunterGameplayTest")))
+    {
+        StartSoloTest(-2);
+        return;
+    }
 
     if (bSwapRoles)
     {
