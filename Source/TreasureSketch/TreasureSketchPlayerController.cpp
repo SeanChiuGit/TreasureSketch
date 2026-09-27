@@ -81,6 +81,15 @@ bool ATreasureSketchPlayerController::InputKey(const FInputKeyEventArgs& Params)
         if (Params.Key == EKeys::Enter || Params.Key == EKeys::Escape)
         { bTestSeedEditing = false; return true; }
     }
+    if (Params.Key == EKeys::Escape && Params.Event == IE_Pressed && !IsFrontEndVisible())
+    {
+        const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+        if (GS && GS->bReviewingRound && GS->IsRoundOver())
+        {
+            RequestRoundReview(false);
+            return true;
+        }
+    }
     return Super::InputKey(Params);
 }
 
@@ -344,9 +353,9 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
         CycleSketchPage(ActionName == TEXT("NextSketchPage") ? 1 : -1);
         return;
     }
-    if (ActionName == TEXT("BeginRoundReview") || ActionName == TEXT("EndRoundReview"))
+    if (ActionName == TEXT("BeginRoundReview"))
     {
-        RequestRoundReview(ActionName == TEXT("BeginRoundReview"));
+        RequestRoundReview(true);
         return;
     }
     if (ActionName == TEXT("MapScaleInput"))

@@ -108,3 +108,8 @@
 - 选择复制给全员，开局后不可修改；每局按当前地图池随机选主题，重玩和返回大厅保留设置。若大厅预览地图被排除，会立即重建为允许的主题。
 - 此功能在 `v0.9.0-multimap-review-rc1` 发布之后开发，尚未打入该 Release；交互测试仍由用户负责。
 - UE 5.6 TreasureSketchEditor Win64 Development 编译成功；无窗口 `TreasureSketch.RoomSettings.MultiMapmaker` 和 `TreasureSketch.RoomSettings.RoundFlow` 测试通过，日志位于 `Saved/CodexRelease/map-pool-tests.log`。测试覆盖默认池、单主题筛选、禁止清空、开局锁定、重玩/回大厅保留和预览切换。
+
+## 复盘退出按键
+
+- 用户反馈复盘时无光标，右上角结束按钮无法点击。按用户要求保留无光标的逛岛操作，新增 Esc：任一玩家在复盘中按 Esc，请求全队返回结算页。
+- 右上角原按钮改为“按 Esc 返回结算”的纯提示，无鼠标命中区域。现有 v0.9.0 Release 不含此修改；交互验证由用户负责。

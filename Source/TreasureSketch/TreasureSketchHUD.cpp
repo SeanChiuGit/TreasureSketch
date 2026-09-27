@@ -398,7 +398,7 @@ void ATreasureSketchHUD::DrawHUD()
     const FString RoleLabel = FString::Printf(TEXT("%s / %s"),
         bScout ? TEXT("侦察者") : TEXT("寻宝者"),
         GetNetMode() == NM_ListenServer ? TEXT("主机") : TEXT("已连接客户端"));
-    const FString Help = GS->bReviewingRound ? TEXT("复盘中：WASD 逛岛 | M 查看图纸 | 宝藏位置已显示")
+    const FString Help = GS->bReviewingRound ? TEXT("复盘中：WASD 逛岛 | M 查看图纸 | Esc 返回结算 | 宝藏位置已显示")
         : PC->IsScoutSpectating()
         ? TEXT("观战：WASD 飞行 | Space 上升 | Ctrl 下降 | Shift 加速")
         : bScout && PC->HasSubmittedSketch() ? TEXT("已交图，等待其他地图师完成；到时自动收齐")
@@ -440,16 +440,14 @@ void ATreasureSketchHUD::DrawHUD()
         DrawText(PC->GetStatusMessage(), FLinearColor::Yellow, 35.f, Canvas->SizeY - 70.f, GEngine->GetMediumFont(), 1.f);
 
     const bool bWatchingLiveSketch = PC->IsHunterWaiting();
-    auto DrawReviewButton = [&]()
+    auto DrawReviewHint = [&]()
     {
         if (!GS->bReviewingRound) return;
         const FVector2D ButtonMin(Canvas->SizeX - 244.f, 22.f);
-        DrawRect(HitBoxesOver.Contains(TEXT("EndRoundReview")) ? FLinearColor(0.67f, 0.41f, 0.19f)
-            : FLinearColor(0.48f, 0.29f, 0.13f), ButtonMin.X, ButtonMin.Y, 220.f, 46.f);
-        DrawText(TEXT("复盘完了 · 返回结算"), FLinearColor::White, ButtonMin.X + 12.f, ButtonMin.Y + 12.f, GEngine->GetSmallFont(), 1.f);
-        AddHitBox(ButtonMin, FVector2D(220.f, 46.f), TEXT("EndRoundReview"), true, 0);
+        DrawRect(FLinearColor(0.48f, 0.29f, 0.13f), ButtonMin.X, ButtonMin.Y, 220.f, 46.f);
+        DrawText(TEXT("按 Esc 返回结算"), FLinearColor::White, ButtonMin.X + 12.f, ButtonMin.Y + 12.f, GEngine->GetSmallFont(), 1.f);
     };
-    if (!PC->IsMapOpen() && !bWatchingLiveSketch) { DrawReviewButton(); return; }
+    if (!PC->IsMapOpen() && !bWatchingLiveSketch) { DrawReviewHint(); return; }
     if (bWatchingLiveSketch)
         DrawRect(FLinearColor(0.01f, 0.015f, 0.025f, 0.96f), 0.f, 0.f, Canvas->SizeX, Canvas->SizeY);
     const FVector2D Min = PC->GetPaperMin();
@@ -498,7 +496,7 @@ void ATreasureSketchHUD::DrawHUD()
         DrawText(FString::Printf(TEXT("绘图剩余 %s · 到时自动交图"), *TimerText), TimerColor,
             Canvas->SizeX - TimerWidth - 185.f, 28.f, GEngine->GetSmallFont(), 1.f);
     }
-    DrawReviewButton();
+    DrawReviewHint();
 }
 
 void ATreasureSketchHUD::NotifyHitBoxClick(FName BoxName)
