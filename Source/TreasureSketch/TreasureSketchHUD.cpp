@@ -74,6 +74,27 @@ void ATreasureSketchHUD::DrawHUD()
             DrawMenuButton(TEXT("SoloHunter"), TEXT("探索者玩法测试"), PanelY + 405.f, true);
             DrawMenuButton(TEXT("SoloFullFlow"), TEXT("完整流程测试：自己画，自己找"), PanelY + 465.f, true);
             DrawMenuButton(TEXT("MenuBack"), TEXT("返回主页面"), PanelY + 525.f);
+            const float SeedX = PanelX + PanelW + 28.f;
+            const float SeedW = FMath::Max(180.f, FMath::Min(390.f, W - SeedX - 24.f));
+            const float SeedY = PanelY + 150.f;
+            DrawText(TEXT("玩法测试种子（可留空）"), FLinearColor::White, SeedX, SeedY,
+                GEngine->GetMediumFont(), 1.f);
+            DrawRect(PC->IsTestSeedEditing() ? FLinearColor(0.15f, 0.30f, 0.30f) : FLinearColor(0.06f, 0.12f, 0.13f),
+                SeedX, SeedY + 40.f, SeedW, 54.f);
+            const FString SeedText = PC->GetTestSeedText();
+            DrawText(SeedText.IsEmpty() ? TEXT("点击输入；留空随机") : SeedText,
+                FLinearColor::White, SeedX + 12.f, SeedY + 55.f, GEngine->GetMediumFont(), 1.f);
+            AddHitBox(FVector2D(SeedX, SeedY + 40.f), FVector2D(SeedW, 54.f), TEXT("TestSeedInput"), true, 10);
+            DrawText(TEXT("数字键输入，退格删除，Enter完成"), FLinearColor(0.75f, 0.84f, 0.82f),
+                SeedX, SeedY + 110.f, GEngine->GetSmallFont(), 0.9f);
+            DrawText(TEXT("仅应用于两个玩法测试；不影响地图测试"), FLinearColor(0.75f, 0.84f, 0.82f),
+                SeedX, SeedY + 138.f, GEngine->GetSmallFont(), 0.9f);
+            DrawRect(FLinearColor(0.09f, 0.17f, 0.18f), SeedX, SeedY + 170.f, 130.f, 44.f);
+            DrawText(TEXT("清空种子"), FLinearColor::White, SeedX + 12.f, SeedY + 180.f, GEngine->GetMediumFont(), 1.f);
+            AddHitBox(FVector2D(SeedX, SeedY + 170.f), FVector2D(130.f, 44.f), TEXT("TestSeedClear"), true, 10);
+            if (!SeedText.IsEmpty() && PC->GetTestSeed() == 0)
+                DrawText(TEXT("请输入1至2147483647，或清空以随机"), FLinearColor(1.f, 0.4f, 0.3f),
+                    SeedX, SeedY + 232.f, GEngine->GetSmallFont(), 0.9f);
         }
         else if (Page == EFrontEndPage::Settings)
         {

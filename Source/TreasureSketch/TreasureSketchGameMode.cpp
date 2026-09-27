@@ -115,6 +115,11 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
     if (Island) Island->Destroy();
     FRandomStream Stream(FDateTime::Now().GetTicks());
     IslandSeed = Stream.RandRange(1000, 999999);
+    if (bHunterGameplayTest || bFullFlowTest)
+    {
+        if (const ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(GetWorld()->GetFirstPlayerController()))
+            if (PC->GetTestSeed() > 0) IslandSeed = PC->GetTestSeed();
+    }
     Stream.Initialize(IslandSeed ^ 0x35D1A7);
 
     Island = GetWorld()->SpawnActorDeferred<AProceduralIsland>(AProceduralIsland::StaticClass(), FTransform::Identity);

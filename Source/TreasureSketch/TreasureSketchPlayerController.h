@@ -35,6 +35,10 @@ public:
     virtual void BeginPlay() override;
     virtual void SetupInputComponent() override;
     virtual void PlayerTick(float DeltaTime) override;
+    virtual bool InputKey(const FInputKeyEventArgs& Params) override;
+    FString GetTestSeedText() const { return TestSeedText; }
+    bool IsTestSeedEditing() const { return bTestSeedEditing; }
+    int32 GetTestSeed() const;
 
     bool IsMapOpen() const { return bMapOpen; }
     const TArray<FSketchStroke>& GetStrokes() const { return Strokes; }
@@ -71,6 +75,10 @@ public:
     void ClientUpdateHunterView(FVector_NetQuantize ViewLocation, FRotator ViewRotation);
 
 private:
+    UPROPERTY()
+    FString TestSeedText;
+    UPROPERTY()
+    bool bTestSeedEditing = false;
     UPROPERTY()
     TArray<FSketchStroke> Strokes;
 

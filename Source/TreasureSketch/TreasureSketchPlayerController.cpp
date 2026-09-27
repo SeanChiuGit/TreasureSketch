@@ -9,6 +9,39 @@
 #include "Camera/CameraActor.h"
 #include "Engine/Engine.h"
 #include "EngineUtils.h"
+#include "InputKeyEventArgs.h"
+
+int32 ATreasureSketchPlayerController::GetTestSeed() const
+{
+    int64 Value = 0;
+    return LexTryParseString(Value, *TestSeedText) && Value > 0 && Value <= MAX_int32
+        ? static_cast<int32>(Value) : 0;
+}
+
+bool ATreasureSketchPlayerController::InputKey(const FInputKeyEventArgs& Params)
+{
+    if (bTestSeedEditing && IsFrontEndVisible() && FrontEndPage == EFrontEndPage::SoloTest
+        && (Params.Event == IE_Pressed || Params.Event == IE_Repeat))
+    {
+        const FKey Digits[] = { EKeys::Zero, EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four,
+            EKeys::Five, EKeys::Six, EKeys::Seven, EKeys::Eight, EKeys::Nine };
+        const FKey Numpad[] = { EKeys::NumPadZero, EKeys::NumPadOne, EKeys::NumPadTwo, EKeys::NumPadThree,
+            EKeys::NumPadFour, EKeys::NumPadFive, EKeys::NumPadSix, EKeys::NumPadSeven, EKeys::NumPadEight, EKeys::NumPadNine };
+        for (int32 Digit = 0; Digit < 10; ++Digit)
+        {
+            if (Params.Key == Digits[Digit] || Params.Key == Numpad[Digit])
+            {
+                if (TestSeedText.Len() < 10) TestSeedText += FString::FromInt(Digit);
+                return true;
+            }
+        }
+        if (Params.Key == EKeys::BackSpace) { TestSeedText = TestSeedText.LeftChop(1); return true; }
+        if (Params.Key == EKeys::Delete) { TestSeedText.Empty(); return true; }
+        if (Params.Key == EKeys::Enter || Params.Key == EKeys::Escape)
+        { bTestSeedEditing = false; return true; }
+    }
+    return Super::InputKey(Params);
+}
 
 ATreasureSketchPlayerController::ATreasureSketchPlayerController()
 {
@@ -159,6 +192,9 @@ void ATreasureSketchPlayerController::OpenFrontEndPage(EFrontEndPage NewPage)
 
 void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
 {
+    if (ActionName == TEXT("TestSeedInput")) { bTestSeedEditing = true; return; }
+    if (ActionName == TEXT("TestSeedClear")) { TestSeedText.Empty(); bTestSeedEditing = false; return; }
+    bTestSeedEditing = false;
     if (ActionName == TEXT("MenuCreate"))
     {
         OpenFrontEndPage(EFrontEndPage::RoomLobby);
@@ -178,6 +214,7 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
             const int32 ThemeChoice = ActionName == TEXT("SoloBeach") ? 0
                 : ActionName == TEXT("SoloRuins") ? 1 : ActionName == TEXT("SoloHunter") ? -2
                 : ActionName == TEXT("SoloFullFlow") ? -3 : -1;
+            if (ThemeChoice <= -2 && !TestSeedText.IsEmpty() && GetTestSeed() == 0) return;
             GameMode->StartSoloTest(ThemeChoice);
         }
     }
