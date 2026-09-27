@@ -1,4 +1,6 @@
 #include "TreasureSketchCharacter.h"
+#include "TreasureSketchGameState.h"
+#include "Engine/World.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -65,6 +67,8 @@ ATreasureSketchCharacter::ATreasureSketchCharacter()
 void ATreasureSketchCharacter::BeginPlay()
 {
     Super::BeginPlay();
+    if (const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>())
+        SetMovementSpeedMultiplier(GS->MovementSpeedMultiplier);
     const auto ColorPart = [](UStaticMeshComponent* Part, const FLinearColor& Color)
     {
         if (UMaterialInstanceDynamic* Material = Part->CreateAndSetMaterialInstanceDynamic(0))
@@ -83,6 +87,14 @@ void ATreasureSketchCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProper
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
     DOREPLIFETIME(ATreasureSketchCharacter, bSpectatorHidden);
+}
+
+void ATreasureSketchCharacter::SetMovementSpeedMultiplier(float Multiplier)
+{
+    const float Scale = FMath::IsFinite(Multiplier) ? FMath::Clamp(Multiplier, 0.5f, 5.f) : 1.f;
+    GetCharacterMovement()->MaxWalkSpeed = 520.f * Scale;
+    GetCharacterMovement()->MaxAcceleration = 2048.f * Scale;
+    GetCharacterMovement()->BrakingDecelerationWalking = 2048.f * Scale;
 }
 
 void ATreasureSketchCharacter::SetSpectatorHidden(bool bShouldHide)

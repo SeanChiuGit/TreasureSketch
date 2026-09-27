@@ -80,6 +80,7 @@ void ATreasureSketchHUD::DrawHUD()
             if (bCanAdjustSettings) AddHitBox(FVector2D(InputX, SettingsY + 3.f), FVector2D(InputW, 34.f), TEXT("MapScaleInput"), true, 10);
             DrawRoomSetting(FString::Printf(TEXT("绘图时间：%d 秒"), GS->DrawingDurationSeconds), SettingsY + 47.f, TEXT("RoomDrawingLess"), TEXT("RoomDrawingMore"), GS->DrawingDurationSeconds > GS->MinPhaseSeconds, GS->DrawingDurationSeconds < GS->MaxPhaseSeconds);
             DrawRoomSetting(FString::Printf(TEXT("寻宝时间：%d 秒"), GS->SearchingDurationSeconds), SettingsY + 94.f, TEXT("RoomSearchingLess"), TEXT("RoomSearchingMore"), GS->SearchingDurationSeconds > GS->MinPhaseSeconds, GS->SearchingDurationSeconds < GS->MaxPhaseSeconds);
+            DrawRoomSetting(FString::Printf(TEXT("移动速度：%.2f 倍"), GS->MovementSpeedMultiplier), SettingsY + 141.f, TEXT("RoomSpeedLess"), TEXT("RoomSpeedMore"), GS->MovementSpeedMultiplier > GS->MinMovementSpeed, GS->MovementSpeedMultiplier < GS->MaxMovementSpeed);
         };
 
         const EFrontEndPage Page = PC->GetFrontEndPage();
@@ -126,10 +127,10 @@ void ATreasureSketchHUD::DrawHUD()
             DrawText(TEXT("清空种子"), FLinearColor::White, SeedX + 12.f, SeedY + 180.f, GEngine->GetMediumFont(), 1.f);
             AddHitBox(FVector2D(SeedX, SeedY + 170.f), FVector2D(130.f, 44.f), TEXT("TestSeedClear"), true, 10);
             DrawDifficultySettings(SeedX, SeedY + 230.f, SeedW, true);
-            DrawRect(GS->bSurfacePaintEnabled ? FLinearColor(0.12f, 0.38f, 0.60f) : FLinearColor(0.09f, 0.17f, 0.18f), SeedX, SeedY + 375.f, SeedW, 36.f);
-            DrawText(GS->bSurfacePaintEnabled ? TEXT("实验喷漆：开启（点击关闭）") : TEXT("实验喷漆：关闭（点击开启）"), FLinearColor::White, SeedX + 10.f, SeedY + 386.f, GEngine->GetSmallFont(), 0.9f);
-            AddHitBox(FVector2D(SeedX, SeedY + 375.f), FVector2D(SeedW, 36.f), TEXT("ToggleSurfacePaint"), true, 10);
-            DrawText(TEXT("完整流程测试：转动视角瞄准，按住右键喷漆"), FLinearColor::White, SeedX, SeedY + 423.f, GEngine->GetSmallFont(), 0.85f);
+            DrawRect(GS->bSurfacePaintEnabled ? FLinearColor(0.12f, 0.38f, 0.60f) : FLinearColor(0.09f, 0.17f, 0.18f), SeedX, SeedY + 420.f, SeedW, 36.f);
+            DrawText(GS->bSurfacePaintEnabled ? TEXT("实验喷漆：开启（点击关闭）") : TEXT("实验喷漆：关闭（点击开启）"), FLinearColor::White, SeedX + 10.f, SeedY + 431.f, GEngine->GetSmallFont(), 0.9f);
+            AddHitBox(FVector2D(SeedX, SeedY + 420.f), FVector2D(SeedW, 36.f), TEXT("ToggleSurfacePaint"), true, 10);
+            DrawText(TEXT("完整流程测试：转动视角瞄准，按住右键喷漆"), FLinearColor::White, SeedX, SeedY + 462.f, GEngine->GetSmallFont(), 0.85f);
             if (!SeedText.IsEmpty() && PC->GetTestSeed() == 0)
                 DrawText(TEXT("请输入1至2147483647，或清空以随机"), FLinearColor(1.f, 0.4f, 0.3f),
                     SeedX, SeedY + 232.f, GEngine->GetSmallFont(), 0.9f);
@@ -175,10 +176,10 @@ void ATreasureSketchHUD::DrawHUD()
             const float ModeX = PanelX + PanelW + 28.f;
             const float ModeW = FMath::Max(180.f, FMath::Min(410.f, W - ModeX - 24.f));
             const bool bHost = GetNetMode() == NM_ListenServer;
-            DrawRect(GS->bSurfacePaintEnabled ? FLinearColor(0.12f, 0.38f, 0.60f) : FLinearColor(0.09f, 0.17f, 0.18f), ModeX, PanelY + 435.f, ModeW, 36.f);
-            DrawText(GS->bSurfacePaintEnabled ? TEXT("实验喷漆：开启") : TEXT("实验喷漆：关闭"), FLinearColor::White, ModeX + 10.f, PanelY + 446.f, GEngine->GetSmallFont(), 0.9f);
+            DrawRect(GS->bSurfacePaintEnabled ? FLinearColor(0.12f, 0.38f, 0.60f) : FLinearColor(0.09f, 0.17f, 0.18f), ModeX, PanelY + 481.f, ModeW, 36.f);
+            DrawText(GS->bSurfacePaintEnabled ? TEXT("实验喷漆：开启") : TEXT("实验喷漆：关闭"), FLinearColor::White, ModeX + 10.f, PanelY + 492.f, GEngine->GetSmallFont(), 0.9f);
             if (bHost)
-                AddHitBox(FVector2D(ModeX, PanelY + 435.f), FVector2D(ModeW, 36.f), TEXT("ToggleSurfacePaint"), true, 10);
+                AddHitBox(FVector2D(ModeX, PanelY + 481.f), FVector2D(ModeW, 36.f), TEXT("ToggleSurfacePaint"), true, 10);
             DrawText(TEXT("游戏模式"), FLinearColor::White, ModeX, PanelY + 150.f, GEngine->GetMediumFont());
             const TCHAR* Modes[] = { TEXT("一名地图师，多名探索者（已选择）"), TEXT("多名地图师，一名探索者（待开发）"), TEXT("2对2 对抗（待开发）") };
             for (int32 ModeIndex = 0; ModeIndex < 3; ++ModeIndex)
@@ -190,8 +191,8 @@ void ATreasureSketchHUD::DrawHUD()
             if (GetNetMode() == NM_ListenServer)
                 AddHitBox(FVector2D(ModeX, PanelY + 180.f), FVector2D(ModeW, 30.f), TEXT("RoomModeCoop"), true, 10);
             DrawDifficultySettings(ModeX, PanelY + 290.f, ModeW, bHost);
-            float PlayerY = PanelY + 500.f;
-            DrawText(bHost ? TEXT("面积0.5至5倍，Enter确认；重玩沿用") : TEXT("房主调整设置；开局生效"), FLinearColor(0.75f, 0.84f, 0.82f), ModeX, PanelY + 480.f, GEngine->GetSmallFont(), 0.85f);
+            float PlayerY = PanelY + 545.f;
+            DrawText(bHost ? TEXT("面积0.5至5倍，Enter确认；重玩沿用") : TEXT("房主调整设置；开局生效"), FLinearColor(0.75f, 0.84f, 0.82f), ModeX, PanelY + 525.f, GEngine->GetSmallFont(), 0.85f);
             for (APlayerState* State : GS->PlayerArray)
                 if (const ATreasureSketchPlayerState* Member = Cast<ATreasureSketchPlayerState>(State))
                 {

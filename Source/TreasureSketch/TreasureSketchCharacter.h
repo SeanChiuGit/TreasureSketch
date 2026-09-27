@@ -17,6 +17,7 @@ public:
     ATreasureSketchCharacter();
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     void SetSpectatorHidden(bool bShouldHide);
+    void SetMovementSpeedMultiplier(float Multiplier);
 
 protected:
     virtual void BeginPlay() override;

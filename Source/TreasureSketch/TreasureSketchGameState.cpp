@@ -1,6 +1,8 @@
 #include "TreasureSketchGameState.h"
 
 #include "Net/UnrealNetwork.h"
+#include "TreasureSketchCharacter.h"
+#include "EngineUtils.h"
 
 ATreasureSketchGameState::ATreasureSketchGameState()
 {
@@ -13,6 +15,7 @@ void ATreasureSketchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProper
     DOREPLIFETIME(ATreasureSketchGameState, RoomMode);
     DOREPLIFETIME(ATreasureSketchGameState, bSurfacePaintEnabled);
     DOREPLIFETIME(ATreasureSketchGameState, RoomMapScale);
+    DOREPLIFETIME(ATreasureSketchGameState, MovementSpeedMultiplier);
     DOREPLIFETIME(ATreasureSketchGameState, DrawingDurationSeconds);
     DOREPLIFETIME(ATreasureSketchGameState, SearchingDurationSeconds);
     DOREPLIFETIME(ATreasureSketchGameState, IslandSeed);
@@ -20,6 +23,12 @@ void ATreasureSketchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProper
     DOREPLIFETIME(ATreasureSketchGameState, Phase);
     DOREPLIFETIME(ATreasureSketchGameState, RoundEndServerTime);
     DOREPLIFETIME(ATreasureSketchGameState, bGameStarted);
+}
+
+void ATreasureSketchGameState::ApplyMovementSpeed()
+{
+    for (TActorIterator<ATreasureSketchCharacter> It(GetWorld()); It; ++It)
+        It->SetMovementSpeedMultiplier(MovementSpeedMultiplier);
 }
 
 int32 ATreasureSketchGameState::GetSecondsRemaining() const

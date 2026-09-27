@@ -63,6 +63,14 @@ public:
     UPROPERTY(Replicated, BlueprintReadOnly)
     int32 SearchingDurationSeconds = 120;
 
+    UPROPERTY(ReplicatedUsing=ApplyMovementSpeed, BlueprintReadOnly)
+    float MovementSpeedMultiplier = 1.f;
+
+    static constexpr float MinMovementSpeed = 0.5f;
+    static constexpr float MaxMovementSpeed = 5.f;
+    UFUNCTION()
+    void ApplyMovementSpeed();
+
     static constexpr float MinMapScale = 0.5f;
     static constexpr float MaxMapScale = 5.f;
     static constexpr int32 MinPhaseSeconds = 30;

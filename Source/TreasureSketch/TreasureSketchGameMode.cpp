@@ -161,6 +161,12 @@ void ATreasureSketchGameMode::AdjustRoomSetting(FName Setting, int32 Direction)
     {
         SetRoomMapScale(FMath::Clamp(GS->RoomMapScale + Direction * 0.25f, GS->MinMapScale, GS->MaxMapScale));
     }
+    else if (Setting == TEXT("MovementSpeed"))
+    {
+        GS->MovementSpeedMultiplier = FMath::Clamp(GS->MovementSpeedMultiplier + Direction * 0.25f,
+            GS->MinMovementSpeed, GS->MaxMovementSpeed);
+        GS->ApplyMovementSpeed();
+    }
     else
     {
         int32* Duration = Setting == TEXT("DrawingTime") ? &GS->DrawingDurationSeconds

@@ -324,16 +324,18 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
     }
     else if (ActionName == TEXT("RoomMapSmaller") || ActionName == TEXT("RoomMapLarger")
         || ActionName == TEXT("RoomDrawingLess") || ActionName == TEXT("RoomDrawingMore")
-        || ActionName == TEXT("RoomSearchingLess") || ActionName == TEXT("RoomSearchingMore"))
+        || ActionName == TEXT("RoomSearchingLess") || ActionName == TEXT("RoomSearchingMore")
+        || ActionName == TEXT("RoomSpeedLess") || ActionName == TEXT("RoomSpeedMore"))
     {
         if (!IsLocalController() || (FrontEndPage != EFrontEndPage::RoomLobby && FrontEndPage != EFrontEndPage::SoloTest)) return;
         if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
         {
             const bool bMap = ActionName == TEXT("RoomMapSmaller") || ActionName == TEXT("RoomMapLarger");
             const bool bDrawing = ActionName == TEXT("RoomDrawingLess") || ActionName == TEXT("RoomDrawingMore");
+            const bool bSpeed = ActionName == TEXT("RoomSpeedLess") || ActionName == TEXT("RoomSpeedMore");
             const bool bIncrease = ActionName == TEXT("RoomMapLarger") || ActionName == TEXT("RoomDrawingMore")
-                || ActionName == TEXT("RoomSearchingMore");
-            GM->AdjustRoomSetting(bMap ? TEXT("MapSize") : bDrawing ? TEXT("DrawingTime") : TEXT("SearchingTime"),
+                || ActionName == TEXT("RoomSearchingMore") || ActionName == TEXT("RoomSpeedMore");
+            GM->AdjustRoomSetting(bSpeed ? TEXT("MovementSpeed") : bMap ? TEXT("MapSize") : bDrawing ? TEXT("DrawingTime") : TEXT("SearchingTime"),
                 bIncrease ? 1 : -1);
         }
     }
