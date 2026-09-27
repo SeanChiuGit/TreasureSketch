@@ -49,6 +49,7 @@ public:
     bool IsSprayCursorMode() const { return bSprayCursorMode; }
     bool IsMapOpen() const { return bMapOpen; }
     const TArray<FSketchStroke>& GetStrokes() const { return Strokes; }
+    const TArray<FSketchStroke>& GetServerDrawing() const;
     FString GetStatusMessage() const { return StatusMessage; }
     FVector2D GetPaperMin() const;
     FVector2D GetPaperSize() const;
@@ -106,6 +107,17 @@ private:
     TArray<FSketchStroke> Strokes;
 
     UPROPERTY()
+    TArray<FSketchStroke> ServerDrawing;
+    TArray<FVector2D> PendingDrawingPoints;
+    float NextDrawingSyncTime = 0.f;
+    int32 ServerDrawingRoundSerial = 0;
+    void FlushDrawingPoints();
+    UFUNCTION(Server, Reliable)
+    void ServerAppendDrawing(int32 RoundSerial, int32 StrokeIndex, const TArray<FVector2D>& Points);
+    UFUNCTION(Server, Reliable)
+    void ServerClearDrawing(int32 RoundSerial);
+
+    UPROPERTY()
     TObjectPtr<ATreasureMarker> LocalScoutMarker;
 
     UPROPERTY()
@@ -158,7 +170,7 @@ private:
     ATreasureSketchCharacter* FindHunterCharacter() const;
 
     UFUNCTION(Server, Reliable)
-    void ServerSubmitSketch(const TArray<FSketchStroke>& CompletedStrokes);
+    void ServerSubmitSketch(int32 RoundSerial, const TArray<FSketchStroke>& CompletedStrokes);
 
     UFUNCTION(Server, Reliable)
     void ServerTryDig(FVector_NetQuantize WorldLocation);

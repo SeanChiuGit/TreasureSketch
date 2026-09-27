@@ -49,6 +49,7 @@ private:
     FVector FindPlayerSpawn(TArray<FVector>& UsedSpawns) const;
     void BuildRound();
     bool FinishIfTimeExpired();
+    void BeginHunterSearching(const TArray<FSketchStroke>& SubmittedStrokes);
     void RevealTreasureToScout();
     void HideTreasureFromScout();
     void SendHunterViewToScout(float DeltaSeconds);

@@ -45,7 +45,20 @@ bool ATreasureSketchGameMode::FinishIfTimeExpired()
         return false;
 
     const bool bScoutTimedOut = GS->Phase == ETreasureRoundPhase::ScoutDrawing;
-    GS->Phase = bScoutTimedOut ? ETreasureRoundPhase::ScoutTimedOut : ETreasureRoundPhase::HunterTimedOut;
+    if (bScoutTimedOut)
+    {
+        TArray<FSketchStroke> Drawing;
+        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+            if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()); PC && PC->IsLocalScout())
+            {
+                Drawing = PC->GetServerDrawing();
+                break;
+            }
+        BeginHunterSearching(Drawing);
+        UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_AUTO_HANDOFF Drawing time expired"));
+        return true;
+    }
+    GS->Phase = ETreasureRoundPhase::HunterTimedOut;
     HideTreasureFromScout();
     UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_TIMEOUT Phase=%s"),
         bScoutTimedOut ? TEXT("ScoutDrawing") : TEXT("HunterSearching"));
@@ -55,6 +68,19 @@ bool ATreasureSketchGameMode::FinishIfTimeExpired()
 FVector ATreasureSketchGameMode::FindPlayerSpawn(TArray<FVector>& UsedSpawns) const
 {
     FVector Result = Island ? Island->FindSpawnPoint() : FVector(-3800.f, 0.f, 500.f);
+    const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (Island && GS && GS->bSpreadPlayerSpawns && !UsedSpawns.IsEmpty())
+    {
+        FRandomStream Stream(IslandSeed ^ (UsedSpawns.Num() * 7919));
+        for (int32 Attempt = 0; Attempt < 80; ++Attempt)
+        {
+            Result = Island->FindRandomLandPoint(Stream, 115.f) + FVector(0.f, 0.f, 180.f);
+            bool bOccupied = false;
+            for (const FVector& Used : UsedSpawns)
+                bOccupied |= FVector::Dist2D(Used, Result) < (Attempt < 60 ? 1800.f : 180.f);
+            if (!bOccupied) { UsedSpawns.Add(Result); return Result; }
+        }
+    }
     // FindSpawnPoint snaps to safe land samples. Different offsets can resolve to
     // the same sample, so test actual positions before placing another player.
     for (int32 Attempt = 0; Island && Attempt < 40; ++Attempt)
@@ -167,6 +193,14 @@ void ATreasureSketchGameMode::AdjustRoomSetting(FName Setting, int32 Direction)
             GS->MinMovementSpeed, GS->MaxMovementSpeed);
         GS->ApplyMovementSpeed();
     }
+    else if (Setting == TEXT("TreasureRange"))
+    {
+        GS->bTreasureRangeVisible = !GS->bTreasureRangeVisible;
+    }
+    else if (Setting == TEXT("SpreadPlayerSpawns"))
+    {
+        GS->bSpreadPlayerSpawns = !GS->bSpreadPlayerSpawns;
+    }
     else
     {
         int32* Duration = Setting == TEXT("DrawingTime") ? &GS->DrawingDurationSeconds
@@ -225,10 +259,16 @@ void ATreasureSketchGameMode::StartHostedRound()
             RevealTreasureToScout();
         }
         TArray<FVector> PlayerSpawns;
+        if (Island) PlayerSpawns.Add(Island->FindSpawnPoint());
         for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
             if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
                 if (APawn* Pawn = PC->GetPawn())
-                    Pawn->SetActorLocation(FindPlayerSpawn(PlayerSpawns), false, nullptr, ETeleportType::ResetPhysics);
+                {
+                    const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
+                    const FVector Spawn = Island && PS && PS->PlayerRole == ETreasurePlayerRole::Scout
+                        ? Island->FindSpawnPoint() : FindPlayerSpawn(PlayerSpawns);
+                    Pawn->SetActorLocation(Spawn, false, nullptr, ETeleportType::ResetPhysics);
+                }
         GS->bGameStarted = true;
         GS->ForceNetUpdate();
         GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + GS->DrawingDurationSeconds;
@@ -443,15 +483,23 @@ void ATreasureSketchGameMode::SendHunterViewToScout(float DeltaSeconds)
 
 void ATreasureSketchGameMode::HandoffToHunter(const TArray<FSketchStroke>& SubmittedStrokes)
 {
-    if (FinishIfTimeExpired()) return;
+    BeginHunterSearching(SubmittedStrokes);
+}
+
+void ATreasureSketchGameMode::BeginHunterSearching(const TArray<FSketchStroke>& SubmittedStrokes)
+{
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing) return;
     GS->Phase = ETreasureRoundPhase::HunterSearching;
     GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + GS->SearchingDurationSeconds;
+    GS->ForceNetUpdate();
     HideTreasureFromScout();
     UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_HANDOFF Hunter active; marker hidden"));
 
     TArray<FVector> HunterSpawns;
+    // In nearby mode, explorers start by the mapmaker's landing point. In spread
+    // mode reserve that point so even the first explorer starts elsewhere.
+    if (Island && GS->bSpreadPlayerSpawns) HunterSpawns.Add(Island->FindSpawnPoint());
     for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
     {
         ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get());
@@ -545,6 +593,7 @@ void ATreasureSketchGameMode::StartNewRound(bool bSwapRoles)
     GS->bGameStarted = bWasStarted;
 
     TArray<FVector> PlayerSpawns;
+    if (Island) PlayerSpawns.Add(Island->FindSpawnPoint());
     for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
     {
         ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get());
@@ -552,7 +601,9 @@ void ATreasureSketchGameMode::StartNewRound(bool bSwapRoles)
 
         if (APawn* Pawn = PC->GetPawn())
         {
-            const FVector SpawnLocation = FindPlayerSpawn(PlayerSpawns);
+            const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
+            const FVector SpawnLocation = Island && PS && PS->PlayerRole == ETreasurePlayerRole::Scout
+                ? Island->FindSpawnPoint() : FindPlayerSpawn(PlayerSpawns);
             Pawn->SetActorLocation(SpawnLocation, false, nullptr, ETeleportType::ResetPhysics);
             if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(Pawn))
                 Character->SetSpectatorHidden(false);

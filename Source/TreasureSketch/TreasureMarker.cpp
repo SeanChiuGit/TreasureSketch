@@ -1,5 +1,6 @@
 #include "TreasureMarker.h"
 #include "TreasureRules.h"
+#include "TreasureSketchGameState.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
@@ -36,6 +37,8 @@ void ATreasureMarker::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
     if (!GetWorld()) return;
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (GS && !GS->bTreasureRangeVisible) return;
 
     const FVector Center = GetActorLocation();
     const FVector Bottom = Center - FVector(0.f, 0.f, TreasureRules::DigVerticalHalfHeight);

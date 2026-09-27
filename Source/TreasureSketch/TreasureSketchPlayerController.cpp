@@ -181,20 +181,85 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
         GetPlayerViewPoint(Origin, Rotation);
         ServerSpraySurface(Origin, Rotation.Vector());
     }
-    if (!bMapOpen || !IsLocalScout()) { bWasDrawing = false; return; }
+    if (!IsLocalController()) return;
+    if (!bMapOpen || !IsLocalScout() || !PaintGS || !PaintGS->bGameStarted
+        || PaintGS->Phase != ETreasureRoundPhase::ScoutDrawing)
+    {
+        FlushDrawingPoints();
+        bWasDrawing = false;
+        if (PaintGS && PaintGS->Phase == ETreasureRoundPhase::HunterSearching && IsLocalScout())
+        {
+            bMapOpen = false;
+            bShowMouseCursor = false;
+            SetInputMode(FInputModeGameOnly());
+        }
+        return;
+    }
 
     float X = 0.f, Y = 0.f;
     const bool bPressed = IsInputKeyDown(EKeys::LeftMouseButton) && GetMousePosition(X, Y) && IsPointOnPaper(FVector2D(X,Y));
     if (bPressed)
     {
-        if (!bWasDrawing) Strokes.AddDefaulted();
+        if (!bWasDrawing)
+        {
+            FlushDrawingPoints();
+            Strokes.AddDefaulted();
+        }
         const FVector2D Normalized = (FVector2D(X,Y) - GetPaperMin()) / GetPaperSize();
         if (Strokes.Last().Points.IsEmpty() || FVector2D::Distance(Strokes.Last().Points.Last(), Normalized) > 0.003f)
         {
             Strokes.Last().Points.Add(Normalized);
+            PendingDrawingPoints.Add(Normalized);
         }
     }
     bWasDrawing = bPressed;
+    if (!bPressed || GetWorld()->GetTimeSeconds() >= NextDrawingSyncTime || PendingDrawingPoints.Num() >= 128)
+        FlushDrawingPoints();
+}
+
+void ATreasureSketchPlayerController::FlushDrawingPoints()
+{
+    if (PendingDrawingPoints.IsEmpty()) return;
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (GS && GS->bGameStarted && GS->Phase == ETreasureRoundPhase::ScoutDrawing && IsLocalScout())
+        ServerAppendDrawing(GS->RoundSerial, Strokes.Num() - 1, PendingDrawingPoints);
+    PendingDrawingPoints.Reset();
+    NextDrawingSyncTime = GetWorld()->GetTimeSeconds() + 0.1f;
+}
+
+const TArray<FSketchStroke>& ATreasureSketchPlayerController::GetServerDrawing() const
+{
+    if (IsLocalController()) return Strokes;
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    static const TArray<FSketchStroke> EmptyDrawing;
+    return GS && ServerDrawingRoundSerial == GS->RoundSerial ? ServerDrawing : EmptyDrawing;
+}
+
+void ATreasureSketchPlayerController::ServerAppendDrawing_Implementation(int32 RoundSerial, int32 StrokeIndex, const TArray<FVector2D>& Points)
+{
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing
+        || GS->RoundSerial != RoundSerial || !IsLocalScout() || StrokeIndex < 0 || Points.Num() > 128) return;
+    if (ServerDrawingRoundSerial != RoundSerial)
+    {
+        ServerDrawing.Reset();
+        ServerDrawingRoundSerial = RoundSerial;
+    }
+    if (StrokeIndex > ServerDrawing.Num()) return;
+    for (const FVector2D& Point : Points)
+        if (!FMath::IsFinite(Point.X) || !FMath::IsFinite(Point.Y)
+            || Point.X < 0.f || Point.X > 1.f || Point.Y < 0.f || Point.Y > 1.f) return;
+    if (StrokeIndex == ServerDrawing.Num()) ServerDrawing.AddDefaulted();
+    ServerDrawing[StrokeIndex].Points.Append(Points);
+}
+
+void ATreasureSketchPlayerController::ServerClearDrawing_Implementation(int32 RoundSerial)
+{
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing
+        || GS->RoundSerial != RoundSerial || !IsLocalScout()) return;
+    ServerDrawing.Reset();
+    ServerDrawingRoundSerial = RoundSerial;
 }
 
 bool ATreasureSketchPlayerController::IsFrontEndVisible() const
@@ -321,6 +386,12 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
     {
         if (IsLocalController())
             if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) GM->ReturnToSetup();
+    }
+    else if (ActionName == TEXT("ToggleTreasureRange") || ActionName == TEXT("ToggleSpreadPlayerSpawns"))
+    {
+        if (!IsLocalController() || (FrontEndPage != EFrontEndPage::RoomLobby && FrontEndPage != EFrontEndPage::SoloTest)) return;
+        if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
+            GM->AdjustRoomSetting(ActionName == TEXT("ToggleTreasureRange") ? TEXT("TreasureRange") : TEXT("SpreadPlayerSpawns"), 1);
     }
     else if (ActionName == TEXT("RoomMapSmaller") || ActionName == TEXT("RoomMapLarger")
         || ActionName == TEXT("RoomDrawingLess") || ActionName == TEXT("RoomDrawingMore")
@@ -596,7 +667,8 @@ void ATreasureSketchPlayerController::Handoff()
     {
         SetSprayCursorMode(false);
         SetLocalTreasureMarkerVisible(false);
-        ServerSubmitSketch(Strokes);
+        FlushDrawingPoints();
+        ServerSubmitSketch(GS->RoundSerial, Strokes);
         bMapOpen = false;
         bShowMouseCursor = false;
         SetInputMode(FInputModeGameOnly());
@@ -609,10 +681,11 @@ void ATreasureSketchPlayerController::Handoff()
     }
 }
 
-void ATreasureSketchPlayerController::ServerSubmitSketch_Implementation(const TArray<FSketchStroke>& CompletedStrokes)
+void ATreasureSketchPlayerController::ServerSubmitSketch_Implementation(int32 RoundSerial, const TArray<FSketchStroke>& CompletedStrokes)
 {
     const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
-    if (!PS || PS->PlayerRole != ETreasurePlayerRole::Scout) return;
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (!PS || PS->PlayerRole != ETreasurePlayerRole::Scout || !GS || GS->RoundSerial != RoundSerial) return;
     if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
         GM->HandoffToHunter(CompletedStrokes);
 }
@@ -620,6 +693,11 @@ void ATreasureSketchPlayerController::ServerSubmitSketch_Implementation(const TA
 void ATreasureSketchPlayerController::ClientReceiveSketch_Implementation(const TArray<FSketchStroke>& CompletedStrokes)
 {
     Strokes = CompletedStrokes;
+    PendingDrawingPoints.Reset();
+    bMapOpen = false;
+    bWasDrawing = false;
+    bShowMouseCursor = false;
+    SetInputMode(FInputModeGameOnly());
     StatusMessage = TEXT("侦察者的地图已送达！按 M 查看，按 E 挖掘。");
     StatusUntil = GetWorld()->GetTimeSeconds() + 8.f;
 }
@@ -694,6 +772,9 @@ void ATreasureSketchPlayerController::ClientStartNewRound_Implementation(int32 N
     bHasScoutTreasureLocation = false;
     SetLocalTreasureMarkerVisible(false);
     Strokes.Reset();
+    PendingDrawingPoints.Reset();
+    NextDrawingSyncTime = 0.f;
+    bMapOpen = false;
     bWasDrawing = false;
     StatusMessage = TEXT("新的一局开始了！");
     StatusUntil = GetWorld()->GetTimeSeconds() + 4.f;
@@ -714,7 +795,12 @@ void ATreasureSketchPlayerController::ClientHideTreasure_Implementation()
 
 void ATreasureSketchPlayerController::ClearSketch()
 {
-    if (IsLocalScout()) Strokes.Reset();
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (!IsLocalScout() || !GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing) return;
+    Strokes.Reset();
+    PendingDrawingPoints.Reset();
+    bWasDrawing = false;
+    ServerClearDrawing(GS->RoundSerial);
 }
 
 void ATreasureSketchPlayerController::ClientReturnToLobby_Implementation()

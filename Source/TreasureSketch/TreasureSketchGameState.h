@@ -53,6 +53,13 @@ public:
     UPROPERTY(Replicated, BlueprintReadOnly)
     bool bSurfacePaintEnabled = false;
 
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    bool bTreasureRangeVisible = true;
+
+    // Nearby uses the same landing area; spread out uses different safe land samples.
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    bool bSpreadPlayerSpawns = false;
+
     // Room settings survive replay and are authoritative on the host.
     UPROPERTY(Replicated, BlueprintReadOnly)
     float RoomMapScale = 1.f;

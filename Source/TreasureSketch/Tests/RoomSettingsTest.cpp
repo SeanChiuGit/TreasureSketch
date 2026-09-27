@@ -32,6 +32,10 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     GS->PlayerArray.AddUnique(Hunter);
 
     TestEqual(TEXT("Host world"), World->GetNetMode(), NM_ListenServer);
+    GM->AdjustRoomSetting(TEXT("TreasureRange"), 1);
+    GM->AdjustRoomSetting(TEXT("SpreadPlayerSpawns"), 1);
+    TestFalse(TEXT("Can hide treasure range without hiding marker"), GS->bTreasureRangeVisible);
+    TestTrue(TEXT("Can choose spread out spawns"), GS->bSpreadPlayerSpawns);
     GM->AdjustRoomSetting(TEXT("DrawingTime"), -1);
     GM->AdjustRoomSetting(TEXT("SearchingTime"), 1);
     GM->StartHostedRound();
@@ -39,8 +43,17 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Drawing uses independent limit"), GS->GetSecondsRemaining(), 90);
     GM->AdjustRoomSetting(TEXT("DrawingTime"), 1);
     TestEqual(TEXT("Cannot change settings during round"), GS->DrawingDurationSeconds, 90);
-    GM->HandoffToHunter({});
+    GM->AdjustRoomSetting(TEXT("TreasureRange"), 1);
+    GM->AdjustRoomSetting(TEXT("SpreadPlayerSpawns"), 1);
+    TestFalse(TEXT("Range setting locked during round"), GS->bTreasureRangeVisible);
+    TestTrue(TEXT("Spawn setting locked during round"), GS->bSpreadPlayerSpawns);
+    GS->RoundEndServerTime = -1.f;
+    GM->Tick(0.f);
+    TestEqual(TEXT("Drawing timeout automatically starts searching"), GS->Phase, ETreasureRoundPhase::HunterSearching);
     TestEqual(TEXT("Handoff uses searching limit"), GS->GetSecondsRemaining(), 150);
+    GS->RoundEndServerTime = 123.f;
+    GM->HandoffToHunter({});
+    TestEqual(TEXT("Late submission cannot reset searching timer"), GS->RoundEndServerTime, 123.f);
     GS->RoundEndServerTime = -1.f;
     GM->Tick(0.f);
     TestEqual(TEXT("Searching timeout still finishes round"), GS->Phase, ETreasureRoundPhase::HunterTimedOut);
@@ -52,6 +65,8 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     TestFalse(TEXT("Return to setup stops round without removing party"), GS->bGameStarted);
     TestEqual(TEXT("Return keeps party"), GS->PlayerArray.Num(), 2);
     TestEqual(TEXT("Return keeps settings"), GS->SearchingDurationSeconds, 150);
+    TestFalse(TEXT("Return keeps range setting"), GS->bTreasureRangeVisible);
+    TestTrue(TEXT("Return keeps spawn setting"), GS->bSpreadPlayerSpawns);
 
     GS->bGameStarted = false;
     GS->Phase = ETreasureRoundPhase::ScoutDrawing;
@@ -90,7 +105,9 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     Driver->SetWorld(nullptr);
     GM->StartSoloTest(-3);
     TestEqual(TEXT("Solo full flow uses drawing setting"), GS->GetSecondsRemaining(), 30);
-    GM->HandoffToHunter({});
+    GS->RoundEndServerTime = -1.f;
+    GM->Tick(0.f);
+    TestEqual(TEXT("Solo drawing timeout also hands off"), GS->Phase, ETreasureRoundPhase::HunterSearching);
     TestEqual(TEXT("Solo handoff uses searching setting"), GS->GetSecondsRemaining(), 600);
     GM->StartNewRound();
     TestEqual(TEXT("Solo replay keeps drawing setting"), GS->GetSecondsRemaining(), 30);
