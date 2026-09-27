@@ -175,11 +175,12 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
     SetSprayCursorMode(bCanSpray);
     UpdateReplayInput();
     UpdateWaitingSketchInput();
-    if (IsScoutSpectating() && WasInputKeyJustPressed(EKeys::Q)) ServerCycleSpectatedHunter();
+    if (IsScoutSpectating() && !bMapOpen && WasInputKeyJustPressed(EKeys::Q)) ServerCycleSpectatedHunter();
     UpdateSpectatorCamera(DeltaTime);
     ApplyPhaseInputRules();
     ApplyKeyboardMovementFallback();
-    if ((bMapOpen || IsHunterWaiting()) && (!IsLocalScout() || (CursorGS && CursorGS->bReviewingRound)))
+    if ((bMapOpen || IsHunterWaiting()) && (!IsLocalScout()
+        || (CursorGS && (CursorGS->bReviewingRound || CursorGS->Phase == ETreasureRoundPhase::HunterSearching))))
     {
         if (WasInputKeyJustPressed(EKeys::Left)) CycleSketchPage(-1);
         if (WasInputKeyJustPressed(EKeys::Right)) CycleSketchPage(1);
@@ -202,12 +203,6 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
     {
         FlushDrawingPoints();
         bWasDrawing = false;
-        if (PaintGS && PaintGS->Phase == ETreasureRoundPhase::HunterSearching && IsLocalScout())
-        {
-            bMapOpen = false;
-            bShowMouseCursor = false;
-            SetInputMode(FInputModeGameOnly());
-        }
         return;
     }
 
@@ -495,7 +490,8 @@ void ATreasureSketchPlayerController::CycleSketchPage(int32 Direction)
 {
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (!IsLocalController() || (!bMapOpen && !IsHunterWaiting())
-        || (IsLocalScout() && !(GS && GS->bReviewingRound)) || SketchPages.Num() < 2
+        || (IsLocalScout() && !(GS && (GS->bReviewingRound || GS->Phase == ETreasureRoundPhase::HunterSearching)))
+        || SketchPages.Num() < 2
         || !GS || (GS->Phase != ETreasureRoundPhase::ScoutDrawing && GS->Phase != ETreasureRoundPhase::HunterSearching
             && !GS->bReviewingRound)
         || (Direction != -1 && Direction != 1)) return;
@@ -610,7 +606,7 @@ void ATreasureSketchPlayerController::UpdateSpectatorCamera(float DeltaTime)
         return;
     }
     if (!SpectatorCamera) StartSpectating();
-    if (!SpectatorCamera) return;
+    if (!SpectatorCamera || bMapOpen) return;
 
     if (SpectatorView == EScoutSpectatorView::HunterFirstPerson)
     {
@@ -651,7 +647,7 @@ void ATreasureSketchPlayerController::UpdateSpectatorCamera(float DeltaTime)
 
 void ATreasureSketchPlayerController::ToggleSpectatorView()
 {
-    if (!SpectatorCamera) return;
+    if (!SpectatorCamera || bMapOpen) return;
     SpectatorView = SpectatorView == EScoutSpectatorView::FreeFlight
         ? EScoutSpectatorView::HunterFirstPerson : EScoutSpectatorView::FreeFlight;
     if (SpectatorView == EScoutSpectatorView::HunterFirstPerson && bHasHunterView)
@@ -709,7 +705,9 @@ void ATreasureSketchPlayerController::ToggleMap()
 {
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     const bool bReviewing = GS && GS->bReviewingRound && GS->IsRoundOver();
-    if (!bReviewing && ((GS && GS->IsRoundOver()) || IsHunterWaiting()
+    const bool bSpectatingMapmaker = GS && GS->bGameStarted
+        && GS->Phase == ETreasureRoundPhase::HunterSearching && IsLocalScout();
+    if (!bReviewing && !bSpectatingMapmaker && ((GS && GS->IsRoundOver()) || IsHunterWaiting()
         || (IsLocalScout() && (HasSubmittedSketch() || (GS && GS->Phase != ETreasureRoundPhase::ScoutDrawing))))) return;
     SetSprayCursorMode(false);
     bMapOpen = !bMapOpen;
@@ -785,11 +783,22 @@ void ATreasureSketchPlayerController::ClientReceiveSketchPages_Implementation(in
     if (RoundSerial < CurrentSketchRoundSerial) return;
     const int32 PreviousPage = ActiveSketchPage;
     CurrentSketchRoundSerial = RoundSerial;
-    // Keep the single-paper reset/input behavior, then retain every independent page.
-    ClientReceiveSketch_Implementation(TArray<FSketchStroke>());
+    bLiveSketchActive = false;
     SketchPages = Pages;
     ActiveSketchPage = FMath::Clamp(PreviousPage, 0, FMath::Max(0, SketchPages.Num() - 1));
-    StatusMessage = FString::Printf(TEXT("收到 %d 张地图！M 查看，左右方向键切换图纸，E 挖掘。"), Pages.Num());
+    if (IsLocalScout())
+        if (const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>())
+            for (int32 PageIndex = 0; PageIndex < SketchPages.Num(); ++PageIndex)
+                if (SketchPages[PageIndex].MapmakerId == PS->GetPlayerId())
+                { ActiveSketchPage = PageIndex; break; }
+    PendingDrawingPoints.Reset();
+    bMapOpen = false;
+    bWasDrawing = false;
+    bShowMouseCursor = false;
+    SetInputMode(FInputModeGameOnly());
+    StatusMessage = IsLocalScout() ? TEXT("已交图，按 M 查看地图并继续观战。")
+        : FString::Printf(TEXT("收到 %d 张地图！M 查看，左右方向键切换图纸，E 挖掘。"), Pages.Num());
+    StatusUntil = GetWorld()->GetTimeSeconds() + 8.f;
 }
 
 void ATreasureSketchPlayerController::ClientInitializeLiveSketch_Implementation(int32 RoundSerial, const TArray<FSketchPage>& Pages)

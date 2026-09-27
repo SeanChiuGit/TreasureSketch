@@ -400,7 +400,7 @@ void ATreasureSketchHUD::DrawHUD()
         GetNetMode() == NM_ListenServer ? TEXT("主机") : TEXT("已连接客户端"));
     const FString Help = GS->bReviewingRound ? TEXT("复盘中：WASD 逛岛 | M 查看图纸 | Esc 返回结算 | 宝藏位置已显示")
         : PC->IsScoutSpectating()
-        ? TEXT("观战：WASD 飞行 | Space 上升 | Ctrl 下降 | Shift 加速")
+        ? TEXT("观战：WASD 飞行 | Space 上升 | Ctrl 下降 | Shift 加速 | M 查看地图")
         : bScout && PC->HasSubmittedSketch() ? TEXT("已交图，等待其他地图师完成；到时自动收齐")
         : bScout ? TEXT("WASD 移动 | M 打开白纸画图 | C 清空 | Enter 交图")
         : TEXT("等待交图；收到后 M 查看地图 | E 挖掘");
@@ -454,7 +454,7 @@ void ATreasureSketchHUD::DrawHUD()
     const FVector2D Size = PC->GetPaperSize();
     DrawRect(FLinearColor(0.96f, 0.94f, 0.86f, 0.98f), Min.X, Min.Y, Size.X, Size.Y);
     DrawText(GS->bReviewingRound ? TEXT("复盘地图 · 可对照宝藏位置")
-        : bScout ? TEXT("空白纸：请画岛屿轮廓、地形地标和藏宝点")
+        : bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing ? TEXT("空白纸：请画岛屿轮廓、地形地标和藏宝点")
         : bWatchingLiveSketch ? TEXT("地图师的实时画纸 · 只能观看") : TEXT("地图师留下的手绘地图"),
         FLinearColor::Black, Min.X + 18.f, Min.Y + 14.f, GEngine->GetSmallFont(), 1.f);
     if (bWatchingLiveSketch && PC->GetSketchPageCount() == 0)
@@ -470,7 +470,8 @@ void ATreasureSketchHUD::DrawHUD()
             DrawLine(A.X, A.Y, B.X, B.Y, FLinearColor(0.08f,0.07f,0.05f), 4.f);
         }
     }
-    if ((!bScout || GS->bReviewingRound) && PC->GetSketchPageCount() > 0)
+    if ((!bScout || GS->bReviewingRound || GS->Phase == ETreasureRoundPhase::HunterSearching)
+        && PC->GetSketchPageCount() > 0)
     {
         const float FooterY = Min.Y + Size.Y + 4.f;
         DrawRect(FLinearColor(0.96f, 0.94f, 0.86f), Min.X, FooterY, Size.X, 28.f);

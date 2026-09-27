@@ -672,6 +672,7 @@ void ATreasureSketchGameMode::BeginHunterSearching(const TArray<FSketchPage>& Pa
         {
             if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(PC->GetPawn()))
                 Character->SetSpectatorHidden(true);
+            PC->ClientReceiveSketchPages(GS->RoundSerial, Pages);
         }
         else if (PS->PlayerRole == ETreasurePlayerRole::Hunter)
         {

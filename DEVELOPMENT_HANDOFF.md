@@ -113,3 +113,10 @@
 
 - 用户反馈复盘时无光标，右上角结束按钮无法点击。按用户要求保留无光标的逛岛操作，新增 Esc：任一玩家在复盘中按 Esc，请求全队返回结算页。
 - 右上角原按钮改为“按 Esc 返回结算”的纯提示，无鼠标命中区域。现有 v0.9.0 Release 不含此修改；交互验证由用户负责。
+
+## 地图师观战看图
+
+- 寻宝阶段给每位观战地图师发送所有最终图纸；M 打开只读地图，再按 M 关闭。多地图师模式下默认显示自己的图纸，可用方向键或按钮翻页比较。
+- 看图时暂停自由飞行/第一人称观战镜头，关图后继续；地图师原本的本地画笔数据保留，避免服务端在复盘收集图纸时丢失主机未提交的同步笔画。
+- 此改动未加入现有 v0.9.0 Release；交互测试由用户负责。
+- UE 5.6 TreasureSketchEditor Win64 Development 编译成功；无窗口 `TreasureSketch.RoomSettings.MultiMapmaker` 和 `TreasureSketch.RoomSettings.RoundFlow` 测试通过，日志位于 `Saved/CodexRelease/spectator-map-tests.log`。

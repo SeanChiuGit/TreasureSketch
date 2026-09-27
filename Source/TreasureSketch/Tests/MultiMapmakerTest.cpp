@@ -105,6 +105,22 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
         TestEqual(TEXT("Second page retains independent drawing"), Pages[1].Strokes[0].Points[0], FVector2D(0.5f, 0.6f));
         TestTrue(TEXT("Blank third page remains blank"), Pages[2].Strokes.IsEmpty());
     }
+    auto* Mapmaker = Controllers[1];
+    Mapmaker->Strokes = { FirstStroke };
+    World->SetNetDriver(nullptr);
+    Mapmaker->ClientReceiveSketchPages_Implementation(GS->RoundSerial, Pages);
+    TestEqual(TEXT("Spectating mapmaker receives every final page"), Mapmaker->GetSketchPageCount(), 3);
+    TestEqual(TEXT("Spectating mapmaker starts on their own page"), Mapmaker->GetActiveSketchPage(), 0);
+    TestEqual(TEXT("Mapmaker's local drawing remains available"), Mapmaker->Strokes.Num(), 1);
+    Mapmaker->ToggleMap();
+    TestTrue(TEXT("Mapmaker can open the map while spectating"), Mapmaker->IsMapOpen());
+    Mapmaker->CycleSketchPage(1);
+    TestEqual(TEXT("Mapmaker can switch to another finished page"), Mapmaker->GetActiveSketchPage(), 1);
+    Mapmaker->ClearSketch();
+    TestEqual(TEXT("Spectating map is read-only"), Mapmaker->GetStrokes().Num(), 1);
+    Mapmaker->ToggleMap();
+    TestFalse(TEXT("Mapmaker can close the map and resume spectating"), Mapmaker->IsMapOpen());
+    World->SetNetDriver(Driver);
     World->SetNetDriver(nullptr); // Local controller for page-input checks, no window.
     Explorer->ClientReceiveSketchPages_Implementation(GS->RoundSerial, Pages);
     Explorer->bMapOpen = true;
