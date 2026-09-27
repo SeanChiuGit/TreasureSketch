@@ -171,12 +171,13 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
     }
     else if (ActionName == TEXT("MenuJoinFirst")) ConfirmJoinOnlineGame();
     else if (ActionName == TEXT("MenuSolo")) OpenFrontEndPage(EFrontEndPage::SoloTest);
-    else if (ActionName == TEXT("SoloBeach") || ActionName == TEXT("SoloRuins") || ActionName == TEXT("SoloRandom") || ActionName == TEXT("SoloHunter"))
+    else if (ActionName == TEXT("SoloBeach") || ActionName == TEXT("SoloRuins") || ActionName == TEXT("SoloRandom") || ActionName == TEXT("SoloHunter") || ActionName == TEXT("SoloFullFlow"))
     {
         if (ATreasureSketchGameMode* GameMode = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
         {
             const int32 ThemeChoice = ActionName == TEXT("SoloBeach") ? 0
-                : ActionName == TEXT("SoloRuins") ? 1 : ActionName == TEXT("SoloHunter") ? -2 : -1;
+                : ActionName == TEXT("SoloRuins") ? 1 : ActionName == TEXT("SoloHunter") ? -2
+                : ActionName == TEXT("SoloFullFlow") ? -3 : -1;
             GameMode->StartSoloTest(ThemeChoice);
         }
     }
@@ -419,7 +420,10 @@ void ATreasureSketchPlayerController::Handoff()
         bShowMouseCursor = false;
         SetInputMode(FInputModeGameOnly());
         ApplyPhaseInputRules();
-        StatusMessage = TEXT("地图已交给寻宝者；现在可以观战。");
+        const ATreasureSketchGameState* CurrentGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+        StatusMessage = CurrentGS && CurrentGS->PlayerArray.Num() == 1
+            ? TEXT("地图已交付，切换为探索者；按 M 查看自己的地图，按 E 挖掘。")
+            : TEXT("地图已交给寻宝者；现在可以观战。");
         StatusUntil = GetWorld()->GetTimeSeconds() + 5.f;
     }
 }

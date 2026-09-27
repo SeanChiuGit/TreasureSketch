@@ -68,11 +68,12 @@ void ATreasureSketchHUD::DrawHUD()
             DrawText(TEXT("地图测试显示宝藏；玩法测试：空白图、隐藏宝藏、120秒"),
                 FLinearColor(0.75f, 0.84f, 0.82f), PanelX + 48.f, PanelY + 205.f,
                 GEngine->GetSmallFont(), 0.9f);
-            DrawMenuButton(TEXT("SoloRuins"), TEXT("测试遗迹岛"), PanelY + 255.f, true);
-            DrawMenuButton(TEXT("SoloBeach"), TEXT("测试海盗沙滩岛"), PanelY + 323.f);
-            DrawMenuButton(TEXT("SoloRandom"), TEXT("随机主题与新种子"), PanelY + 391.f);
-            DrawMenuButton(TEXT("SoloHunter"), TEXT("探索者玩法测试"), PanelY + 459.f, true);
-            DrawMenuButton(TEXT("MenuBack"), TEXT("返回主页面"), PanelY + 527.f);
+            DrawMenuButton(TEXT("SoloRuins"), TEXT("测试遗迹岛"), PanelY + 225.f, true);
+            DrawMenuButton(TEXT("SoloBeach"), TEXT("测试海盗沙滩岛"), PanelY + 285.f);
+            DrawMenuButton(TEXT("SoloRandom"), TEXT("随机主题与新种子"), PanelY + 345.f);
+            DrawMenuButton(TEXT("SoloHunter"), TEXT("探索者玩法测试"), PanelY + 405.f, true);
+            DrawMenuButton(TEXT("SoloFullFlow"), TEXT("完整流程测试：自己画，自己找"), PanelY + 465.f, true);
+            DrawMenuButton(TEXT("MenuBack"), TEXT("返回主页面"), PanelY + 525.f);
         }
         else if (Page == EFrontEndPage::Settings)
         {

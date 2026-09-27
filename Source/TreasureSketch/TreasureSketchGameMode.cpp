@@ -107,6 +107,7 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
 {
     if (!HasAuthority()) return;
     const bool bHunterGameplayTest = ThemeChoice == -2;
+    const bool bFullFlowTest = ThemeChoice == -3;
 
     // The menu preview may already have revealed the previous round's marker while the
     // local player was assigned Scout. Remove it before replacing the island/treasure.
@@ -123,6 +124,7 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
         : AProceduralIsland::SelectThemeFromTable(IslandSeed, true);
     Island->FinishSpawning(FTransform::Identity);
     if (bHunterGameplayTest) Island->Tags.Add(TEXT("SoloHunterGameplayTest"));
+    if (bFullFlowTest) Island->Tags.Add(TEXT("SoloFullFlowTest"));
     TreasureLocation = Island->FindRandomLandPoint(Stream, 170.f) + FVector(0.f, 0.f, 35.f);
 
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
@@ -130,16 +132,16 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
     {
         GS->IslandSeed = IslandSeed;
         ++GS->RoundSerial;
-        GS->Phase = ETreasureRoundPhase::HunterSearching;
+        GS->Phase = bFullFlowTest ? ETreasureRoundPhase::ScoutDrawing : ETreasureRoundPhase::HunterSearching;
         GS->bGameStarted = true;
-        GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + (bHunterGameplayTest ? PhaseDurationSeconds : 3600.f);
+        GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + ((bHunterGameplayTest || bFullFlowTest) ? PhaseDurationSeconds : 3600.f);
     }
 
     for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
     {
         ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get());
         ATreasureSketchPlayerState* PS = PC ? PC->GetPlayerState<ATreasureSketchPlayerState>() : nullptr;
-        if (PS) PS->PlayerRole = ETreasurePlayerRole::Hunter;
+        if (PS) PS->PlayerRole = bFullFlowTest ? ETreasurePlayerRole::Scout : ETreasurePlayerRole::Hunter;
         if (PC && PC->GetPawn())
         {
             if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(PC->GetPawn()))
@@ -151,7 +153,7 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
         if (PC)
         {
             PC->ClientStartNewRound(GS ? GS->RoundSerial : 0);
-            PC->ClientReceiveSketch(TArray<FSketchStroke>());
+            if (!bFullFlowTest) PC->ClientReceiveSketch(TArray<FSketchStroke>());
             if (!bHunterGameplayTest) PC->ClientRevealTreasure(TreasureLocation);
         }
     }
@@ -251,8 +253,13 @@ void ATreasureSketchGameMode::HandoffToHunter(const TArray<FSketchStroke>& Submi
     for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
     {
         ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get());
-        const ATreasureSketchPlayerState* PS = PC ? PC->GetPlayerState<ATreasureSketchPlayerState>() : nullptr;
+        ATreasureSketchPlayerState* PS = PC ? PC->GetPlayerState<ATreasureSketchPlayerState>() : nullptr;
         if (!PC || !PS) continue;
+        if (Island && Island->Tags.Contains(TEXT("SoloFullFlowTest")))
+        {
+            PS->PlayerRole = ETreasurePlayerRole::Hunter;
+            PS->ForceNetUpdate();
+        }
         if (PS->PlayerRole == ETreasurePlayerRole::Scout)
         {
             if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(PC->GetPawn()))
@@ -291,6 +298,11 @@ void ATreasureSketchGameMode::StartNewRound(bool bSwapRoles)
 {
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (!GS) return;
+    if (Island && Island->Tags.Contains(TEXT("SoloFullFlowTest")))
+    {
+        StartSoloTest(-3);
+        return;
+    }
     if (Island && Island->Tags.Contains(TEXT("SoloHunterGameplayTest")))
     {
         StartSoloTest(-2);
