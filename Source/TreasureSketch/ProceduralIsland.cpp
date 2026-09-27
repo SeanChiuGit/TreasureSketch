@@ -30,7 +30,7 @@ const FIslandThemeDefinition ThemeTable[] = {
     { EIslandTheme::PirateBeach, TEXT("PirateBeach"), 60, true,  1.00f, 1.00f, 1.00f, 39, 330.f },
     { EIslandTheme::JungleRuins, TEXT("JungleRuins"), 40, false, 1.45f, 2.20f, 0.38f, 39, 330.f },
     // Nearly twice the width and length of the beach map: approximately four times the area.
-    { EIslandTheme::MistForest, TEXT("MistForest"), 50, false, 3.60f, 3.80f, 0.46f, 61, 410.f },
+    { EIslandTheme::MistForest, TEXT("MistForest"), 50, false, 3.60f, 3.80f, 1.00f, 61, 410.f },
 };
 
 const FIslandThemeDefinition& GetThemeDefinition(EIslandTheme Theme)
@@ -95,11 +95,12 @@ AProceduralIsland::AProceduralIsland()
 
     WeatherFog = CreateDefaultSubobject<UExponentialHeightFogComponent>(TEXT("WeatherFog"));
     WeatherFog->SetupAttachment(RootComponent);
-    WeatherFog->SetFogDensity(0.038f);
-    WeatherFog->SetFogHeightFalloff(0.20f);
-    WeatherFog->SetFogMaxOpacity(0.84f);
-    WeatherFog->SetStartDistance(450.f);
-    WeatherFog->SetFogInscatteringColor(FLinearColor(0.45f, 0.54f, 0.48f));
+    // Intentionally strong test preset: nearby silhouettes stay readable while distant landmarks vanish.
+    WeatherFog->SetFogDensity(0.125f);
+    WeatherFog->SetFogHeightFalloff(0.075f);
+    WeatherFog->SetFogMaxOpacity(0.98f);
+    WeatherFog->SetStartDistance(0.f);
+    WeatherFog->SetFogInscatteringColor(FLinearColor(0.32f, 0.39f, 0.35f));
     WeatherFog->SetVolumetricFog(true);
     WeatherFog->SetVisibility(false, true);
 
@@ -437,13 +438,16 @@ float AProceduralIsland::HeightAt(float X, float Y) const
     {
         const float ReliefScale = GetThemeDefinition(Theme).TerrainRelief;
         const float Interior = FMath::Clamp((1.f - Edge) * 3.2f, 0.f, 1.f);
-        const float BroadRoll = 115.f * FMath::Sin(X / (Radius * 0.28f) + Seed * 0.013f)
-            * FMath::Cos(Y / (Radius * 0.31f) - Seed * 0.017f);
-        const float LowHillA = 175.f * FMath::Exp(-(FMath::Square((X + Radius * 0.24f) / (Radius * 0.33f))
-            + FMath::Square((Y - Radius * 0.18f) / (Radius * 0.30f))));
-        const float LowHillB = 130.f * FMath::Exp(-(FMath::Square((X - Radius * 0.31f) / (Radius * 0.27f))
-            + FMath::Square((Y + Radius * 0.26f) / (Radius * 0.34f))));
-        return 92.f + (BroadRoll + LowHillA + LowHillB + SeedNoise(X, Y, Seed + 1733) * 55.f)
+        const float BroadRoll = 165.f * FMath::Sin(X / (Radius * 0.22f) + Seed * 0.013f)
+            * FMath::Cos(Y / (Radius * 0.27f) - Seed * 0.017f);
+        const float HighHill = 610.f * FMath::Exp(-(FMath::Square((X + Radius * 0.27f) / (Radius * 0.20f))
+            + FMath::Square((Y - Radius * 0.20f) / (Radius * 0.24f))));
+        const float LongRidge = 390.f * FMath::Exp(-(FMath::Square((X - Radius * 0.24f) / (Radius * 0.13f))
+            + FMath::Square((Y + Radius * 0.08f) / (Radius * 0.48f))));
+        const float Valley = -245.f * FMath::Exp(-(FMath::Square((X + Radius * 0.02f) / (Radius * 0.24f))
+            + FMath::Square((Y + Radius * 0.30f) / (Radius * 0.18f))));
+        const float RollingNoise = SeedNoise(X, Y, Seed + 1733) * 105.f;
+        return 105.f + (BroadRoll + HighHill + LongRidge + Valley + RollingNoise)
             * Interior * ReliefScale;
     }
     if (Theme == EIslandTheme::JungleRuins)
@@ -799,7 +803,19 @@ void AProceduralIsland::BuildForestDecorations()
             if (Z < 65.f || NormalizedIslandDistance(X,Y) > 0.89f || SlopeAt(X,Y) > MaxSlope
                 || (bAvoidOpenings && IsForestOpening(X,Y,0.f)) || !IsClearOfDecorations(X,Y,Spacing)) continue;
             const float S = Stream.FRandRange(ScaleRange.X, ScaleRange.Y);
-            const FRotator Rotation(0.f, Stream.FRandRange(0.f,360.f), 0.f);
+            const float Yaw = Stream.FRandRange(0.f,360.f);
+            FRotator Rotation(0.f, Yaw, 0.f);
+            // Trees remain upright; low ground props follow the local slope so they do not float or cut across it.
+            if (!bTree && AssetIndex != HollowStump)
+            {
+                constexpr float NormalStep = 120.f;
+                const FVector SurfaceNormal(
+                    HeightAt(X - NormalStep, Y) - HeightAt(X + NormalStep, Y),
+                    HeightAt(X, Y - NormalStep) - HeightAt(X, Y + NormalStep),
+                    NormalStep * 2.f);
+                Rotation = FRotationMatrix::MakeFromZ(SurfaceNormal.GetSafeNormal()).Rotator();
+                Rotation.Yaw += Yaw;
+            }
             Component->AddInstance(FTransform(Rotation, FVector(X,Y,Z), FVector(S)));
             if (bTree)
             {
