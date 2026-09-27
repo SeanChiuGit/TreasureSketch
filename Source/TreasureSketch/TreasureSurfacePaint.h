@@ -26,7 +26,7 @@ public:
     virtual void BeginPlay() override;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     bool AddStamp(const FHitResult& Hit);
-    static constexpr int32 MaxStamps = 600;
+    static constexpr int32 MaxStamps = 15;
 
 private:
     UPROPERTY() TObjectPtr<UProceduralMeshComponent> PaintMesh;

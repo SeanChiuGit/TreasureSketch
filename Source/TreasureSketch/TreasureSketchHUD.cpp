@@ -1,4 +1,5 @@
 #include "TreasureSketchHUD.h"
+#include "TreasureSurfacePaint.h"
 
 #include "TreasureSketchGameState.h"
 #include "TreasureSketchPlayerController.h"
@@ -322,7 +323,7 @@ void ATreasureSketchHUD::DrawHUD()
     {
         DrawLine(Canvas->SizeX * 0.5f - 7.f, Canvas->SizeY * 0.5f, Canvas->SizeX * 0.5f + 7.f, Canvas->SizeY * 0.5f, FLinearColor(0.1f, 0.6f, 1.f), 2.f);
         DrawLine(Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f - 7.f, Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f + 7.f, FLinearColor(0.1f, 0.6f, 1.f), 2.f);
-        DrawText(TEXT("实验喷漆：转动视角瞄准中心，按住右键喷漆 | M画图"),
+        DrawText(FString::Printf(TEXT("实验喷漆：按住右键喷漆 | M画图 | 每局最多%d个色点"), ATreasureSurfacePaint::MaxStamps),
             FLinearColor(0.1f, 0.6f, 1.f), 35.f, 86.f, GEngine->GetSmallFont(), 0.9f);
     }
     const int32 SecondsRemaining = GS->GetSecondsRemaining();
