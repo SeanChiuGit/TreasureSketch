@@ -2,6 +2,7 @@
 
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
+#include "Engine/ExponentialHeightFog.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
@@ -92,17 +93,6 @@ AProceduralIsland::AProceduralIsland()
     IslandMesh->bUseComplexAsSimpleCollision = true;
     WaterMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("WaterMesh"));
     WaterMesh->SetupAttachment(RootComponent);
-
-    WeatherFog = CreateDefaultSubobject<UExponentialHeightFogComponent>(TEXT("WeatherFog"));
-    WeatherFog->SetupAttachment(RootComponent);
-    // Intentionally strong test preset: nearby silhouettes stay readable while distant landmarks vanish.
-    WeatherFog->SetFogDensity(0.125f);
-    WeatherFog->SetFogHeightFalloff(0.075f);
-    WeatherFog->SetFogMaxOpacity(0.98f);
-    WeatherFog->SetStartDistance(0.f);
-    WeatherFog->SetFogInscatteringColor(FLinearColor(0.32f, 0.39f, 0.35f));
-    WeatherFog->SetVolumetricFog(true);
-    WeatherFog->SetVisibility(false, true);
 
     PalmInstances = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("PalmInstances"));
     PalmInstances->SetupAttachment(RootComponent);
@@ -228,17 +218,67 @@ void AProceduralIsland::ConfigureThemeParameters()
     CellSize = Definition.CellSize;
 }
 
+void AProceduralIsland::BeginPlay()
+{
+    Super::BeginPlay();
+    CreateRuntimeForestFog();
+}
+
+void AProceduralIsland::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    if (WeatherFogActor)
+    {
+        WeatherFogActor->Destroy();
+        WeatherFogActor = nullptr;
+    }
+    Super::EndPlay(EndPlayReason);
+}
+
+void AProceduralIsland::CreateRuntimeForestFog()
+{
+    if (Theme != EIslandTheme::MistForest || WeatherFogActor || !GetWorld()) return;
+
+    // A world fog actor is used deliberately. A fog component nested inside the procedural
+    // island was reporting visible but was not consistently registered in the renderer.
+    FActorSpawnParameters SpawnParameters;
+    SpawnParameters.Owner = this;
+    SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    WeatherFogActor = GetWorld()->SpawnActor<AExponentialHeightFog>(
+        AExponentialHeightFog::StaticClass(), GetActorLocation() + FVector(0.f, 0.f, 900.f),
+        FRotator::ZeroRotator, SpawnParameters);
+    UExponentialHeightFogComponent* Fog = WeatherFogActor ? WeatherFogActor->GetComponent() : nullptr;
+    if (!Fog) return;
+
+    Fog->SetFogDensity(0.20f);
+    Fog->SetFogHeightFalloff(0.10f);
+    Fog->SetFogMaxOpacity(1.0f);
+    Fog->SetStartDistance(0.f);
+    Fog->SetEndDistance(30000.f);
+    Fog->SetFogInscatteringColor(FLinearColor(0.30f, 0.36f, 0.33f));
+    Fog->SetVolumetricFog(true);
+    Fog->SetVolumetricFogExtinctionScale(8.0f);
+    Fog->SetVolumetricFogDistance(30000.f);
+    Fog->SetVisibility(true, true);
+    Fog->MarkRenderStateDirty();
+
+    UE_LOG(LogTemp, Warning, TEXT("TREASURE_FOREST_FOG Actor=%s Registered=%s Visible=%s Density=0.20 Extinction=8.0 Height=%.0f"),
+        *GetNameSafe(WeatherFogActor), Fog->IsRegistered() ? TEXT("YES") : TEXT("NO"),
+        Fog->IsVisible() ? TEXT("YES") : TEXT("NO"), Fog->GetComponentLocation().Z);
+}
+
 bool AProceduralIsland::ToggleDebugFog()
 {
-    if (!WeatherFog) return false;
-    const bool bEnable = !WeatherFog->IsVisible();
-    WeatherFog->SetVisibility(bEnable, true);
+    if (!WeatherFogActor) CreateRuntimeForestFog();
+    UExponentialHeightFogComponent* Fog = WeatherFogActor ? WeatherFogActor->GetComponent() : nullptr;
+    if (!Fog) return false;
+    const bool bEnable = !Fog->IsVisible();
+    Fog->SetVisibility(bEnable, true);
     return bEnable;
 }
 
 bool AProceduralIsland::IsWeatherFogEnabled() const
 {
-    return WeatherFog && WeatherFog->IsVisible();
+    return WeatherFogActor && WeatherFogActor->GetComponent() && WeatherFogActor->GetComponent()->IsVisible();
 }
 
 void AProceduralIsland::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -273,7 +313,6 @@ FString AProceduralIsland::GetThemeName() const
 void AProceduralIsland::OnRep_Seed()
 {
     ConfigureThemeParameters();
-    WeatherFog->SetVisibility(Theme == EIslandTheme::MistForest, true);
     BuildIsland();
     BuildWater();
     BuildDecorations();
@@ -283,7 +322,6 @@ void AProceduralIsland::OnConstruction(const FTransform& Transform)
 {
     Super::OnConstruction(Transform);
     ConfigureThemeParameters();
-    WeatherFog->SetVisibility(Theme == EIslandTheme::MistForest, true);
     BuildIsland();
     BuildWater();
     BuildDecorations();

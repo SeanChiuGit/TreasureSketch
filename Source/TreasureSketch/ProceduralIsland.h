@@ -6,7 +6,7 @@
 
 class UProceduralMeshComponent;
 class UHierarchicalInstancedStaticMeshComponent;
-class UExponentialHeightFogComponent;
+class AExponentialHeightFog;
 
 UENUM(BlueprintType)
 enum class EIslandTheme : uint8
@@ -23,6 +23,8 @@ class TREASURESKETCH_API AProceduralIsland : public AActor
 
 public:
     AProceduralIsland();
+    virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void OnConstruction(const FTransform& Transform) override;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -55,8 +57,8 @@ private:
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UProceduralMeshComponent> WaterMesh;
 
-    UPROPERTY(VisibleAnywhere, Category="Island|Weather")
-    TObjectPtr<UExponentialHeightFogComponent> WeatherFog;
+    UPROPERTY(Transient)
+    TObjectPtr<AExponentialHeightFog> WeatherFogActor;
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> PalmInstances;
@@ -108,6 +110,7 @@ private:
     void BuildIsland();
     void BuildWater();
     void BuildDecorations();
+    void CreateRuntimeForestFog();
     void BuildLandmarks(FRandomStream& Stream);
     void BuildJungleDecorations();
     void BuildForestDecorations();
