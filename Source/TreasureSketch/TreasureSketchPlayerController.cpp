@@ -165,11 +165,12 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
         && IsLocalScout() && !HasSubmittedSketch() && CursorGS->Phase == ETreasureRoundPhase::ScoutDrawing && !bMapOpen;
     SetSprayCursorMode(bCanSpray);
     UpdateReplayInput();
+    UpdateWaitingSketchInput();
     if (IsScoutSpectating() && WasInputKeyJustPressed(EKeys::Q)) ServerCycleSpectatedHunter();
     UpdateSpectatorCamera(DeltaTime);
     ApplyPhaseInputRules();
     ApplyKeyboardMovementFallback();
-    if (bMapOpen && !IsLocalScout())
+    if ((bMapOpen || IsHunterWaiting()) && !IsLocalScout())
     {
         if (WasInputKeyJustPressed(EKeys::Left)) CycleSketchPage(-1);
         if (WasInputKeyJustPressed(EKeys::Right)) CycleSketchPage(1);
@@ -256,6 +257,8 @@ void ATreasureSketchPlayerController::ServerAppendDrawing_Implementation(int32 R
             || Point.X < 0.f || Point.X > 1.f || Point.Y < 0.f || Point.Y > 1.f) return;
     if (StrokeIndex == ServerDrawing.Num()) ServerDrawing.AddDefaulted();
     ServerDrawing[StrokeIndex].Points.Append(Points);
+    if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
+        GM->BroadcastSketchDelta(GetPlayerState<ATreasureSketchPlayerState>(), StrokeIndex, Points);
 }
 
 void ATreasureSketchPlayerController::ServerClearDrawing_Implementation(int32 RoundSerial)
@@ -265,6 +268,8 @@ void ATreasureSketchPlayerController::ServerClearDrawing_Implementation(int32 Ro
         || GS->RoundSerial != RoundSerial || !IsLocalScout() || HasSubmittedSketch()) return;
     ServerDrawing.Reset();
     ServerDrawingRoundSerial = RoundSerial;
+    if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
+        GM->BroadcastSketchClear(GetPlayerState<ATreasureSketchPlayerState>());
 }
 
 bool ATreasureSketchPlayerController::IsFrontEndVisible() const
@@ -442,6 +447,24 @@ bool ATreasureSketchPlayerController::IsHunterWaiting() const
     return PS && GS && PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->Phase == ETreasureRoundPhase::ScoutDrawing;
 }
 
+void ATreasureSketchPlayerController::UpdateWaitingSketchInput()
+{
+    if (!IsLocalController()) return;
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    const bool bWatching = GS && GS->bGameStarted && IsHunterWaiting();
+    if (bWatching == bWaitingSketchInputActive) return;
+    bWaitingSketchInputActive = bWatching;
+    bShowMouseCursor = bWatching;
+    if (bWatching)
+    {
+        FInputModeGameAndUI WaitingInput;
+        WaitingInput.SetHideCursorDuringCapture(false);
+        WaitingInput.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        SetInputMode(WaitingInput);
+    }
+    else SetInputMode(FInputModeGameOnly());
+}
+
 bool ATreasureSketchPlayerController::HasSubmittedSketch() const
 {
     const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
@@ -451,8 +474,9 @@ bool ATreasureSketchPlayerController::HasSubmittedSketch() const
 void ATreasureSketchPlayerController::CycleSketchPage(int32 Direction)
 {
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
-    if (!IsLocalController() || !bMapOpen || IsLocalScout() || SketchPages.Num() < 2
-        || !GS || GS->Phase != ETreasureRoundPhase::HunterSearching || (Direction != -1 && Direction != 1)) return;
+    if (!IsLocalController() || (!bMapOpen && !IsHunterWaiting()) || IsLocalScout() || SketchPages.Num() < 2
+        || !GS || (GS->Phase != ETreasureRoundPhase::ScoutDrawing && GS->Phase != ETreasureRoundPhase::HunterSearching)
+        || (Direction != -1 && Direction != 1)) return;
     ActiveSketchPage = (ActiveSketchPage + Direction + SketchPages.Num()) % SketchPages.Num();
 }
 
@@ -721,6 +745,7 @@ void ATreasureSketchPlayerController::ServerSubmitSketch_Implementation(int32 Ro
 void ATreasureSketchPlayerController::ClientReceiveSketch_Implementation(const TArray<FSketchStroke>& CompletedStrokes)
 {
     SketchPages.Reset();
+    bLiveSketchActive = false;
     ActiveSketchPage = 0;
     Strokes = CompletedStrokes;
     PendingDrawingPoints.Reset();
@@ -735,12 +760,47 @@ void ATreasureSketchPlayerController::ClientReceiveSketch_Implementation(const T
 void ATreasureSketchPlayerController::ClientReceiveSketchPages_Implementation(int32 RoundSerial, const TArray<FSketchPage>& Pages)
 {
     if (RoundSerial < CurrentSketchRoundSerial) return;
+    const int32 PreviousPage = ActiveSketchPage;
     CurrentSketchRoundSerial = RoundSerial;
     // Keep the single-paper reset/input behavior, then retain every independent page.
     ClientReceiveSketch_Implementation(TArray<FSketchStroke>());
     SketchPages = Pages;
-    ActiveSketchPage = 0;
+    ActiveSketchPage = FMath::Clamp(PreviousPage, 0, FMath::Max(0, SketchPages.Num() - 1));
     StatusMessage = FString::Printf(TEXT("收到 %d 张地图！M 查看，左右方向键切换图纸，E 挖掘。"), Pages.Num());
+}
+
+void ATreasureSketchPlayerController::ClientInitializeLiveSketch_Implementation(int32 RoundSerial, const TArray<FSketchPage>& Pages)
+{
+    if (RoundSerial < CurrentSketchRoundSerial) return;
+    CurrentSketchRoundSerial = RoundSerial;
+    SketchPages = Pages;
+    ActiveSketchPage = 0;
+    bLiveSketchActive = true;
+}
+
+void ATreasureSketchPlayerController::ClientAppendLiveSketch_Implementation(
+    int32 RoundSerial, int32 MapmakerId, int32 StrokeIndex, const TArray<FVector2D>& Points)
+{
+    if (!bLiveSketchActive || RoundSerial != CurrentSketchRoundSerial || StrokeIndex < 0) return;
+    FSketchPage* Page = SketchPages.FindByPredicate([MapmakerId](const FSketchPage& Candidate)
+        { return Candidate.MapmakerId == MapmakerId; });
+    if (!Page || StrokeIndex > Page->Strokes.Num()) return;
+    if (StrokeIndex == Page->Strokes.Num()) Page->Strokes.AddDefaulted();
+    Page->Strokes[StrokeIndex].Points.Append(Points);
+}
+
+void ATreasureSketchPlayerController::ClientClearLiveSketch_Implementation(int32 RoundSerial, int32 MapmakerId)
+{
+    if (!bLiveSketchActive || RoundSerial != CurrentSketchRoundSerial) return;
+    if (FSketchPage* Page = SketchPages.FindByPredicate([MapmakerId](const FSketchPage& Candidate)
+        { return Candidate.MapmakerId == MapmakerId; })) Page->Strokes.Reset();
+}
+
+void ATreasureSketchPlayerController::ClientReplaceLiveSketch_Implementation(int32 RoundSerial, const FSketchPage& Page)
+{
+    if (!bLiveSketchActive || RoundSerial != CurrentSketchRoundSerial) return;
+    if (FSketchPage* Existing = SketchPages.FindByPredicate([&Page](const FSketchPage& Candidate)
+        { return Candidate.MapmakerId == Page.MapmakerId; })) *Existing = Page;
 }
 
 void ATreasureSketchPlayerController::Dig()
@@ -814,12 +874,14 @@ void ATreasureSketchPlayerController::ClientStartNewRound_Implementation(int32 N
     SetLocalTreasureMarkerVisible(false);
     Strokes.Reset();
     SketchPages.Reset();
+    bLiveSketchActive = false;
     ActiveSketchPage = 0;
     bLocalSketchSubmitted = false;
     CurrentSketchRoundSerial = NewRoundSerial;
     PendingDrawingPoints.Reset();
     NextDrawingSyncTime = 0.f;
     bMapOpen = false;
+    bWaitingSketchInputActive = false;
     bWasDrawing = false;
     StatusMessage = TEXT("新的一局开始了！");
     StatusUntil = GetWorld()->GetTimeSeconds() + 4.f;

@@ -407,34 +407,19 @@ void ATreasureSketchHUD::DrawHUD()
     if (!PC->GetStatusMessage().IsEmpty())
         DrawText(PC->GetStatusMessage(), FLinearColor::Yellow, 35.f, Canvas->SizeY - 70.f, GEngine->GetMediumFont(), 1.f);
 
-    if (PC->IsHunterWaiting())
-    {
+    const bool bWatchingLiveSketch = PC->IsHunterWaiting();
+    if (!PC->IsMapOpen() && !bWatchingLiveSketch) return;
+    if (bWatchingLiveSketch)
         DrawRect(FLinearColor(0.01f, 0.015f, 0.025f, 0.96f), 0.f, 0.f, Canvas->SizeX, Canvas->SizeY);
-        DrawText(GS->RoomMode == ETreasureRoomMode::OneExplorer ? TEXT("地图师们正在探索并绘制地图……") : TEXT("侦察者正在探索并绘制地图……"), FLinearColor::White,
-            Canvas->SizeX * 0.5f - 230.f, Canvas->SizeY * 0.48f, GEngine->GetLargeFont(), 1.f);
-        DrawText(TEXT("地图交付后，你将登岛寻宝"), FLinearColor(0.7f,0.8f,0.9f),
-            Canvas->SizeX * 0.5f - 190.f, Canvas->SizeY * 0.55f, GEngine->GetMediumFont(), 1.f);
-        const FString WaitingTimer = FString::Printf(TEXT("绘图剩余 %s · 到时自动交图"), *TimerText);
-        float WaitingWidth = 0.f, WaitingHeight = 0.f;
-        GetTextSize(WaitingTimer, WaitingWidth, WaitingHeight, GEngine->GetMediumFont(), 1.f);
-        DrawText(WaitingTimer, TimerColor, (Canvas->SizeX - WaitingWidth) * 0.5f,
-            Canvas->SizeY * 0.62f, GEngine->GetMediumFont(), 1.f);
-        if (GS->RoomMode == ETreasureRoomMode::OneExplorer)
-        {
-            const FString Progress = FString::Printf(TEXT("已交图 %d / %d · 每位地图师各有一张图纸"), Submitted, Mapmakers);
-            GetTextSize(Progress, WaitingWidth, WaitingHeight, GEngine->GetSmallFont(), 1.f);
-            DrawText(Progress, FLinearColor::White, (Canvas->SizeX - WaitingWidth) * 0.5f,
-                Canvas->SizeY * 0.69f, GEngine->GetSmallFont(), 1.f);
-        }
-        return;
-    }
-
-    if (!PC->IsMapOpen()) return;
     const FVector2D Min = PC->GetPaperMin();
     const FVector2D Size = PC->GetPaperSize();
     DrawRect(FLinearColor(0.96f, 0.94f, 0.86f, 0.98f), Min.X, Min.Y, Size.X, Size.Y);
-    DrawText(bScout ? TEXT("空白纸：请画岛屿轮廓、地形地标和藏宝点") : TEXT("侦察者留下的手绘地图"),
+    DrawText(bScout ? TEXT("空白纸：请画岛屿轮廓、地形地标和藏宝点")
+        : bWatchingLiveSketch ? TEXT("地图师的实时画纸 · 只能观看") : TEXT("地图师留下的手绘地图"),
         FLinearColor::Black, Min.X + 18.f, Min.Y + 14.f, GEngine->GetSmallFont(), 1.f);
+    if (bWatchingLiveSketch && PC->GetSketchPageCount() == 0)
+        DrawText(TEXT("正在接收地图师画纸……"), FLinearColor(0.30f, 0.33f, 0.35f),
+            Min.X + 18.f, Min.Y + 52.f, GEngine->GetMediumFont(), 1.f);
 
     for (const FSketchStroke& Stroke : PC->GetStrokes())
     {
@@ -449,8 +434,11 @@ void ATreasureSketchHUD::DrawHUD()
     {
         const float FooterY = Min.Y + Size.Y + 4.f;
         DrawRect(FLinearColor(0.96f, 0.94f, 0.86f), Min.X, FooterY, Size.X, 28.f);
-        const FString PageLabel = FString::Printf(TEXT("图纸 %d / %d · %s"), PC->GetActiveSketchPage() + 1,
-            PC->GetSketchPageCount(), *PC->GetActiveMapmakerName());
+        const FString PageLabel = bWatchingLiveSketch
+            ? FString::Printf(TEXT("实时图纸 %d / %d · %s · 已交图 %d / %d"), PC->GetActiveSketchPage() + 1,
+                PC->GetSketchPageCount(), *PC->GetActiveMapmakerName(), Submitted, Mapmakers)
+            : FString::Printf(TEXT("图纸 %d / %d · %s"), PC->GetActiveSketchPage() + 1,
+                PC->GetSketchPageCount(), *PC->GetActiveMapmakerName());
         DrawText(PageLabel, FLinearColor::Black, Min.X + 18.f, FooterY + 7.f, GEngine->GetSmallFont(), 1.f);
         if (PC->GetSketchPageCount() > 1)
             for (int32 I = 0; I < 2; ++I)
@@ -461,6 +449,12 @@ void ATreasureSketchHUD::DrawHUD()
                 DrawText(I == 0 ? TEXT("上一张 ←") : TEXT("下一张 →"), FLinearColor::White, ButtonMin.X + 10.f, ButtonMin.Y + 7.f, GEngine->GetSmallFont(), 1.f);
                 AddHitBox(ButtonMin, FVector2D(110.f, 28.f), Name, true, 10);
             }
+    }
+    if (bWatchingLiveSketch)
+    {
+        DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.78f), Canvas->SizeX - TimerWidth - 195.f, 18.f, TimerWidth + 173.f, 42.f);
+        DrawText(FString::Printf(TEXT("绘图剩余 %s · 到时自动交图"), *TimerText), TimerColor,
+            Canvas->SizeX - TimerWidth - 185.f, 28.f, GEngine->GetSmallFont(), 1.f);
     }
 }
 

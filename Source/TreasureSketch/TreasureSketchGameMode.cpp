@@ -313,6 +313,12 @@ void ATreasureSketchGameMode::StartHostedRound()
         GS->bGameStarted = true;
         GS->ForceNetUpdate();
         GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + GS->DrawingDurationSeconds;
+        const TArray<FSketchPage> LivePages = CollectSketchPages();
+        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+            if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
+                if (const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
+                    PS && PS->PlayerRole == ETreasurePlayerRole::Hunter)
+                    PC->ClientInitializeLiveSketch(GS->RoundSerial, LivePages);
         UE_LOG(LogTemp, Display, TEXT("TREASURE_ONLINE_START players=%d grid=%d drawing=%d searching=%d"),
             GS->PlayerArray.Num(), Island->GridSize, GS->DrawingDurationSeconds, GS->SearchingDurationSeconds);
     }
@@ -523,6 +529,7 @@ TArray<FSketchPage> ATreasureSketchGameMode::CollectSketchPages() const
         if (const ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State); PS && PS->PlayerRole == ETreasurePlayerRole::Scout)
         {
             FSketchPage Page;
+            Page.MapmakerId = PS->GetPlayerId();
             if (const FSketchPage* Submitted = SubmittedSketches.Find(PS->GetPlayerId())) Page = *Submitted;
             else
             {
@@ -542,15 +549,46 @@ void ATreasureSketchGameMode::SubmitPlayerSketch(ATreasureSketchPlayerState* Sco
     if (!HasAuthority() || !GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing
         || !Scout || !GS->PlayerArray.Contains(Scout) || Scout->PlayerRole != ETreasurePlayerRole::Scout || Scout->bSketchSubmitted) return;
     FSketchPage Page;
+    Page.MapmakerId = Scout->GetPlayerId();
     Page.MapmakerName = Scout->GetPlayerName();
     Page.Strokes = SubmittedStrokes;
     SubmittedSketches.Add(Scout->GetPlayerId(), MoveTemp(Page));
     Scout->bSketchSubmitted = true;
     Scout->ForceNetUpdate();
+    if (const FSketchPage* Submitted = SubmittedSketches.Find(Scout->GetPlayerId()))
+        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+            if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
+                if (const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
+                    PS && PS->PlayerRole == ETreasurePlayerRole::Hunter)
+                    PC->ClientReplaceLiveSketch(GS->RoundSerial, *Submitted);
     for (APlayerState* State : GS->PlayerArray)
         if (const ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State))
             if (PS->PlayerRole == ETreasurePlayerRole::Scout && !PS->bSketchSubmitted) return;
     BeginHunterSearching(CollectSketchPages());
+}
+
+void ATreasureSketchGameMode::BroadcastSketchDelta(ATreasureSketchPlayerState* Scout, int32 StrokeIndex, const TArray<FVector2D>& Points)
+{
+    const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing || !Scout
+        || Scout->PlayerRole != ETreasurePlayerRole::Scout || Scout->bSketchSubmitted) return;
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+        if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
+            if (const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
+                PS && PS->PlayerRole == ETreasurePlayerRole::Hunter)
+                PC->ClientAppendLiveSketch(GS->RoundSerial, Scout->GetPlayerId(), StrokeIndex, Points);
+}
+
+void ATreasureSketchGameMode::BroadcastSketchClear(ATreasureSketchPlayerState* Scout)
+{
+    const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing || !Scout
+        || Scout->PlayerRole != ETreasurePlayerRole::Scout || Scout->bSketchSubmitted) return;
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+        if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
+            if (const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
+                PS && PS->PlayerRole == ETreasurePlayerRole::Hunter)
+                PC->ClientClearLiveSketch(GS->RoundSerial, Scout->GetPlayerId());
 }
 
 void ATreasureSketchGameMode::BeginHunterSearching(const TArray<FSketchPage>& Pages)

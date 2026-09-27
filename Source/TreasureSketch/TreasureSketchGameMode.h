@@ -27,6 +27,8 @@ public:
 
     void HandoffToHunter(const TArray<struct FSketchStroke>& SubmittedStrokes);
     void SubmitPlayerSketch(ATreasureSketchPlayerState* Scout, const TArray<FSketchStroke>& SubmittedStrokes);
+    void BroadcastSketchDelta(ATreasureSketchPlayerState* Scout, int32 StrokeIndex, const TArray<FVector2D>& Points);
+    void BroadcastSketchClear(ATreasureSketchPlayerState* Scout);
     bool TryDig(const FVector& WorldLocation, float& OutDistance);
     void StartNewRound(bool bSwapRoles = false);
     void StartHostedRound();

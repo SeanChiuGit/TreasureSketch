@@ -18,6 +18,9 @@ struct FSketchPage
     GENERATED_BODY()
 
     UPROPERTY()
+    int32 MapmakerId = 0;
+
+    UPROPERTY()
     FString MapmakerName;
 
     UPROPERTY()

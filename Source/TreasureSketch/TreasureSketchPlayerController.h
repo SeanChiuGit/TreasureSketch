@@ -76,6 +76,18 @@ public:
     void ClientReceiveSketchPages(int32 RoundSerial, const TArray<FSketchPage>& Pages);
 
     UFUNCTION(Client, Reliable)
+    void ClientInitializeLiveSketch(int32 RoundSerial, const TArray<FSketchPage>& Pages);
+
+    UFUNCTION(Client, Reliable)
+    void ClientAppendLiveSketch(int32 RoundSerial, int32 MapmakerId, int32 StrokeIndex, const TArray<FVector2D>& Points);
+
+    UFUNCTION(Client, Reliable)
+    void ClientClearLiveSketch(int32 RoundSerial, int32 MapmakerId);
+
+    UFUNCTION(Client, Reliable)
+    void ClientReplaceLiveSketch(int32 RoundSerial, const FSketchPage& Page);
+
+    UFUNCTION(Client, Reliable)
     void ClientDigResult(bool bFound, float Distance);
 
     UFUNCTION(Client, Reliable)
@@ -117,6 +129,7 @@ private:
     UPROPERTY()
     TArray<FSketchPage> SketchPages;
     int32 ActiveSketchPage = 0;
+    bool bLiveSketchActive = false;
     bool bLocalSketchSubmitted = false;
     int32 CurrentSketchRoundSerial = 0;
 
@@ -151,6 +164,7 @@ private:
     int32 PendingSpectatorRoundSerial = 0;
 
     bool bMapOpen = false;
+    bool bWaitingSketchInputActive = false;
     bool bWasDrawing = false;
     bool bReplayInputActive = false;
     bool bInputLocked = false;
@@ -173,6 +187,7 @@ private:
     void ToggleWeatherFog();
     bool IsPointOnPaper(const FVector2D& Point) const;
     void ApplyPhaseInputRules();
+    void UpdateWaitingSketchInput();
     void ApplyKeyboardMovementFallback();
     void UpdateReplayInput();
     void UpdateSpectatorCamera(float DeltaTime);
