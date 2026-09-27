@@ -84,16 +84,9 @@ def join_export(group, name):
     return result
 
 
-# Massive ancient oak: one unmistakable umbrella silhouette with a hollow at its base.
+# Massive ancient oak: one unmistakable umbrella silhouette with a clean trunk base.
 group = collection("AncientOak")
 cylinder("AncientTrunk", (0, 0, 4.2), 0.85, 8.4, BARK, 12)
-for angle in range(0, 360, 45):
-    radians = math.radians(angle)
-    # High buttress at the trunk, followed by a long low root that visibly sinks into the soil.
-    cube("RaisedButtress", (math.cos(radians) * 0.70, math.sin(radians) * 0.70, 1.05),
-         (1.75, 0.42, 2.10), BARK_MOSS, (0, 0, radians))
-    cube("SpreadingRoot", (math.cos(radians) * 2.05, math.sin(radians) * 2.05, 0.30),
-         (2.25, 0.34, 0.55), BARK, (0, 0, radians))
 for index, (x, y, z, sx, sy) in enumerate((
     (0, 0, 8.2, 3.4, 2.7), (-2.8, 0.2, 7.7, 2.8, 2.2), (2.7, 0.5, 7.8, 2.7, 2.3),
     (-1.1, 2.2, 8.0, 2.7, 2.1), (1.2, -2.1, 7.7, 2.8, 2.0), (0, 0.4, 9.6, 2.7, 2.2))):
