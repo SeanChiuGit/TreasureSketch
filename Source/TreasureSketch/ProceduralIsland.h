@@ -40,7 +40,7 @@ public:
     UPROPERTY(EditAnywhere, ReplicatedUsing=OnRep_Seed, Category="Island")
     float CellSize = 330.f;
 
-    // Multiplier of generated area, not length. All themes share the same 1x extent.
+    // Multiplier of generated area, not length. Each theme defines its own 1x extent.
     UPROPERTY(EditAnywhere, ReplicatedUsing=OnRep_Seed, Category="Island", meta=(ClampMin="0.5", ClampMax="5", DisplayName="Map Area Multiplier"))
     float MapScale = 1.f;
 

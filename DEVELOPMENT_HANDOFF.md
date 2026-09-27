@@ -85,3 +85,10 @@
 - 复盘沿用已生成岛屿，不重置种子、地形或图纸。地图师角色重新显示并可走动；所有人都收到最终图纸及宝藏位置，本地显示红色 X，碰撞范围仍遵守房间设置。M 打开只读图纸，多图纸可翻页。
 - 复盘不恢复寻宝计时、挖掘或绘图；离开房间、新局和回大厅仍走原清理流程。此功能未加入现有 v0.8.0 Release；交互测试仍由用户负责。
 - UE 5.6 TreasureSketchEditor Win64 Development 编译成功；无窗口 `TreasureSketch.RoomSettings.MultiMapmaker` 与 `TreasureSketch.RoomSettings.RoundFlow` 测试通过，日志在 `Saved/CodexRelease/review-tests.log`。用户负责实际窗口与多人交互测试。
+
+## 森林 1 倍尺寸调整
+
+- 用户要求森林一倍大小缩小为 75%。按地图边长理解，森林 1 倍边长从 125.4 米改为 94.05 米；沙滩与遗迹保持 125.4 米。面积倍率仍按平方根缩放边长。
+- 森林资源基础目标数量按新面积相对原始 246 米森林的比例同步缩小，保留原密度；实际摆放数量仍受坡度、间距及尝试次数影响。
+- RoomSettings.RoundFlow 的随机主题尺寸断言已改为分别校验沙滩/森林的基准边长，另验证森林 1 倍和 2 倍面积设置。
+- UE 5.6 TreasureSketchEditor Win64 Development 编译成功；无窗口 `TreasureSketch.RoomSettings.MultiMapmaker` 和 `TreasureSketch.RoomSettings.RoundFlow` 测试均通过，日志位于 `Saved/CodexRelease/forest-75-tests.log`。用户负责游玩观感测试。

@@ -33,9 +33,9 @@ const FIslandThemeDefinition ThemeTable[] = {
     // Add future themes here first; their generator can then branch on the enum below.
     { EIslandTheme::PirateBeach, TEXT("PirateBeach"), 60, true,  1.00f, 1.00f, 1.00f, 39, 330.f, 1.f },
     { EIslandTheme::JungleRuins, TEXT("JungleRuins"), 0, false, 1.45f, 2.20f, 0.38f, 39, 330.f, 1.f },
-    // Same starting extent as the beach; preserve the density of the original 246m forest.
-    { EIslandTheme::MistForest, TEXT("MistForest"), 50, true, 3.60f, 3.80f, 1.00f, 39, 330.f,
-        (12540.f * 12540.f) / (24600.f * 24600.f) },
+    // Forest 1x has 75% of the former 125.4m side length; preserve original forest density.
+    { EIslandTheme::MistForest, TEXT("MistForest"), 50, true, 3.60f, 3.80f, 1.00f, 39, 247.5f,
+        (9405.f * 9405.f) / (24600.f * 24600.f) },
 };
 
 const FIslandThemeDefinition& GetThemeDefinition(EIslandTheme Theme)

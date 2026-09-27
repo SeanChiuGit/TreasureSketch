@@ -83,7 +83,7 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
         if (ActiveIsland)
         {
             const int32 BaseCells = 38;
-            const float BaseExtent = 12540.f;
+            const float BaseExtent = ActiveIsland->Theme == EIslandTheme::MistForest ? 9405.f : 12540.f;
             TestEqual(TEXT("Terrain uses selected size"), ActiveIsland->GridSize, FMath::RoundToInt(BaseCells * FMath::Sqrt(Scales[I])) + 1);
             TestTrue(TEXT("Terrain extent matches exact multiplier"), FMath::IsNearlyEqual(
                 (ActiveIsland->GridSize - 1) * ActiveIsland->CellSize, BaseExtent * FMath::Sqrt(Scales[I]), 0.01f));
@@ -119,6 +119,18 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Map preview timer remains unchanged"), GS->GetSecondsRemaining(), 3600);
     for (TActorIterator<AProceduralIsland> It(World); It; ++It)
         if (!It->IsActorBeingDestroyed()) TestEqual(TEXT("Map preview size remains unchanged"), It->GridSize, 39);
+    GM->StartSoloTest(1);
+    for (TActorIterator<AProceduralIsland> It(World); It; ++It)
+        if (!It->IsActorBeingDestroyed() && It->Theme == EIslandTheme::MistForest)
+        {
+            TestEqual(TEXT("Forest 1x keeps the standard grid"), It->GridSize, 39);
+            TestTrue(TEXT("Forest 1x side length is 75 percent of its former size"), FMath::IsNearlyEqual(
+                (It->GridSize - 1) * It->CellSize, 12540.f * 0.75f, 0.01f));
+            It->MapScale = 2.f;
+            It->ConfigureThemeParameters();
+            TestTrue(TEXT("Forest room area multiplier scales from the new base"), FMath::IsNearlyEqual(
+                (It->GridSize - 1) * It->CellSize, 12540.f * 0.75f * FMath::Sqrt(2.f), 0.01f));
+        }
     World->DestroyWorld(false);
     return true;
 }
