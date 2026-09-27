@@ -95,7 +95,7 @@ void ATreasureSketchHUD::DrawHUD()
             DrawRect(GS->bSurfacePaintEnabled ? FLinearColor(0.12f, 0.38f, 0.60f) : FLinearColor(0.09f, 0.17f, 0.18f), SeedX, SeedY + 280.f, SeedW, 48.f);
             DrawText(GS->bSurfacePaintEnabled ? TEXT("实验喷漆：开启（点击关闭）") : TEXT("实验喷漆：关闭（点击开启）"), FLinearColor::White, SeedX + 10.f, SeedY + 295.f, GEngine->GetSmallFont(), 0.9f);
             AddHitBox(FVector2D(SeedX, SeedY + 280.f), FVector2D(SeedW, 48.f), TEXT("ToggleSurfacePaint"), true, 10);
-            DrawText(TEXT("完整流程测试：F切换喷漆，右键沿鼠标喷涂"), FLinearColor::White, SeedX, SeedY + 345.f, GEngine->GetSmallFont(), 0.85f);
+            DrawText(TEXT("完整流程测试：转动视角瞄准，按住右键喷漆"), FLinearColor::White, SeedX, SeedY + 345.f, GEngine->GetSmallFont(), 0.85f);
             if (!SeedText.IsEmpty() && PC->GetTestSeed() == 0)
                 DrawText(TEXT("请输入1至2147483647，或清空以随机"), FLinearColor(1.f, 0.4f, 0.3f),
                     SeedX, SeedY + 232.f, GEngine->GetSmallFont(), 0.9f);
@@ -320,9 +320,9 @@ void ATreasureSketchHUD::DrawHUD()
 
     if (GS->bSurfacePaintEnabled && bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing && !PC->IsMapOpen())
     {
-        DrawText(PC->IsSprayCursorMode()
-            ? TEXT("喷漆中：鼠标指向哪里就喷哪里 | 按住右键喷涂 | F退出转动镜头")
-            : TEXT("实验喷漆：按 F 显示鼠标开始喷漆 | M画图 | 每局最多600个色点"),
+        DrawLine(Canvas->SizeX * 0.5f - 7.f, Canvas->SizeY * 0.5f, Canvas->SizeX * 0.5f + 7.f, Canvas->SizeY * 0.5f, FLinearColor(0.1f, 0.6f, 1.f), 2.f);
+        DrawLine(Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f - 7.f, Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f + 7.f, FLinearColor(0.1f, 0.6f, 1.f), 2.f);
+        DrawText(TEXT("实验喷漆：转动视角瞄准中心，按住右键喷漆 | M画图"),
             FLinearColor(0.1f, 0.6f, 1.f), 35.f, 86.f, GEngine->GetSmallFont(), 0.9f);
     }
     const int32 SecondsRemaining = GS->GetSecondsRemaining();

@@ -11,6 +11,7 @@
 #include "EngineUtils.h"
 #include "InputKeyEventArgs.h"
 #include "Components/PrimitiveComponent.h"
+#include "GameFramework/SpringArmComponent.h"
 
 int32 ATreasureSketchPlayerController::GetTestSeed() const
 {
@@ -111,8 +112,7 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
     const ATreasureSketchGameState* CursorGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     const bool bCanSpray = CursorGS && CursorGS->bGameStarted && CursorGS->bSurfacePaintEnabled
         && IsLocalScout() && CursorGS->Phase == ETreasureRoundPhase::ScoutDrawing && !bMapOpen;
-    if (bSprayCursorMode && !bCanSpray) SetSprayCursorMode(false);
-    if (bCanSpray && WasInputKeyJustPressed(EKeys::F)) SetSprayCursorMode(!bSprayCursorMode);
+    SetSprayCursorMode(bCanSpray);
     UpdateReplayInput();
     if (IsScoutSpectating() && WasInputKeyJustPressed(EKeys::Q)) ServerCycleSpectatedHunter();
     UpdateSpectatorCamera(DeltaTime);
@@ -122,17 +122,13 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
         StatusMessage.Empty();
     const ATreasureSketchGameState* PaintGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (PaintGS && PaintGS->bGameStarted && PaintGS->bSurfacePaintEnabled && IsLocalScout()
-        && PaintGS->Phase == ETreasureRoundPhase::ScoutDrawing && !bMapOpen && bSprayCursorMode
+        && PaintGS->Phase == ETreasureRoundPhase::ScoutDrawing && !bMapOpen
         && IsInputKeyDown(EKeys::RightMouseButton) && GetWorld()->GetTimeSeconds() >= NextSpraySampleTime)
     {
         NextSpraySampleTime = GetWorld()->GetTimeSeconds() + 0.06f;
-        float MouseX = 0.f, MouseY = 0.f;
-        int32 Width = 0, Height = 0;
-        GetViewportSize(Width, Height);
-        FVector Origin, Direction;
-        if (GetMousePosition(MouseX, MouseY) && MouseX >= 0.f && MouseY >= 0.f
-            && MouseX < Width && MouseY < Height && DeprojectMousePositionToWorld(Origin, Direction))
-            ServerSpraySurface(Origin, Direction);
+        FVector Origin; FRotator Rotation;
+        GetPlayerViewPoint(Origin, Rotation);
+        ServerSpraySurface(Origin, Rotation.Vector());
     }
     if (!bMapOpen || !IsLocalScout()) { bWasDrawing = false; return; }
 
@@ -291,7 +287,7 @@ void ATreasureSketchPlayerController::ApplyPhaseInputRules()
         SetIgnoreMoveInput(bShouldLock);
         bInputLocked = bShouldLock;
     }
-    const bool bShouldLockLook = bShouldLock || bSprayCursorMode;
+    const bool bShouldLockLook = bShouldLock;
     if (bLookInputLocked != bShouldLockLook)
     {
         SetIgnoreLookInput(bShouldLockLook);
@@ -465,21 +461,18 @@ void ATreasureSketchPlayerController::ClientUpdateHunterView_Implementation(
 
 void ATreasureSketchPlayerController::SetSprayCursorMode(bool bEnabled)
 {
+    // Retain the existing field and function to avoid a class-layout change.
+    // It now controls an over-shoulder aiming view, not a free mouse cursor.
     if (bSprayCursorMode == bEnabled) return;
     bSprayCursorMode = bEnabled;
-    bShowMouseCursor = bEnabled;
     if (bEnabled)
     {
-        FInputModeGameAndUI SprayInput;
-        SprayInput.SetHideCursorDuringCapture(false);
-        SprayInput.SetLockMouseToViewportBehavior(EMouseLockMode::LockAlways);
-        SetInputMode(SprayInput);
-        int32 Width = 0, Height = 0;
-        GetViewportSize(Width, Height);
-        SetMouseLocation(Width / 2, Height / 2);
+        bShowMouseCursor = false;
+        SetInputMode(FInputModeGameOnly());
     }
-    else SetInputMode(FInputModeGameOnly());
-    ApplyPhaseInputRules();
+    if (GetPawn())
+        if (USpringArmComponent* Boom = GetPawn()->FindComponentByClass<USpringArmComponent>())
+            Boom->SocketOffset = bEnabled ? FVector(0.f, 130.f, 90.f) : FVector::ZeroVector;
 }
 
 void ATreasureSketchPlayerController::ToggleMap()
@@ -562,7 +555,7 @@ void ATreasureSketchPlayerController::ServerSpraySurface_Implementation(FVector_
     NextServerSprayTime = Now + 0.05f;
     const FVector Direction = FVector(ViewDirection).GetSafeNormal();
     if (FVector::DistSquared(ViewOrigin, GetPawn()->GetActorLocation()) > FMath::Square(900.f)
-        || FVector::DotProduct(Direction, GetControlRotation().Vector()) < 0.1f) return;
+        || FVector::DotProduct(Direction, GetControlRotation().Vector()) < 0.7f) return;
     FHitResult Hit;
     FCollisionQueryParams Query(SCENE_QUERY_STAT(SurfacePaintAim), true, GetPawn());
     FCollisionObjectQueryParams PaintObjects;
@@ -571,8 +564,16 @@ void ATreasureSketchPlayerController::ServerSpraySurface_Implementation(FVector_
     // Paint scenery, never players. The water mesh has no collision.
     if (!GetWorld()->LineTraceSingleByObjectType(Hit, ViewOrigin, FVector(ViewOrigin) + Direction * 1800.f,
         PaintObjects, Query)) return;
+    const FVector Target = Hit.ImpactPoint;
+    const FRotator BodyYaw(0.f, GetPawn()->GetActorRotation().Yaw, 0.f);
+    const FVector SprayOrigin = GetPawn()->GetActorLocation() + BodyYaw.Vector() * 45.f
+        + FRotationMatrix(BodyYaw).GetUnitAxis(EAxis::Y) * 40.f + FVector(0.f, 0.f, 40.f);
+    const FVector SprayDirection = (Target - SprayOrigin).GetSafeNormal();
+    if (SprayDirection.IsNearlyZero() || FVector::DistSquared(Target, SprayOrigin) > FMath::Square(1600.f)) return;
+    if (!GetWorld()->LineTraceSingleByObjectType(Hit, SprayOrigin, Target + SprayDirection * 3.f,
+        PaintObjects, Query)) return;
     UPrimitiveComponent* Component = Hit.GetComponent();
-    if (!Component || !Component->IsVisible() || FVector::DistSquared(Hit.ImpactPoint, GetPawn()->GetActorLocation()) > FMath::Square(1600.f)) return;
+    if (!Component || !Component->IsVisible()) return;
     if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) GM->SpraySurface(Hit);
 }
 
