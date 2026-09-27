@@ -126,3 +126,10 @@
 - 复盘默认显示红色 X 宝藏标记及房间允许的判定范围。每位玩家可按 T 本地显示/隐藏；按 M 打开图纸后，右上角另有可点击的“显示/隐藏宝箱标记”按钮。无光标逛岛状态下仅显示 T 操作提示。
 - 切换不改变服务端宝藏位置、结果或其他玩家画面；退出复盘时隐藏标记，再次进入复盘恢复默认显示。
 - UE 5.6 TreasureSketchEditor Win64 Development 编译成功；无窗口 `TreasureSketch.RoomSettings.MultiMapmaker` 和 `TreasureSketch.RoomSettings.RoundFlow` 测试通过，日志位于 `Saved/CodexRelease/review-treasure-toggle-build.log` 与 `Saved/CodexRelease/review-treasure-toggle-tests.log`。交互测试由用户负责。
+
+## 游戏中 Esc 菜单与大厅身份互换
+
+- 绘图、寻宝进行中按 Esc 打开本地菜单：继续游戏、可用时查看地图；只有房主看得到“结束本局，全队返回大厅”。该操作沿用 `ReturnToSetup`，重建预览岛屿并清理图纸、喷漆与观战状态，全队回房间，保留模式、设置和身份；计时不会因打开菜单而暂停。复盘时 Esc 仍返回结算。
+- 两种合作模式仍各有一个唯一身份。大厅中玩家点击自己列表行的按钮可领取这个身份，服务端自动把原持有者换为另一身份，并更新宝藏标记。开局时服务端继续验证至少两人且地图师、探索者人数符合所选模式。游戏中不可换身份。
+- 用户负责游戏窗口与多人交互测试；本轮无窗口测试覆盖两种模式的身份互换、开局后拒绝换身份、菜单开关和进行中返回大厅。Esc 按键及鼠标点击需交互测试。
+- UE 5.6 TreasureSketchEditor Win64 Development 编译成功；`TreasureSketch.RoomSettings.MultiMapmaker` 和 `TreasureSketch.RoomSettings.RoundFlow` 无窗口测试通过，日志位于 `Saved/CodexRelease/pause-role-build.log` 与 `Saved/CodexRelease/pause-role-tests.log`。尚未打入现有 v0.9.0 Release。

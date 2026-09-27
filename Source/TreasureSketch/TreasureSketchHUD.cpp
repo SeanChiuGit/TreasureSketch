@@ -200,12 +200,29 @@ void ATreasureSketchHUD::DrawHUD()
                     AddHitBox(FVector2D(ModeX, ModeY), FVector2D(ModeW, 30.f), ModeIndex == 0 ? TEXT("RoomModeCoop") : TEXT("RoomModeOneExplorer"), true, 10);
             }
             DrawDifficultySettings(ModeX, PanelY + 290.f, ModeW, bHost);
-            float PlayerY = PanelY + 564.f;
+            float PlayerY = PanelY + 560.f;
             DrawText(bHost ? TEXT("面积0.5至5倍，Enter确认；重玩沿用") : TEXT("房主调整设置；开局生效"), FLinearColor(0.75f, 0.84f, 0.82f), ModeX, PanelY + 548.f, GEngine->GetSmallFont(), 0.85f);
+            const ETreasurePlayerRole SingleRole = GS->RoomMode == ETreasureRoomMode::OneExplorer
+                ? ETreasurePlayerRole::Hunter : ETreasurePlayerRole::Scout;
+            int32 Scouts = 0, Hunters = 0;
             for (APlayerState* State : GS->PlayerArray)
                 if (const ATreasureSketchPlayerState* Member = Cast<ATreasureSketchPlayerState>(State))
                 {
-                    DrawText(FString::Printf(TEXT("%s — %s"), *Member->GetPlayerName(), Member->PlayerRole == ETreasurePlayerRole::Scout ? TEXT("地图师") : TEXT("探索者")), FLinearColor::White, ModeX, PlayerY, GEngine->GetSmallFont(), 0.9f);
+                    Scouts += Member->PlayerRole == ETreasurePlayerRole::Scout;
+                    Hunters += Member->PlayerRole == ETreasurePlayerRole::Hunter;
+                    const bool bOwnRow = Member == PS;
+                    DrawText(FString::Printf(TEXT("%s%s — %s"), bOwnRow ? TEXT("你：") : TEXT(""), *Member->GetPlayerName(),
+                        Member->PlayerRole == ETreasurePlayerRole::Scout ? TEXT("地图师") : TEXT("探索者")),
+                        FLinearColor::White, ModeX, PlayerY, GEngine->GetSmallFont(), 0.9f);
+                    if (bOwnRow && Member->PlayerRole != SingleRole)
+                    {
+                        const float ClaimX = ModeX + ModeW - 122.f;
+                        DrawRect(HitBoxesOver.Contains(TEXT("RoomClaimSingleRole")) ? FLinearColor(0.23f, 0.49f, 0.40f)
+                            : FLinearColor(0.13f, 0.34f, 0.29f), ClaimX, PlayerY - 3.f, 122.f, 20.f);
+                        DrawText(SingleRole == ETreasurePlayerRole::Scout ? TEXT("换成地图师") : TEXT("换成探索者"),
+                            FLinearColor::White, ClaimX + 6.f, PlayerY + 2.f, GEngine->GetSmallFont(), 0.75f);
+                        AddHitBox(FVector2D(ClaimX, PlayerY - 3.f), FVector2D(122.f, 20.f), TEXT("RoomClaimSingleRole"), true, 10);
+                    }
                     PlayerY += 22.f;
                 }
             DrawText(TEXT("合作房间"), FLinearColor::White, PanelX + 48.f, PanelY + 150.f,
@@ -237,9 +254,17 @@ void ATreasureSketchHUD::DrawHUD()
             if (GetNetMode() == NM_ListenServer)
             {
                 DrawMenuButton(TEXT("RoomInvite"), TEXT("邀请 Steam 好友"), PanelY + 335.f, true);
-                DrawMenuButton(TEXT("RoomStart"), TEXT("开始游戏"), PanelY + 405.f,
-                    GS->PlayerArray.Num() >= 2);
-                DrawText(GS->PlayerArray.Num() >= 2 ? TEXT("已有至少两人，可以开始（最多四人）") : TEXT("等待另一名玩家加入……"),
+                const int32 ExpectedScouts = GS->RoomMode == ETreasureRoomMode::OneExplorer ? GS->PlayerArray.Num() - 1 : 1;
+                const bool bCanStart = GS->PlayerArray.Num() >= 2 && Scouts == ExpectedScouts
+                    && Hunters == GS->PlayerArray.Num() - ExpectedScouts;
+                if (bCanStart) DrawMenuButton(TEXT("RoomStart"), TEXT("开始游戏"), PanelY + 405.f, true);
+                else
+                {
+                    DrawRect(FLinearColor(0.08f, 0.12f, 0.13f), PanelX + 48.f, PanelY + 405.f, PanelW - 96.f, 54.f);
+                    DrawText(TEXT("开始游戏"), FLinearColor(0.45f, 0.5f, 0.5f), PanelX + 70.f, PanelY + 421.f, GEngine->GetMediumFont());
+                }
+                DrawText(bCanStart ? TEXT("地图师和探索者均已就位，可以开始") : GS->PlayerArray.Num() < 2
+                    ? TEXT("等待另一名玩家加入……") : TEXT("至少需要一名地图师和一名探索者"),
                     FLinearColor(0.70f, 0.82f, 0.78f), PanelX + 48.f, PanelY + 478.f,
                     GEngine->GetSmallFont(), 0.9f);
             }
@@ -298,6 +323,36 @@ void ATreasureSketchHUD::DrawHUD()
                 if (DiagY > Canvas->SizeY * 0.78f) break;
             }
         }
+        return;
+    }
+
+    if (PC->IsPauseMenuOpen() && !GS->IsRoundOver())
+    {
+        const float CenterX = Canvas->SizeX * 0.5f;
+        const float CenterY = Canvas->SizeY * 0.5f;
+        const float Width = 440.f;
+        const float Left = CenterX - Width * 0.5f;
+        DrawRect(FLinearColor(0.01f, 0.015f, 0.025f, 0.82f), 0.f, 0.f, Canvas->SizeX, Canvas->SizeY);
+        DrawRect(FLinearColor(0.07f, 0.11f, 0.14f), Left, CenterY - 175.f, Width, 350.f);
+        DrawText(TEXT("游戏菜单"), FLinearColor::White, Left + 32.f, CenterY - 145.f, GEngine->GetLargeFont(), 1.25f);
+        auto DrawPauseButton = [&](FName Name, const FString& Label, float Y)
+        {
+            const FVector2D Min(Left + 30.f, Y);
+            DrawRect(HitBoxesOver.Contains(Name) ? FLinearColor(0.22f, 0.50f, 0.44f)
+                : FLinearColor(0.12f, 0.31f, 0.28f), Min.X, Min.Y, Width - 60.f, 48.f);
+            DrawText(Label, FLinearColor::White, Min.X + 16.f, Min.Y + 13.f, GEngine->GetMediumFont());
+            AddHitBox(Min, FVector2D(Width - 60.f, 48.f), Name, true, 10);
+        };
+        DrawPauseButton(TEXT("PauseResume"), TEXT("继续游戏（Esc）"), CenterY - 80.f);
+        const bool bCanOpenMap = GS->Phase == ETreasureRoundPhase::HunterSearching
+            || (PS->PlayerRole == ETreasurePlayerRole::Scout && !PS->bSketchSubmitted);
+        if (bCanOpenMap) DrawPauseButton(TEXT("PauseOpenMap"), TEXT("关闭菜单并查看地图"), CenterY - 20.f);
+        else DrawText(TEXT("地图暂不可打开；等待交图时画纸直接显示"), FLinearColor(0.7f, 0.8f, 0.8f),
+            Left + 32.f, CenterY - 2.f, GEngine->GetSmallFont());
+        if (GetNetMode() == NM_ListenServer)
+            DrawPauseButton(TEXT("PauseReturnToLobby"), TEXT("结束本局，全队返回大厅"), CenterY + 40.f);
+        else DrawText(TEXT("只有房主可以结束本局并带全队返回大厅"), FLinearColor(0.7f, 0.8f, 0.8f),
+            Left + 32.f, CenterY + 58.f, GEngine->GetSmallFont());
         return;
     }
 

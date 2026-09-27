@@ -44,9 +44,20 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     TestFalse(TEXT("Versus is still unavailable"), GM->SelectRoomMode(ETreasureRoomMode::TeamVersus));
     TestEqual(TEXT("Host becomes sole explorer when switching mode"), Players[0]->PlayerRole, ETreasurePlayerRole::Hunter);
     for (int32 I = 1; I < 4; ++I) TestEqual(TEXT("Others become mapmakers"), Players[I]->PlayerRole, ETreasurePlayerRole::Scout);
+    TestTrue(TEXT("A player can claim the sole explorer role in the lobby"), GM->ClaimSingleRoomRole(Players[2]));
+    TestEqual(TEXT("Claimant becomes explorer"), Players[2]->PlayerRole, ETreasurePlayerRole::Hunter);
+    TestEqual(TEXT("Previous explorer becomes mapmaker"), Players[0]->PlayerRole, ETreasurePlayerRole::Scout);
+    TestTrue(TEXT("The original explorer can claim the role again"), GM->ClaimSingleRoomRole(Players[0]));
     GM->StartHostedRound();
     TestTrue(TEXT("Four-player new mode starts"), GS->bGameStarted);
     TestFalse(TEXT("Cannot switch mode mid-round"), GM->SelectRoomMode(ETreasureRoomMode::OneMapmaker));
+    TestFalse(TEXT("Cannot claim a role mid-round"), GM->ClaimSingleRoomRole(Players[2]));
+    World->SetNetDriver(nullptr);
+    Controllers[1]->SetPauseMenuOpen(true);
+    TestTrue(TEXT("A mapmaker can open the in-round menu"), Controllers[1]->IsPauseMenuOpen());
+    Controllers[1]->HandleFrontEndAction(TEXT("PauseResume"));
+    TestFalse(TEXT("Resume closes the in-round menu"), Controllers[1]->IsPauseMenuOpen());
+    World->SetNetDriver(Driver);
 
     FSketchStroke FirstStroke;
     FirstStroke.Points = { FVector2D(0.1f, 0.2f), FVector2D(0.3f, 0.4f) };
@@ -184,9 +195,8 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
         TestEqual(TEXT("Unsubmitted synchronized map is included"), TimeoutPages[1].Strokes.Num(), 1);
         TestTrue(TEXT("New round does not reuse old blank-author drawing"), TimeoutPages[2].Strokes.IsEmpty());
     }
-    GS->Phase = ETreasureRoundPhase::Won;
     GM->ReturnToSetup();
-    TestFalse(TEXT("Return stops game"), GS->bGameStarted);
+    TestFalse(TEXT("Host can stop an active round for everyone"), GS->bGameStarted);
     TestEqual(TEXT("Return retains new mode"), GS->RoomMode, ETreasureRoomMode::OneExplorer);
     GS->PlayerArray.Remove(Players[1]);
     GM->NormalizeRoomRoles(Players[1]);
@@ -194,6 +204,10 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Can return to original mode"), GM->SelectRoomMode(ETreasureRoomMode::OneMapmaker));
     TestEqual(TEXT("Same single player becomes mapmaker"), Players[0]->PlayerRole, ETreasurePlayerRole::Scout);
     TestEqual(TEXT("Remaining members become explorers"), Players[2]->PlayerRole, ETreasurePlayerRole::Hunter);
+    TestTrue(TEXT("Another player can claim sole mapmaker role"), GM->ClaimSingleRoomRole(Players[2]));
+    TestEqual(TEXT("New claimant becomes mapmaker"), Players[2]->PlayerRole, ETreasurePlayerRole::Scout);
+    TestEqual(TEXT("Former mapmaker becomes explorer"), Players[0]->PlayerRole, ETreasurePlayerRole::Hunter);
+    TestTrue(TEXT("Mapmaker can claim the role back"), GM->ClaimSingleRoomRole(Players[0]));
     GM->StartHostedRound();
     const TArray<FSketchPage> SingleMapmakerPage = GM->CollectSketchPages();
     TestEqual(TEXT("Original mode also has a live page"), SingleMapmakerPage.Num(), 1);

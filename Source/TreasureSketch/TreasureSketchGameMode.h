@@ -35,6 +35,7 @@ public:
     void SetRoundReview(bool bReviewing);
     void StartHostedRound();
     bool SelectRoomMode(ETreasureRoomMode Mode);
+    bool ClaimSingleRoomRole(ATreasureSketchPlayerState* Player);
     bool ToggleRoomMapPool(EIslandTheme Theme);
     void NormalizeRoomRoles(APlayerState* Excluded = nullptr, ATreasureSketchPlayerState* PreferredSinglePlayer = nullptr);
     void AdjustRoomSetting(FName Setting, int32 Direction);

@@ -66,6 +66,7 @@ public:
     bool IsScoutSpectating() const { return SpectatorCamera != nullptr; }
     bool IsHunterFirstPersonView() const { return SpectatorView == EScoutSpectatorView::HunterFirstPerson; }
     bool IsSpectatorTreasureVisible() const { return bTreasureMarkerVisible; }
+    bool IsPauseMenuOpen() const { return bPauseMenuOpen; }
     bool IsFrontEndVisible() const;
     EFrontEndPage GetFrontEndPage() const { return FrontEndPage; }
     void HandleFrontEndAction(FName ActionName);
@@ -174,6 +175,7 @@ private:
     bool bWaitingSketchInputActive = false;
     bool bWasDrawing = false;
     bool bReplayInputActive = false;
+    bool bPauseMenuOpen = false;
     bool bInputLocked = false;
     FString StatusMessage;
     float StatusUntil = 0.f;
@@ -202,6 +204,7 @@ private:
     void StopSpectating();
     void SetLocalTreasureMarkerVisible(bool bVisible);
     void UpdateFrontEnd();
+    void SetPauseMenuOpen(bool bOpen);
     void OpenFrontEndPage(EFrontEndPage NewPage);
     ATreasureSketchCharacter* FindHunterCharacter() const;
 
@@ -216,4 +219,7 @@ private:
 
     UFUNCTION(Server, Reliable)
     void ServerRequestRoundReview(bool bReviewing);
+
+    UFUNCTION(Server, Reliable)
+    void ServerClaimSingleRoomRole();
 };

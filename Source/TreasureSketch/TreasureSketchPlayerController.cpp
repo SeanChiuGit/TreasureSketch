@@ -89,6 +89,11 @@ bool ATreasureSketchPlayerController::InputKey(const FInputKeyEventArgs& Params)
             RequestRoundReview(false);
             return true;
         }
+        if (GS && GS->bGameStarted && !GS->IsRoundOver())
+        {
+            SetPauseMenuOpen(!bPauseMenuOpen);
+            return true;
+        }
     }
     return Super::InputKey(Params);
 }
@@ -169,11 +174,17 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
     Super::PlayerTick(DeltaTime);
     UpdateFrontEnd();
     if (IsFrontEndVisible()) return;
+    UpdateReplayInput();
+    if (bPauseMenuOpen)
+    {
+        SetSprayCursorMode(false);
+        ApplyPhaseInputRules();
+        return;
+    }
     const ATreasureSketchGameState* CursorGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     const bool bCanSpray = CursorGS && CursorGS->bGameStarted && CursorGS->bSurfacePaintEnabled
         && IsLocalScout() && !HasSubmittedSketch() && CursorGS->Phase == ETreasureRoundPhase::ScoutDrawing && !bMapOpen;
     SetSprayCursorMode(bCanSpray);
-    UpdateReplayInput();
     UpdateWaitingSketchInput();
     if (IsScoutSpectating() && !bMapOpen && WasInputKeyJustPressed(EKeys::Q)) ServerCycleSpectatedHunter();
     UpdateSpectatorCamera(DeltaTime);
@@ -315,6 +326,29 @@ void ATreasureSketchPlayerController::UpdateFrontEnd()
     }
 }
 
+void ATreasureSketchPlayerController::SetPauseMenuOpen(bool bOpen)
+{
+    if (!IsLocalController() || bPauseMenuOpen == bOpen) return;
+    bPauseMenuOpen = bOpen;
+    if (bOpen)
+    {
+        FlushDrawingPoints();
+        bWasDrawing = false;
+        bMapOpen = false;
+        SetSprayCursorMode(false);
+    }
+    bShowMouseCursor = bOpen || IsHunterWaiting();
+    ApplyPhaseInputRules();
+    if (bShowMouseCursor)
+    {
+        FInputModeGameAndUI MenuInput;
+        MenuInput.SetHideCursorDuringCapture(false);
+        MenuInput.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        SetInputMode(MenuInput);
+    }
+    else SetInputMode(FInputModeGameOnly());
+}
+
 void ATreasureSketchPlayerController::ApplyKeyboardMovementFallback()
 {
     // UE 5.6 projects using EnhancedPlayerInput can stop forwarding legacy AxisMappings
@@ -356,6 +390,25 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
     if (ActionName == TEXT("ToggleReviewTreasure"))
     {
         if (IsLocalController() && bMapOpen) ToggleSpectatorTreasure();
+        return;
+    }
+    if (ActionName == TEXT("PauseResume")) { SetPauseMenuOpen(false); return; }
+    if (ActionName == TEXT("PauseOpenMap"))
+    {
+        if (bPauseMenuOpen) { SetPauseMenuOpen(false); ToggleMap(); }
+        return;
+    }
+    if (ActionName == TEXT("PauseReturnToLobby"))
+    {
+        if (bPauseMenuOpen && IsLocalController() && GetNetMode() == NM_ListenServer)
+            if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) GM->ReturnToSetup();
+        return;
+    }
+    if (ActionName == TEXT("RoomClaimSingleRole"))
+    {
+        const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+        if (IsLocalController() && FrontEndPage == EFrontEndPage::RoomLobby && GS && !GS->bGameStarted)
+            ServerClaimSingleRoomRole();
         return;
     }
     if (ActionName == TEXT("MapScaleInput"))
@@ -469,8 +522,9 @@ bool ATreasureSketchPlayerController::IsHunterWaiting() const
 
 void ATreasureSketchPlayerController::UpdateWaitingSketchInput()
 {
-    if (!IsLocalController()) return;
+    if (!IsLocalController() || bPauseMenuOpen) return;
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (GS && GS->IsRoundOver()) { bWaitingSketchInputActive = false; return; }
     const bool bWatching = GS && GS->bGameStarted && IsHunterWaiting();
     if (bWatching == bWaitingSketchInputActive) return;
     bWaitingSketchInputActive = bWatching;
@@ -512,7 +566,7 @@ void ATreasureSketchPlayerController::ApplyPhaseInputRules()
     const bool bShouldWait = !bReviewing && ((PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->Phase == ETreasureRoundPhase::ScoutDrawing)
         || (PS->PlayerRole == ETreasurePlayerRole::Scout && GS->Phase != ETreasureRoundPhase::ScoutDrawing)
         || GS->IsRoundOver());
-    const bool bShouldLock = bMapOpen || bShouldWait || (!bReviewing && IsLocalScout() && HasSubmittedSketch());
+    const bool bShouldLock = bPauseMenuOpen || bMapOpen || bShouldWait || (!bReviewing && IsLocalScout() && HasSubmittedSketch());
     if (bInputLocked != bShouldLock)
     {
         SetIgnoreMoveInput(bShouldLock);
@@ -530,6 +584,7 @@ void ATreasureSketchPlayerController::UpdateReplayInput()
 {
     const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
     const bool bRoundOver = GS && GS->IsRoundOver() && !GS->bReviewingRound;
+    if (bRoundOver && bPauseMenuOpen) SetPauseMenuOpen(false);
     if (bReplayInputActive == bRoundOver) return;
 
     bReplayInputActive = bRoundOver;
@@ -710,6 +765,7 @@ void ATreasureSketchPlayerController::SetSprayCursorMode(bool bEnabled)
 
 void ATreasureSketchPlayerController::ToggleMap()
 {
+    if (bPauseMenuOpen) return;
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     const bool bReviewing = GS && GS->bReviewingRound && GS->IsRoundOver();
     const bool bSpectatingMapmaker = GS && GS->bGameStarted
@@ -739,6 +795,7 @@ void ATreasureSketchPlayerController::ToggleMap()
 
 void ATreasureSketchPlayerController::Handoff()
 {
+    if (bPauseMenuOpen) return;
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (IsLocalScout() && !HasSubmittedSketch() && GS && GS->bGameStarted && GS->Phase == ETreasureRoundPhase::ScoutDrawing)
     {
@@ -844,6 +901,7 @@ void ATreasureSketchPlayerController::ClientReplaceLiveSketch_Implementation(int
 
 void ATreasureSketchPlayerController::Dig()
 {
+    if (bPauseMenuOpen) return;
     if (!GetPawn()) return;
     const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
     if (PS && PS->PlayerRole == ETreasurePlayerRole::Hunter)
@@ -902,6 +960,7 @@ void ATreasureSketchPlayerController::ClientDigResult_Implementation(bool bFound
 
 void ATreasureSketchPlayerController::ClientStartNewRound_Implementation(int32 NewRoundSerial)
 {
+    bPauseMenuOpen = false;
     SetSprayCursorMode(false);
     StopSpectating();
     SpectatedHunterIndex = 0;
@@ -969,6 +1028,7 @@ void ATreasureSketchPlayerController::ClientEndReview_Implementation(int32 Round
 
 void ATreasureSketchPlayerController::ClearSketch()
 {
+    if (bPauseMenuOpen) return;
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (!IsLocalScout() || HasSubmittedSketch() || !GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing) return;
     Strokes.Reset();
@@ -979,6 +1039,7 @@ void ATreasureSketchPlayerController::ClearSketch()
 
 void ATreasureSketchPlayerController::ClientReturnToLobby_Implementation()
 {
+    bPauseMenuOpen = false;
     bReplayInputActive = false;
     OpenFrontEndPage(GetNetMode() == NM_Standalone ? EFrontEndPage::SoloTest : EFrontEndPage::RoomLobby);
     StatusMessage = TEXT("已返回设置，可调整后再次开始。");
@@ -1019,6 +1080,12 @@ void ATreasureSketchPlayerController::ServerRequestRoundReview_Implementation(bo
 {
     if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
         GM->SetRoundReview(bReviewing);
+}
+
+void ATreasureSketchPlayerController::ServerClaimSingleRoomRole_Implementation()
+{
+    if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
+        GM->ClaimSingleRoomRole(GetPlayerState<ATreasureSketchPlayerState>());
 }
 
 void ATreasureSketchPlayerController::ServerRequestReplay_Implementation(bool bSwapRoles)

@@ -188,6 +188,21 @@ bool ATreasureSketchGameMode::SelectRoomMode(ETreasureRoomMode Mode)
     return true;
 }
 
+bool ATreasureSketchGameMode::ClaimSingleRoomRole(ATreasureSketchPlayerState* Player)
+{
+    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!HasAuthority() || !GS || GS->bGameStarted || !Player || !GS->PlayerArray.Contains(Player)
+        || (GS->RoomMode != ETreasureRoomMode::OneMapmaker && GS->RoomMode != ETreasureRoomMode::OneExplorer)) return false;
+    const ETreasurePlayerRole SingleRole = GS->RoomMode == ETreasureRoomMode::OneExplorer
+        ? ETreasurePlayerRole::Hunter : ETreasurePlayerRole::Scout;
+    if (Player->PlayerRole == SingleRole) return true;
+    HideTreasureFromScout();
+    NormalizeRoomRoles(nullptr, Player);
+    RevealTreasureToScout();
+    GS->ForceNetUpdate();
+    return true;
+}
+
 bool ATreasureSketchGameMode::ToggleRoomMapPool(EIslandTheme Theme)
 {
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
@@ -308,7 +323,7 @@ void ATreasureSketchGameMode::AdjustRoomSetting(FName Setting, int32 Direction)
 void ATreasureSketchGameMode::ReturnToSetup()
 {
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
-    if (!HasAuthority() || !GS || !GS->IsRoundOver()) return;
+    if (!HasAuthority() || !GS || !GS->bGameStarted) return;
     HideTreasureFromScout();
     if (Island) Island->Destroy();
     BuildRound();
