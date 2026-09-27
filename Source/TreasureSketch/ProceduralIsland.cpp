@@ -1,6 +1,7 @@
 #include "ProceduralIsland.h"
 
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
+#include "Components/ExponentialHeightFogComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
@@ -81,6 +82,16 @@ AProceduralIsland::AProceduralIsland()
     IslandMesh->bUseComplexAsSimpleCollision = true;
     WaterMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("WaterMesh"));
     WaterMesh->SetupAttachment(RootComponent);
+
+    WeatherFog = CreateDefaultSubobject<UExponentialHeightFogComponent>(TEXT("WeatherFog"));
+    WeatherFog->SetupAttachment(RootComponent);
+    WeatherFog->SetFogDensity(0.038f);
+    WeatherFog->SetFogHeightFalloff(0.20f);
+    WeatherFog->SetFogMaxOpacity(0.84f);
+    WeatherFog->SetStartDistance(450.f);
+    WeatherFog->SetFogInscatteringColor(FLinearColor(0.45f, 0.54f, 0.48f));
+    WeatherFog->SetVolumetricFog(true);
+    WeatherFog->SetVisibility(false, true);
 
     PalmInstances = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("PalmInstances"));
     PalmInstances->SetupAttachment(RootComponent);
@@ -171,6 +182,19 @@ AProceduralIsland::AProceduralIsland()
         Component->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, JunglePaths[Index]));
         JungleInstances.Add(Component);
     }
+}
+
+bool AProceduralIsland::ToggleDebugFog()
+{
+    if (!WeatherFog) return false;
+    const bool bEnable = !WeatherFog->IsVisible();
+    WeatherFog->SetVisibility(bEnable, true);
+    return bEnable;
+}
+
+bool AProceduralIsland::IsWeatherFogEnabled() const
+{
+    return WeatherFog && WeatherFog->IsVisible();
 }
 
 void AProceduralIsland::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

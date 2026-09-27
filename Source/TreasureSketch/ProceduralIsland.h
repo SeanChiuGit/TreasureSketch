@@ -6,6 +6,7 @@
 
 class UProceduralMeshComponent;
 class UHierarchicalInstancedStaticMeshComponent;
+class UExponentialHeightFogComponent;
 
 UENUM(BlueprintType)
 enum class EIslandTheme : uint8
@@ -42,6 +43,8 @@ public:
     FString GetShapeName() const;
     FString GetThemeName() const;
     static EIslandTheme SelectThemeFromTable(int32 InSeed, bool bIncludeLockedThemes = true);
+    bool ToggleDebugFog();
+    bool IsWeatherFogEnabled() const;
 
 private:
     UPROPERTY(VisibleAnywhere)
@@ -49,6 +52,9 @@ private:
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UProceduralMeshComponent> WaterMesh;
+
+    UPROPERTY(VisibleAnywhere, Category="Island|Weather")
+    TObjectPtr<UExponentialHeightFogComponent> WeatherFog;
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> PalmInstances;

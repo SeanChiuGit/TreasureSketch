@@ -5,6 +5,7 @@
 #include "TreasureSketchPlayerState.h"
 #include "TreasureSketchCharacter.h"
 #include "TreasureMarker.h"
+#include "ProceduralIsland.h"
 #include "TreasureOnlineSubsystem.h"
 #include "Camera/CameraActor.h"
 #include "Engine/Engine.h"
@@ -49,6 +50,18 @@ void ATreasureSketchPlayerController::SetupInputComponent()
     InputComponent->BindAction("InviteSteamFriend", IE_Pressed, this, &ATreasureSketchPlayerController::InviteSteamFriend);
     InputComponent->BindAction("ToggleSpectatorView", IE_Pressed, this, &ATreasureSketchPlayerController::ToggleSpectatorView);
     InputComponent->BindAction("ToggleTreasureMarker", IE_Pressed, this, &ATreasureSketchPlayerController::ToggleSpectatorTreasure);
+    InputComponent->BindAction("ToggleWeatherFog", IE_Pressed, this, &ATreasureSketchPlayerController::ToggleWeatherFog);
+}
+
+void ATreasureSketchPlayerController::ToggleWeatherFog()
+{
+    for (TActorIterator<AProceduralIsland> It(GetWorld()); It; ++It)
+    {
+        const bool bEnabled = It->ToggleDebugFog();
+        StatusMessage = bEnabled ? TEXT("调试天气：迷雾已开启（F 关闭）") : TEXT("调试天气：迷雾已关闭（F 开启）");
+        StatusUntil = GetWorld()->GetTimeSeconds() + 4.f;
+        break;
+    }
 }
 
 FVector2D ATreasureSketchPlayerController::GetPaperMin() const
