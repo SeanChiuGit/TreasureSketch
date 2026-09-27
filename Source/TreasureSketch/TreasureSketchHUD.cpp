@@ -398,7 +398,7 @@ void ATreasureSketchHUD::DrawHUD()
     const FString RoleLabel = FString::Printf(TEXT("%s / %s"),
         bScout ? TEXT("侦察者") : TEXT("寻宝者"),
         GetNetMode() == NM_ListenServer ? TEXT("主机") : TEXT("已连接客户端"));
-    const FString Help = GS->bReviewingRound ? TEXT("复盘中：WASD 逛岛 | M 查看图纸 | Esc 返回结算 | 宝藏位置已显示")
+    const FString Help = GS->bReviewingRound ? TEXT("复盘中：WASD 逛岛 | M 看图及操作按钮 | T 切换宝箱标记 | Esc 返回结算")
         : PC->IsScoutSpectating()
         ? TEXT("观战：WASD 飞行 | Space 上升 | Ctrl 下降 | Shift 加速 | M 查看地图")
         : bScout && PC->HasSubmittedSketch() ? TEXT("已交图，等待其他地图师完成；到时自动收齐")
@@ -446,6 +446,17 @@ void ATreasureSketchHUD::DrawHUD()
         const FVector2D ButtonMin(Canvas->SizeX - 244.f, 22.f);
         DrawRect(FLinearColor(0.48f, 0.29f, 0.13f), ButtonMin.X, ButtonMin.Y, 220.f, 46.f);
         DrawText(TEXT("按 Esc 返回结算"), FLinearColor::White, ButtonMin.X + 12.f, ButtonMin.Y + 12.f, GEngine->GetSmallFont(), 1.f);
+        const FVector2D ToggleMin(ButtonMin.X, ButtonMin.Y + 54.f);
+        if (PC->IsMapOpen())
+        {
+            DrawRect(HitBoxesOver.Contains(TEXT("ToggleReviewTreasure")) ? FLinearColor(0.22f, 0.54f, 0.47f)
+                : FLinearColor(0.13f, 0.35f, 0.31f), ToggleMin.X, ToggleMin.Y, 220.f, 42.f);
+            DrawText(PC->IsSpectatorTreasureVisible() ? TEXT("隐藏宝箱标记") : TEXT("显示宝箱标记"),
+                FLinearColor::White, ToggleMin.X + 12.f, ToggleMin.Y + 11.f, GEngine->GetSmallFont(), 1.f);
+            AddHitBox(ToggleMin, FVector2D(220.f, 42.f), TEXT("ToggleReviewTreasure"), true, 10);
+        }
+        else DrawText(TEXT("按 T 显示／隐藏宝箱"), FLinearColor::White,
+            ToggleMin.X + 12.f, ToggleMin.Y + 11.f, GEngine->GetSmallFont(), 0.9f);
     };
     if (!PC->IsMapOpen() && !bWatchingLiveSketch) { DrawReviewHint(); return; }
     if (bWatchingLiveSketch)

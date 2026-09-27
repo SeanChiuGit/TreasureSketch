@@ -146,6 +146,12 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     Controllers[1]->ClientBeginReview_Implementation(GS->RoundSerial, Pages, GM->GetTreasureLocation());
     TestEqual(TEXT("Mapmaker can inspect all final pages in review"), Controllers[1]->GetSketchPageCount(), 3);
     TestTrue(TEXT("Mapmaker sees treasure during review"), Controllers[1]->bTreasureMarkerVisible);
+    Controllers[1]->ToggleSpectatorTreasure();
+    TestFalse(TEXT("Mapmaker can hide their review treasure marker"), Controllers[1]->bTreasureMarkerVisible);
+    Controllers[1]->bMapOpen = true;
+    Controllers[1]->HandleFrontEndAction(TEXT("ToggleReviewTreasure"));
+    TestTrue(TEXT("Map button can show the review treasure marker again"), Controllers[1]->bTreasureMarkerVisible);
+    Controllers[1]->bMapOpen = false;
     Explorer->bMapOpen = true;
     Explorer->CycleSketchPage(1);
     TestEqual(TEXT("Review permits switching finished drawings"), Explorer->GetActiveSketchPage(), 0);

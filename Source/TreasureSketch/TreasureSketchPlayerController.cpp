@@ -353,6 +353,11 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
         RequestRoundReview(true);
         return;
     }
+    if (ActionName == TEXT("ToggleReviewTreasure"))
+    {
+        if (IsLocalController() && bMapOpen) ToggleSpectatorTreasure();
+        return;
+    }
     if (ActionName == TEXT("MapScaleInput"))
     {
         if (!IsLocalController() || (FrontEndPage != EFrontEndPage::RoomLobby && FrontEndPage != EFrontEndPage::SoloTest)
@@ -656,7 +661,9 @@ void ATreasureSketchPlayerController::ToggleSpectatorView()
 
 void ATreasureSketchPlayerController::ToggleSpectatorTreasure()
 {
-    if (SpectatorCamera && IsLocalScout() && bHasScoutTreasureLocation)
+    const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
+    const bool bReviewing = GS && GS->bReviewingRound && GS->IsRoundOver();
+    if (((SpectatorCamera && IsLocalScout()) || bReviewing) && bHasScoutTreasureLocation)
         SetLocalTreasureMarkerVisible(!bTreasureMarkerVisible);
 }
 

@@ -120,3 +120,9 @@
 - 看图时暂停自由飞行/第一人称观战镜头，关图后继续；地图师原本的本地画笔数据保留，避免服务端在复盘收集图纸时丢失主机未提交的同步笔画。
 - 此改动未加入现有 v0.9.0 Release；交互测试由用户负责。
 - UE 5.6 TreasureSketchEditor Win64 Development 编译成功；无窗口 `TreasureSketch.RoomSettings.MultiMapmaker` 和 `TreasureSketch.RoomSettings.RoundFlow` 测试通过，日志位于 `Saved/CodexRelease/spectator-map-tests.log`。
+
+## 复盘宝箱标记开关
+
+- 复盘默认显示红色 X 宝藏标记及房间允许的判定范围。每位玩家可按 T 本地显示/隐藏；按 M 打开图纸后，右上角另有可点击的“显示/隐藏宝箱标记”按钮。无光标逛岛状态下仅显示 T 操作提示。
+- 切换不改变服务端宝藏位置、结果或其他玩家画面；退出复盘时隐藏标记，再次进入复盘恢复默认显示。
+- UE 5.6 TreasureSketchEditor Win64 Development 编译成功；无窗口 `TreasureSketch.RoomSettings.MultiMapmaker` 和 `TreasureSketch.RoomSettings.RoundFlow` 测试通过，日志位于 `Saved/CodexRelease/review-treasure-toggle-build.log` 与 `Saved/CodexRelease/review-treasure-toggle-tests.log`。交互测试由用户负责。
