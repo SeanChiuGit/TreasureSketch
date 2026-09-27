@@ -11,3 +11,15 @@ struct FSketchStroke
     UPROPERTY()
     TArray<FVector2D> Points;
 };
+
+USTRUCT()
+struct FSketchPage
+{
+    GENERATED_BODY()
+
+    UPROPERTY()
+    FString MapmakerName;
+
+    UPROPERTY()
+    TArray<FSketchStroke> Strokes;
+};

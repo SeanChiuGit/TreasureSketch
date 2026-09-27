@@ -47,14 +47,7 @@ bool ATreasureSketchGameMode::FinishIfTimeExpired()
     const bool bScoutTimedOut = GS->Phase == ETreasureRoundPhase::ScoutDrawing;
     if (bScoutTimedOut)
     {
-        TArray<FSketchStroke> Drawing;
-        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
-            if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()); PC && PC->IsLocalScout())
-            {
-                Drawing = PC->GetServerDrawing();
-                break;
-            }
-        BeginHunterSearching(Drawing);
+        BeginHunterSearching(CollectSketchPages());
         UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_AUTO_HANDOFF Drawing time expired"));
         return true;
     }
@@ -121,6 +114,7 @@ void ATreasureSketchGameMode::SpraySurface(const FHitResult& Hit)
 void ATreasureSketchGameMode::BuildRound()
 {
     ResetSurfacePaint();
+    ResetSubmittedSketches();
     FRandomStream Stream(FDateTime::Now().GetTicks());
     int32 RequestedSeed = 0;
     IslandSeed = FParse::Value(FCommandLine::Get(), TEXT("IslandSeed="), RequestedSeed) && RequestedSeed != 0
@@ -161,10 +155,66 @@ void ATreasureSketchGameMode::BuildRound()
 bool ATreasureSketchGameMode::SelectRoomMode(ETreasureRoomMode Mode)
 {
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
-    if (!HasAuthority() || !GS || GS->bGameStarted || Mode != ETreasureRoomMode::OneMapmaker) return false;
+    if (!HasAuthority() || !GS || GS->bGameStarted
+        || (Mode != ETreasureRoomMode::OneMapmaker && Mode != ETreasureRoomMode::OneExplorer)) return false;
+    if (GS->RoomMode == Mode) return true;
+    ATreasureSketchPlayerState* SinglePlayer = nullptr;
+    const ETreasurePlayerRole PreviousSingleRole = GS->RoomMode == ETreasureRoomMode::OneExplorer
+        ? ETreasurePlayerRole::Hunter : ETreasurePlayerRole::Scout;
+    for (APlayerState* State : GS->PlayerArray)
+        if (ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State); PS && PS->PlayerRole == PreviousSingleRole)
+        { SinglePlayer = PS; break; }
+    HideTreasureFromScout();
     GS->RoomMode = Mode;
+    NormalizeRoomRoles(nullptr, SinglePlayer);
+    RevealTreasureToScout();
     GS->ForceNetUpdate();
     return true;
+}
+
+void ATreasureSketchGameMode::NormalizeRoomRoles(APlayerState* Excluded, ATreasureSketchPlayerState* PreferredSinglePlayer)
+{
+    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!HasAuthority() || !GS) return;
+    const ETreasurePlayerRole SingleRole = GS->RoomMode == ETreasureRoomMode::OneExplorer
+        ? ETreasurePlayerRole::Hunter : ETreasurePlayerRole::Scout;
+    const ETreasurePlayerRole OtherRole = SingleRole == ETreasurePlayerRole::Scout
+        ? ETreasurePlayerRole::Hunter : ETreasurePlayerRole::Scout;
+    ATreasureSketchPlayerState* SinglePlayer = PreferredSinglePlayer != Excluded && GS->PlayerArray.Contains(PreferredSinglePlayer)
+        ? PreferredSinglePlayer : nullptr;
+    for (APlayerState* State : GS->PlayerArray)
+        if (ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State); PS && PS != Excluded)
+            if (!SinglePlayer && PS->PlayerRole == SingleRole) SinglePlayer = PS;
+    if (!SinglePlayer)
+        for (APlayerState* State : GS->PlayerArray)
+            if (ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State); PS && PS != Excluded)
+            { SinglePlayer = PS; break; }
+    for (APlayerState* State : GS->PlayerArray)
+        if (ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State); PS && PS != Excluded)
+        {
+            PS->PlayerRole = PS == SinglePlayer ? SingleRole : OtherRole;
+            PS->ForceNetUpdate();
+        }
+}
+
+void ATreasureSketchGameMode::PlaceRoundPlayers()
+{
+    MapmakerLandingSpawns.Reset();
+    TArray<FVector> UsedSpawns;
+    if (Island) UsedSpawns.Add(Island->FindSpawnPoint());
+    bool bFirstScoutPlaced = false;
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+        if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
+            if (APawn* Pawn = PC->GetPawn())
+            {
+                const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
+                const bool bScout = PS && PS->PlayerRole == ETreasurePlayerRole::Scout;
+                const FVector Spawn = Island && bScout && !bFirstScoutPlaced
+                    ? Island->FindSpawnPoint() : FindPlayerSpawn(UsedSpawns);
+                if (bScout) { bFirstScoutPlaced = true; MapmakerLandingSpawns.Add(Spawn); }
+                Pawn->SetActorLocation(Spawn, false, nullptr, ETeleportType::ResetPhysics);
+                if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(Pawn)) Character->SetSpectatorHidden(false);
+            }
 }
 
 bool ATreasureSketchGameMode::SetRoomMapScale(float Scale)
@@ -237,7 +287,7 @@ void ATreasureSketchGameMode::StartHostedRound()
     {
         if (GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing) return;
         if (GS->PlayerArray.Num() < 2 || GS->PlayerArray.Num() > ATreasureSketchGameState::MaxRoomPlayers
-            || GS->RoomMode != ETreasureRoomMode::OneMapmaker)
+            || (GS->RoomMode != ETreasureRoomMode::OneMapmaker && GS->RoomMode != ETreasureRoomMode::OneExplorer))
         {
             UE_LOG(LogTemp, Warning, TEXT("TREASURE_ONLINE_START waiting for second player"));
             return;
@@ -246,7 +296,8 @@ void ATreasureSketchGameMode::StartHostedRound()
         for (APlayerState* State : GS->PlayerArray)
             if (const ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State))
             { Scouts += PS->PlayerRole == ETreasurePlayerRole::Scout; Hunters += PS->PlayerRole == ETreasurePlayerRole::Hunter; }
-        if (Scouts != 1 || Hunters != GS->PlayerArray.Num() - 1) return;
+        const int32 ExpectedScouts = GS->RoomMode == ETreasureRoomMode::OneExplorer ? GS->PlayerArray.Num() - 1 : 1;
+        if (Scouts != ExpectedScouts || Hunters != GS->PlayerArray.Num() - ExpectedScouts) return;
         // Lobby previews may have been built before the host changed map size.
         if (!Island || !FMath::IsNearlyEqual(Island->MapScale, GS->RoomMapScale))
         {
@@ -258,17 +309,7 @@ void ATreasureSketchGameMode::StartHostedRound()
                     PC->ClientStartNewRound(GS->RoundSerial);
             RevealTreasureToScout();
         }
-        TArray<FVector> PlayerSpawns;
-        if (Island) PlayerSpawns.Add(Island->FindSpawnPoint());
-        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
-            if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
-                if (APawn* Pawn = PC->GetPawn())
-                {
-                    const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
-                    const FVector Spawn = Island && PS && PS->PlayerRole == ETreasurePlayerRole::Scout
-                        ? Island->FindSpawnPoint() : FindPlayerSpawn(PlayerSpawns);
-                    Pawn->SetActorLocation(Spawn, false, nullptr, ETeleportType::ResetPhysics);
-                }
+        PlaceRoundPlayers();
         GS->bGameStarted = true;
         GS->ForceNetUpdate();
         GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + GS->DrawingDurationSeconds;
@@ -281,6 +322,7 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
 {
     if (!HasAuthority()) return;
     ResetSurfacePaint();
+    ResetSubmittedSketches();
     const bool bHunterGameplayTest = ThemeChoice == -2;
     const bool bFullFlowTest = ThemeChoice == -3;
 
@@ -366,14 +408,7 @@ void ATreasureSketchGameMode::Logout(AController* Exiting)
     // A departure changes the party. Return everyone to the lobby rather than
     // leaving hunters waiting forever for a disconnected mapmaker.
     const APlayerState* DepartingState = Exiting ? Exiting->GetPlayerState<APlayerState>() : nullptr;
-    bool bHasScout = false;
-    for (APlayerState* State : GS->PlayerArray)
-        if (const ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State); PS && PS != DepartingState)
-            bHasScout |= PS->PlayerRole == ETreasurePlayerRole::Scout;
-    if (!bHasScout)
-        for (APlayerState* State : GS->PlayerArray)
-            if (ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State); PS && PS != DepartingState)
-            { PS->PlayerRole = ETreasurePlayerRole::Scout; PS->ForceNetUpdate(); break; }
+    NormalizeRoomRoles(const_cast<APlayerState*>(DepartingState));
     if (GS->bGameStarted)
     {
         HideTreasureFromScout();
@@ -398,18 +433,7 @@ void ATreasureSketchGameMode::PostLogin(APlayerController* NewPlayer)
     ATreasureSketchPlayerState* NewPS = NewPlayer ? NewPlayer->GetPlayerState<ATreasureSketchPlayerState>() : nullptr;
     if (!NewPS) return;
 
-    bool bScoutAssigned = false;
-    for (APlayerState* PS : GameState->PlayerArray)
-    {
-        if (const ATreasureSketchPlayerState* TreasurePS = Cast<ATreasureSketchPlayerState>(PS))
-        {
-            if (TreasurePS == NewPS) continue;
-            bScoutAssigned |= TreasurePS->PlayerRole == ETreasurePlayerRole::Scout;
-        }
-    }
-    NewPS->PlayerRole = !bScoutAssigned ? ETreasurePlayerRole::Scout
-        : ETreasurePlayerRole::Hunter;
-    NewPS->ForceNetUpdate();
+    NormalizeRoomRoles();
     UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_PLAYER_JOIN Role=%s"),
         NewPS->PlayerRole == ETreasurePlayerRole::Scout ? TEXT("Scout")
         : NewPS->PlayerRole == ETreasurePlayerRole::Hunter ? TEXT("Hunter") : TEXT("Unassigned"));
@@ -452,41 +476,84 @@ void ATreasureSketchGameMode::SendHunterViewToScout(float DeltaSeconds)
     if (HunterViewUpdateTime < 0.05f) return;
     HunterViewUpdateTime = 0.f;
 
-    ATreasureSketchPlayerController* ScoutPC = nullptr;
-    ATreasureSketchPlayerController* HunterPC = nullptr;
     for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
     {
-        ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get());
-        const ATreasureSketchPlayerState* PS = PC ? PC->GetPlayerState<ATreasureSketchPlayerState>() : nullptr;
-        if (!PS) continue;
-        if (PS->PlayerRole == ETreasurePlayerRole::Scout) ScoutPC = PC;
-        else if (PS->PlayerRole == ETreasurePlayerRole::Hunter && !HunterPC) HunterPC = PC;
-    }
-    if (ScoutPC)
-    {
+        ATreasureSketchPlayerController* ScoutPC = Cast<ATreasureSketchPlayerController>(It->Get());
+        if (!ScoutPC || !ScoutPC->IsLocalScout()) continue;
+        ATreasureSketchPlayerController* HunterPC = nullptr;
         int32 Index = 0;
         for (APlayerState* State : GS->PlayerArray)
             if (const ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State))
-                if (PS->PlayerRole == ETreasurePlayerRole::Hunter)
-                {
-                    if (Index++ == ScoutPC->GetSpectatedHunterIndex())
-                        HunterPC = Cast<ATreasureSketchPlayerController>(State->GetOwner());
-                }
+                if (PS->PlayerRole == ETreasurePlayerRole::Hunter && Index++ == ScoutPC->GetSpectatedHunterIndex())
+                { HunterPC = Cast<ATreasureSketchPlayerController>(State->GetOwner()); break; }
+        if (!HunterPC || !HunterPC->GetPawn()) continue;
+        const FRotator ViewRotation = HunterPC->GetControlRotation();
+        const FVector ViewLocation = HunterPC->GetPawn()->GetActorLocation() + FVector(0.f, 0.f, 72.f)
+            + FRotator(0.f, ViewRotation.Yaw, 0.f).Vector() * 46.f;
+        ScoutPC->ClientUpdateHunterView(ViewLocation, ViewRotation, HunterPC->PlayerState);
     }
-    if (!ScoutPC || !HunterPC || !HunterPC->GetPawn()) return;
-
-    const FRotator ViewRotation = HunterPC->GetControlRotation();
-    const FVector ViewLocation = HunterPC->GetPawn()->GetActorLocation() + FVector(0.f, 0.f, 72.f)
-        + FRotator(0.f, ViewRotation.Yaw, 0.f).Vector() * 46.f;
-    ScoutPC->ClientUpdateHunterView(ViewLocation, ViewRotation, HunterPC->PlayerState);
 }
 
 void ATreasureSketchGameMode::HandoffToHunter(const TArray<FSketchStroke>& SubmittedStrokes)
 {
-    BeginHunterSearching(SubmittedStrokes);
+    const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!GS || GS->RoomMode != ETreasureRoomMode::OneMapmaker) return;
+    FSketchPage Page;
+    Page.MapmakerName = TEXT("地图师");
+    Page.Strokes = SubmittedStrokes;
+    BeginHunterSearching({ Page });
 }
 
-void ATreasureSketchGameMode::BeginHunterSearching(const TArray<FSketchStroke>& SubmittedStrokes)
+void ATreasureSketchGameMode::ResetSubmittedSketches()
+{
+    SubmittedSketches.Reset();
+    MapmakerLandingSpawns.Reset();
+    if (ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>())
+        for (APlayerState* State : GS->PlayerArray)
+            if (ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State))
+            { PS->bSketchSubmitted = false; PS->ForceNetUpdate(); }
+}
+
+TArray<FSketchPage> ATreasureSketchGameMode::CollectSketchPages() const
+{
+    TArray<FSketchPage> Pages;
+    const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!GS) return Pages;
+    for (APlayerState* State : GS->PlayerArray)
+        if (const ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State); PS && PS->PlayerRole == ETreasurePlayerRole::Scout)
+        {
+            FSketchPage Page;
+            if (const FSketchPage* Submitted = SubmittedSketches.Find(PS->GetPlayerId())) Page = *Submitted;
+            else
+            {
+                Page.MapmakerName = PS->GetPlayerName();
+                if (const ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(PS->GetOwner()))
+                    Page.Strokes = PC->GetServerDrawing();
+            }
+            if (Page.MapmakerName.IsEmpty()) Page.MapmakerName = FString::Printf(TEXT("地图师 %d"), Pages.Num() + 1);
+            Pages.Add(MoveTemp(Page));
+        }
+    return Pages;
+}
+
+void ATreasureSketchGameMode::SubmitPlayerSketch(ATreasureSketchPlayerState* Scout, const TArray<FSketchStroke>& SubmittedStrokes)
+{
+    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!HasAuthority() || !GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing
+        || !Scout || !GS->PlayerArray.Contains(Scout) || Scout->PlayerRole != ETreasurePlayerRole::Scout || Scout->bSketchSubmitted) return;
+    FSketchPage Page;
+    Page.MapmakerName = Scout->GetPlayerName();
+    Page.Strokes = SubmittedStrokes;
+    SubmittedSketches.Add(Scout->GetPlayerId(), MoveTemp(Page));
+    Scout->bSketchSubmitted = true;
+    Scout->ForceNetUpdate();
+    for (APlayerState* State : GS->PlayerArray)
+        if (const ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State))
+            if (PS->PlayerRole == ETreasurePlayerRole::Scout && !PS->bSketchSubmitted) return;
+    BeginHunterSearching(CollectSketchPages());
+}
+
+void ATreasureSketchGameMode::BeginHunterSearching(const TArray<FSketchPage>& Pages)
 {
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing) return;
@@ -499,12 +566,18 @@ void ATreasureSketchGameMode::BeginHunterSearching(const TArray<FSketchStroke>& 
     TArray<FVector> HunterSpawns;
     // In nearby mode, explorers start by the mapmaker's landing point. In spread
     // mode reserve that point so even the first explorer starts elsewhere.
-    if (Island && GS->bSpreadPlayerSpawns) HunterSpawns.Add(Island->FindSpawnPoint());
+    if (Island && GS->bSpreadPlayerSpawns)
+    {
+        HunterSpawns = MapmakerLandingSpawns;
+        if (HunterSpawns.IsEmpty()) HunterSpawns.Add(Island->FindSpawnPoint());
+    }
     for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
     {
         ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get());
         ATreasureSketchPlayerState* PS = PC ? PC->GetPlayerState<ATreasureSketchPlayerState>() : nullptr;
         if (!PC || !PS) continue;
+        if (PS->PlayerRole == ETreasurePlayerRole::Scout)
+        { PS->bSketchSubmitted = true; PS->ForceNetUpdate(); }
         if (Island && Island->Tags.Contains(TEXT("SoloFullFlowTest")))
         {
             PS->PlayerRole = ETreasurePlayerRole::Hunter;
@@ -517,7 +590,7 @@ void ATreasureSketchGameMode::BeginHunterSearching(const TArray<FSketchStroke>& 
         }
         else if (PS->PlayerRole == ETreasurePlayerRole::Hunter)
         {
-            PC->ClientReceiveSketch(SubmittedStrokes);
+            PC->ClientReceiveSketchPages(GS->RoundSerial, Pages);
             if (APawn* Pawn = PC->GetPawn())
             {
                 const FVector SpawnLocation = FindPlayerSpawn(HunterSpawns);
@@ -563,28 +636,17 @@ void ATreasureSketchGameMode::StartNewRound(bool bSwapRoles)
     if (bSwapRoles)
     {
         if (!GS->IsRoundOver()) return;
-        ATreasureSketchPlayerState* Scout = nullptr;
-        ATreasureSketchPlayerState* Hunter = nullptr;
-        for (APlayerState* PS : GS->PlayerArray)
-        {
-            ATreasureSketchPlayerState* TreasurePS = Cast<ATreasureSketchPlayerState>(PS);
-            if (!TreasurePS) continue;
-            if (TreasurePS->PlayerRole == ETreasurePlayerRole::Scout) Scout = TreasurePS;
-            else if (TreasurePS->PlayerRole == ETreasurePlayerRole::Hunter && !Hunter) Hunter = TreasurePS;
-        }
-        if (!Scout || !Hunter)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("TREASURE_SKETCH_REPLAY Role swap needs one scout and one hunter"));
-            return;
-        }
-        const int32 ScoutIndex = GS->PlayerArray.IndexOfByKey(Scout);
+        const ETreasurePlayerRole SingleRole = GS->RoomMode == ETreasureRoomMode::OneExplorer
+            ? ETreasurePlayerRole::Hunter : ETreasurePlayerRole::Scout;
+        ATreasureSketchPlayerState* CurrentSingle = nullptr;
+        for (APlayerState* State : GS->PlayerArray)
+            if (ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State); PS && PS->PlayerRole == SingleRole)
+            { CurrentSingle = PS; break; }
+        if (!CurrentSingle) return;
+        const int32 CurrentIndex = GS->PlayerArray.IndexOfByKey(CurrentSingle);
         for (int32 Offset = 1; Offset < GS->PlayerArray.Num(); ++Offset)
-            if (ATreasureSketchPlayerState* Candidate = Cast<ATreasureSketchPlayerState>(GS->PlayerArray[(ScoutIndex + Offset) % GS->PlayerArray.Num()]))
-                if (Candidate->PlayerRole == ETreasurePlayerRole::Hunter) { Hunter = Candidate; break; }
-        Scout->PlayerRole = ETreasurePlayerRole::Hunter;
-        Hunter->PlayerRole = ETreasurePlayerRole::Scout;
-        Scout->ForceNetUpdate();
-        Hunter->ForceNetUpdate();
+            if (ATreasureSketchPlayerState* Next = Cast<ATreasureSketchPlayerState>(GS->PlayerArray[(CurrentIndex + Offset) % GS->PlayerArray.Num()]))
+            { NormalizeRoomRoles(nullptr, Next); break; }
     }
 
     const bool bWasStarted = GS->bGameStarted;
@@ -592,24 +654,10 @@ void ATreasureSketchGameMode::StartNewRound(bool bSwapRoles)
     BuildRound();
     GS->bGameStarted = bWasStarted;
 
-    TArray<FVector> PlayerSpawns;
-    if (Island) PlayerSpawns.Add(Island->FindSpawnPoint());
+    PlaceRoundPlayers();
     for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
-    {
-        ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get());
-        if (!PC) continue;
-
-        if (APawn* Pawn = PC->GetPawn())
-        {
-            const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
-            const FVector SpawnLocation = Island && PS && PS->PlayerRole == ETreasurePlayerRole::Scout
-                ? Island->FindSpawnPoint() : FindPlayerSpawn(PlayerSpawns);
-            Pawn->SetActorLocation(SpawnLocation, false, nullptr, ETeleportType::ResetPhysics);
-            if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(Pawn))
-                Character->SetSpectatorHidden(false);
-        }
-        PC->ClientStartNewRound(GS->RoundSerial);
-    }
+        if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
+            PC->ClientStartNewRound(GS->RoundSerial);
     RevealTreasureToScout();
     UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_REPLAY New round started with seed=%d roles_swapped=%d"),
         IslandSeed, bSwapRoles ? 1 : 0);

@@ -11,4 +11,5 @@ void ATreasureSketchPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProp
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
     DOREPLIFETIME(ATreasureSketchPlayerState, PlayerRole);
+    DOREPLIFETIME(ATreasureSketchPlayerState, bSketchSubmitted);
 }

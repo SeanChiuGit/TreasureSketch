@@ -189,15 +189,16 @@ void ATreasureSketchHUD::DrawHUD()
             if (bHost)
                 AddHitBox(FVector2D(ModeX, PanelY + 510.f), FVector2D(ModeW, 36.f), TEXT("ToggleSurfacePaint"), true, 10);
             DrawText(TEXT("游戏模式"), FLinearColor::White, ModeX, PanelY + 150.f, GEngine->GetMediumFont());
-            const TCHAR* Modes[] = { TEXT("一名地图师，多名探索者（已选择）"), TEXT("多名地图师，一名探索者（待开发）"), TEXT("2对2 对抗（待开发）") };
+            const TCHAR* Modes[] = { TEXT("一名地图师，多名探索者"), TEXT("多名地图师，一名探索者"), TEXT("2对2 对抗（待开发）") };
             for (int32 ModeIndex = 0; ModeIndex < 3; ++ModeIndex)
             {
                 const float ModeY = PanelY + 180.f + ModeIndex * 34.f;
-                DrawRect(ModeIndex == 0 ? FLinearColor(0.72f, 0.43f, 0.16f) : FLinearColor(0.08f, 0.12f, 0.13f), ModeX, ModeY, ModeW, 30.f);
-                DrawText(Modes[ModeIndex], ModeIndex == 0 ? FLinearColor::White : FLinearColor(0.45f, 0.5f, 0.5f), ModeX + 10.f, ModeY + 8.f, GEngine->GetSmallFont(), 0.9f);
+                const bool bSelected = ModeIndex == static_cast<int32>(GS->RoomMode);
+                DrawRect(bSelected ? FLinearColor(0.72f, 0.43f, 0.16f) : FLinearColor(0.08f, 0.12f, 0.13f), ModeX, ModeY, ModeW, 30.f);
+                DrawText(FString(Modes[ModeIndex]) + (bSelected ? TEXT("（已选择）") : TEXT("")), ModeIndex < 2 ? FLinearColor::White : FLinearColor(0.45f, 0.5f, 0.5f), ModeX + 10.f, ModeY + 8.f, GEngine->GetSmallFont(), 0.9f);
+                if (bHost && ModeIndex < 2)
+                    AddHitBox(FVector2D(ModeX, ModeY), FVector2D(ModeW, 30.f), ModeIndex == 0 ? TEXT("RoomModeCoop") : TEXT("RoomModeOneExplorer"), true, 10);
             }
-            if (GetNetMode() == NM_ListenServer)
-                AddHitBox(FVector2D(ModeX, PanelY + 180.f), FVector2D(ModeW, 30.f), TEXT("RoomModeCoop"), true, 10);
             DrawDifficultySettings(ModeX, PanelY + 290.f, ModeW, bHost);
             float PlayerY = PanelY + 564.f;
             DrawText(bHost ? TEXT("面积0.5至5倍，Enter确认；重玩沿用") : TEXT("房主调整设置；开局生效"), FLinearColor(0.75f, 0.84f, 0.82f), ModeX, PanelY + 548.f, GEngine->GetSmallFont(), 0.85f);
@@ -351,7 +352,8 @@ void ATreasureSketchHUD::DrawHUD()
         const bool bSwapRolesHovered = HitBoxesOver.Contains(SwapRolesButtonName);
         DrawRect(bSwapRolesHovered ? FLinearColor(0.30f, 0.57f, 0.82f) : FLinearColor(0.20f, 0.42f, 0.67f),
             SwapRolesButtonMin.X, SwapRolesButtonMin.Y, ButtonWidth, ButtonHeight);
-        const FString SwapRolesText = TEXT("轮换地图师，再玩一次");
+        const FString SwapRolesText = GS->RoomMode == ETreasureRoomMode::OneExplorer
+            ? TEXT("轮换探索者，再玩一次") : TEXT("轮换地图师，再玩一次");
         GetTextSize(SwapRolesText, TextWidth, TextHeight, GEngine->GetLargeFont(), 1.f);
         DrawText(SwapRolesText, FLinearColor::White, CenterX - TextWidth * 0.5f,
             SwapRolesButtonMin.Y + (ButtonHeight - TextHeight) * 0.5f, GEngine->GetLargeFont(), 1.f);
@@ -360,11 +362,17 @@ void ATreasureSketchHUD::DrawHUD()
     }
 
     const bool bScout = PS->PlayerRole == ETreasurePlayerRole::Scout;
+    int32 Mapmakers = 0, Submitted = 0;
+    for (APlayerState* State : GS->PlayerArray)
+        if (const ATreasureSketchPlayerState* Member = Cast<ATreasureSketchPlayerState>(State))
+            if (Member->PlayerRole == ETreasurePlayerRole::Scout)
+            { ++Mapmakers; Submitted += Member->bSketchSubmitted; }
     const FString RoleLabel = FString::Printf(TEXT("%s / %s"),
         bScout ? TEXT("侦察者") : TEXT("寻宝者"),
         GetNetMode() == NM_ListenServer ? TEXT("主机") : TEXT("已连接客户端"));
     const FString Help = PC->IsScoutSpectating()
         ? TEXT("观战：WASD 飞行 | Space 上升 | Ctrl 下降 | Shift 加速")
+        : bScout && PC->HasSubmittedSketch() ? TEXT("已交图，等待其他地图师完成；到时自动收齐")
         : bScout ? TEXT("WASD 移动 | M 打开白纸画图 | C 清空 | Enter 交图")
         : TEXT("等待交图；收到后 M 查看地图 | E 挖掘");
     DrawText(FString::Printf(TEXT("%s  |  岛屿种子 %d"), *RoleLabel, GS->IslandSeed), FLinearColor::White, 35.f, 28.f, GEngine->GetLargeFont(), 1.f);
@@ -379,7 +387,7 @@ void ATreasureSketchHUD::DrawHUD()
             FLinearColor(0.45f, 0.9f, 0.85f), 35.f, 110.f, GEngine->GetSmallFont(), 1.f);
     }
 
-    if (GS->bSurfacePaintEnabled && bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing && !PC->IsMapOpen())
+    if (GS->bSurfacePaintEnabled && bScout && !PC->HasSubmittedSketch() && GS->Phase == ETreasureRoundPhase::ScoutDrawing && !PC->IsMapOpen())
     {
         DrawLine(Canvas->SizeX * 0.5f - 7.f, Canvas->SizeY * 0.5f, Canvas->SizeX * 0.5f + 7.f, Canvas->SizeY * 0.5f, FLinearColor(0.1f, 0.6f, 1.f), 2.f);
         DrawLine(Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f - 7.f, Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f + 7.f, FLinearColor(0.1f, 0.6f, 1.f), 2.f);
@@ -392,6 +400,9 @@ void ATreasureSketchHUD::DrawHUD()
     const float TimerWidth = 150.f;
     DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), Canvas->SizeX - TimerWidth - 28.f, 22.f, TimerWidth, 58.f);
     DrawText(TimerText, TimerColor, Canvas->SizeX - TimerWidth - 6.f, 30.f, GEngine->GetLargeFont(), 1.25f);
+    if (GS->RoomMode == ETreasureRoomMode::OneExplorer && GS->Phase == ETreasureRoundPhase::ScoutDrawing)
+        DrawText(FString::Printf(TEXT("已交图 %d / %d"), Submitted, Mapmakers), FLinearColor::White,
+            Canvas->SizeX - TimerWidth - 28.f, 86.f, GEngine->GetSmallFont(), 1.f);
 
     if (!PC->GetStatusMessage().IsEmpty())
         DrawText(PC->GetStatusMessage(), FLinearColor::Yellow, 35.f, Canvas->SizeY - 70.f, GEngine->GetMediumFont(), 1.f);
@@ -399,7 +410,7 @@ void ATreasureSketchHUD::DrawHUD()
     if (PC->IsHunterWaiting())
     {
         DrawRect(FLinearColor(0.01f, 0.015f, 0.025f, 0.96f), 0.f, 0.f, Canvas->SizeX, Canvas->SizeY);
-        DrawText(TEXT("侦察者正在探索并绘制地图……"), FLinearColor::White,
+        DrawText(GS->RoomMode == ETreasureRoomMode::OneExplorer ? TEXT("地图师们正在探索并绘制地图……") : TEXT("侦察者正在探索并绘制地图……"), FLinearColor::White,
             Canvas->SizeX * 0.5f - 230.f, Canvas->SizeY * 0.48f, GEngine->GetLargeFont(), 1.f);
         DrawText(TEXT("地图交付后，你将登岛寻宝"), FLinearColor(0.7f,0.8f,0.9f),
             Canvas->SizeX * 0.5f - 190.f, Canvas->SizeY * 0.55f, GEngine->GetMediumFont(), 1.f);
@@ -408,6 +419,13 @@ void ATreasureSketchHUD::DrawHUD()
         GetTextSize(WaitingTimer, WaitingWidth, WaitingHeight, GEngine->GetMediumFont(), 1.f);
         DrawText(WaitingTimer, TimerColor, (Canvas->SizeX - WaitingWidth) * 0.5f,
             Canvas->SizeY * 0.62f, GEngine->GetMediumFont(), 1.f);
+        if (GS->RoomMode == ETreasureRoomMode::OneExplorer)
+        {
+            const FString Progress = FString::Printf(TEXT("已交图 %d / %d · 每位地图师各有一张图纸"), Submitted, Mapmakers);
+            GetTextSize(Progress, WaitingWidth, WaitingHeight, GEngine->GetSmallFont(), 1.f);
+            DrawText(Progress, FLinearColor::White, (Canvas->SizeX - WaitingWidth) * 0.5f,
+                Canvas->SizeY * 0.69f, GEngine->GetSmallFont(), 1.f);
+        }
         return;
     }
 
@@ -426,6 +444,23 @@ void ATreasureSketchHUD::DrawHUD()
             const FVector2D B = Min + Stroke.Points[I] * Size;
             DrawLine(A.X, A.Y, B.X, B.Y, FLinearColor(0.08f,0.07f,0.05f), 4.f);
         }
+    }
+    if (!bScout && PC->GetSketchPageCount() > 0)
+    {
+        const float FooterY = Min.Y + Size.Y + 4.f;
+        DrawRect(FLinearColor(0.96f, 0.94f, 0.86f), Min.X, FooterY, Size.X, 28.f);
+        const FString PageLabel = FString::Printf(TEXT("图纸 %d / %d · %s"), PC->GetActiveSketchPage() + 1,
+            PC->GetSketchPageCount(), *PC->GetActiveMapmakerName());
+        DrawText(PageLabel, FLinearColor::Black, Min.X + 18.f, FooterY + 7.f, GEngine->GetSmallFont(), 1.f);
+        if (PC->GetSketchPageCount() > 1)
+            for (int32 I = 0; I < 2; ++I)
+            {
+                const FVector2D ButtonMin(Min.X + Size.X - 244.f + I * 120.f, FooterY);
+                const FName Name = I == 0 ? TEXT("PreviousSketchPage") : TEXT("NextSketchPage");
+                DrawRect(FLinearColor(0.15f, 0.30f, 0.30f), ButtonMin.X, ButtonMin.Y, 110.f, 28.f);
+                DrawText(I == 0 ? TEXT("上一张 ←") : TEXT("下一张 →"), FLinearColor::White, ButtonMin.X + 10.f, ButtonMin.Y + 7.f, GEngine->GetSmallFont(), 1.f);
+                AddHitBox(ButtonMin, FVector2D(110.f, 28.f), Name, true, 10);
+            }
     }
 }
 

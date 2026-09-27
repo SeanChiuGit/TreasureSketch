@@ -8,6 +8,7 @@
 
 class AProceduralIsland;
 class ATreasureSurfacePaint;
+class ATreasureSketchPlayerState;
 
 UCLASS()
 class TREASURESKETCH_API ATreasureSketchGameMode : public AGameModeBase
@@ -25,10 +26,12 @@ public:
     FVector GetTreasureLocation() const { return TreasureLocation; }
 
     void HandoffToHunter(const TArray<struct FSketchStroke>& SubmittedStrokes);
+    void SubmitPlayerSketch(ATreasureSketchPlayerState* Scout, const TArray<FSketchStroke>& SubmittedStrokes);
     bool TryDig(const FVector& WorldLocation, float& OutDistance);
     void StartNewRound(bool bSwapRoles = false);
     void StartHostedRound();
     bool SelectRoomMode(ETreasureRoomMode Mode);
+    void NormalizeRoomRoles(APlayerState* Excluded = nullptr, ATreasureSketchPlayerState* PreferredSinglePlayer = nullptr);
     void AdjustRoomSetting(FName Setting, int32 Direction);
     bool SetRoomMapScale(float Scale);
     void ReturnToSetup();
@@ -37,6 +40,7 @@ public:
     void SpraySurface(const FHitResult& Hit);
 
 private:
+    friend class FMultiMapmakerFlowTest;
     UPROPERTY()
     TObjectPtr<AProceduralIsland> Island;
 
@@ -45,11 +49,17 @@ private:
     float HunterViewUpdateTime = 0.f;
     UPROPERTY() TObjectPtr<ATreasureSurfacePaint> SurfacePaint;
     void ResetSurfacePaint();
+    void PlaceRoundPlayers();
+    TArray<FVector> MapmakerLandingSpawns;
 
     FVector FindPlayerSpawn(TArray<FVector>& UsedSpawns) const;
     void BuildRound();
     bool FinishIfTimeExpired();
-    void BeginHunterSearching(const TArray<FSketchStroke>& SubmittedStrokes);
+    void BeginHunterSearching(const TArray<FSketchPage>& Pages);
+    TArray<FSketchPage> CollectSketchPages() const;
+    void ResetSubmittedSketches();
+    UPROPERTY()
+    TMap<int32, FSketchPage> SubmittedSketches;
     void RevealTreasureToScout();
     void HideTreasureFromScout();
     void SendHunterViewToScout(float DeltaSeconds);

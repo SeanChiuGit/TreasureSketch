@@ -48,7 +48,12 @@ public:
     void ClientReturnToLobby();
     bool IsSprayCursorMode() const { return bSprayCursorMode; }
     bool IsMapOpen() const { return bMapOpen; }
-    const TArray<FSketchStroke>& GetStrokes() const { return Strokes; }
+    const TArray<FSketchStroke>& GetStrokes() const { return SketchPages.IsValidIndex(ActiveSketchPage) ? SketchPages[ActiveSketchPage].Strokes : Strokes; }
+    int32 GetSketchPageCount() const { return SketchPages.Num(); }
+    int32 GetActiveSketchPage() const { return ActiveSketchPage; }
+    FString GetActiveMapmakerName() const { return SketchPages.IsValidIndex(ActiveSketchPage) ? SketchPages[ActiveSketchPage].MapmakerName : FString(); }
+    bool HasSubmittedSketch() const;
+    void CycleSketchPage(int32 Direction);
     const TArray<FSketchStroke>& GetServerDrawing() const;
     FString GetStatusMessage() const { return StatusMessage; }
     FVector2D GetPaperMin() const;
@@ -68,6 +73,9 @@ public:
     void ClientReceiveSketch(const TArray<FSketchStroke>& CompletedStrokes);
 
     UFUNCTION(Client, Reliable)
+    void ClientReceiveSketchPages(int32 RoundSerial, const TArray<FSketchPage>& Pages);
+
+    UFUNCTION(Client, Reliable)
     void ClientDigResult(bool bFound, float Distance);
 
     UFUNCTION(Client, Reliable)
@@ -83,6 +91,7 @@ public:
     void ClientUpdateHunterView(FVector_NetQuantize ViewLocation, FRotator ViewRotation, APlayerState* ViewedPlayer);
 
 private:
+    friend class FMultiMapmakerFlowTest;
     bool bMapScaleEditing = false;
     bool bReplaceMapScaleText = false;
     FString MapScaleText;
@@ -105,6 +114,11 @@ private:
     bool bTestSeedEditing = false;
     UPROPERTY()
     TArray<FSketchStroke> Strokes;
+    UPROPERTY()
+    TArray<FSketchPage> SketchPages;
+    int32 ActiveSketchPage = 0;
+    bool bLocalSketchSubmitted = false;
+    int32 CurrentSketchRoundSerial = 0;
 
     UPROPERTY()
     TArray<FSketchStroke> ServerDrawing;
