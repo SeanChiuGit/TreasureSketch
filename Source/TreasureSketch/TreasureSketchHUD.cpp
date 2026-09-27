@@ -58,7 +58,7 @@ void ATreasureSketchHUD::DrawHUD()
             DrawMenuButton(TEXT("MenuSolo"), TEXT("单人探险"), Y); Y += 68.f;
             DrawMenuButton(TEXT("MenuSettings"), TEXT("设置"), Y); Y += 68.f;
             DrawMenuButton(TEXT("MenuQuit"), TEXT("退出游戏"), Y);
-            DrawText(TEXT("双人合作寻宝原型"), FLinearColor(0.55f, 0.70f, 0.68f),
+            DrawText(TEXT("2至4人合作寻宝"), FLinearColor(0.55f, 0.70f, 0.68f),
                 PanelX + 48.f, PanelY + PanelH - 45.f, GEngine->GetSmallFont(), 0.9f);
         }
         else if (Page == EFrontEndPage::SoloTest)
@@ -92,6 +92,10 @@ void ATreasureSketchHUD::DrawHUD()
             DrawRect(FLinearColor(0.09f, 0.17f, 0.18f), SeedX, SeedY + 170.f, 130.f, 44.f);
             DrawText(TEXT("清空种子"), FLinearColor::White, SeedX + 12.f, SeedY + 180.f, GEngine->GetMediumFont(), 1.f);
             AddHitBox(FVector2D(SeedX, SeedY + 170.f), FVector2D(130.f, 44.f), TEXT("TestSeedClear"), true, 10);
+            DrawRect(GS->bSurfacePaintEnabled ? FLinearColor(0.12f, 0.38f, 0.60f) : FLinearColor(0.09f, 0.17f, 0.18f), SeedX, SeedY + 280.f, SeedW, 48.f);
+            DrawText(GS->bSurfacePaintEnabled ? TEXT("实验喷漆：开启（点击关闭）") : TEXT("实验喷漆：关闭（点击开启）"), FLinearColor::White, SeedX + 10.f, SeedY + 295.f, GEngine->GetSmallFont(), 0.9f);
+            AddHitBox(FVector2D(SeedX, SeedY + 280.f), FVector2D(SeedW, 48.f), TEXT("ToggleSurfacePaint"), true, 10);
+            DrawText(TEXT("完整流程测试：F切换喷漆，右键沿鼠标喷涂"), FLinearColor::White, SeedX, SeedY + 345.f, GEngine->GetSmallFont(), 0.85f);
             if (!SeedText.IsEmpty() && PC->GetTestSeed() == 0)
                 DrawText(TEXT("请输入1至2147483647，或清空以随机"), FLinearColor(1.f, 0.4f, 0.3f),
                     SeedX, SeedY + 232.f, GEngine->GetSmallFont(), 0.9f);
@@ -134,9 +138,34 @@ void ATreasureSketchHUD::DrawHUD()
         else if (Page == EFrontEndPage::RoomLobby)
         {
             const UTreasureOnlineSubsystem* Online = GetGameInstance()->GetSubsystem<UTreasureOnlineSubsystem>();
-            DrawText(TEXT("双人房间"), FLinearColor::White, PanelX + 48.f, PanelY + 150.f,
+            const float ModeX = PanelX + PanelW + 28.f;
+            const float ModeW = FMath::Max(180.f, FMath::Min(410.f, W - ModeX - 24.f));
+            DrawRect(GS->bSurfacePaintEnabled ? FLinearColor(0.12f, 0.38f, 0.60f) : FLinearColor(0.09f, 0.17f, 0.18f), ModeX, PanelY + 585.f, ModeW, 48.f);
+            DrawText(GS->bSurfacePaintEnabled ? TEXT("实验喷漆：开启") : TEXT("实验喷漆：关闭"), FLinearColor::White, ModeX + 10.f, PanelY + 600.f, GEngine->GetSmallFont(), 0.9f);
+            if (GetNetMode() == NM_ListenServer)
+                AddHitBox(FVector2D(ModeX, PanelY + 585.f), FVector2D(ModeW, 48.f), TEXT("ToggleSurfacePaint"), true, 10);
+            DrawText(TEXT("游戏模式"), FLinearColor::White, ModeX, PanelY + 150.f, GEngine->GetMediumFont());
+            const TCHAR* Modes[] = { TEXT("一名地图师，多名探索者（已选择）"), TEXT("多名地图师，一名探索者（待开发）"), TEXT("2对2 对抗（待开发）") };
+            for (int32 ModeIndex = 0; ModeIndex < 3; ++ModeIndex)
+            {
+                const float ModeY = PanelY + 195.f + ModeIndex * 65.f;
+                DrawRect(ModeIndex == 0 ? FLinearColor(0.72f, 0.43f, 0.16f) : FLinearColor(0.08f, 0.12f, 0.13f), ModeX, ModeY, ModeW, 54.f);
+                DrawText(Modes[ModeIndex], ModeIndex == 0 ? FLinearColor::White : FLinearColor(0.45f, 0.5f, 0.5f), ModeX + 10.f, ModeY + 16.f, GEngine->GetSmallFont(), 0.9f);
+            }
+            if (GetNetMode() == NM_ListenServer)
+                AddHitBox(FVector2D(ModeX, PanelY + 195.f), FVector2D(ModeW, 54.f), TEXT("RoomModeCoop"), true, 10);
+            DrawText(TEXT("房主先当地图师，其余玩家为探索者"), FLinearColor::White, ModeX, PanelY + 405.f, GEngine->GetSmallFont(), 0.9f);
+            DrawText(TEXT("同一张手绘图；任一人找到宝藏，全队成功"), FLinearColor::White, ModeX, PanelY + 430.f, GEngine->GetSmallFont(), 0.9f);
+            float PlayerY = PanelY + 465.f;
+            for (APlayerState* State : GS->PlayerArray)
+                if (const ATreasureSketchPlayerState* Member = Cast<ATreasureSketchPlayerState>(State))
+                {
+                    DrawText(FString::Printf(TEXT("%s — %s"), *Member->GetPlayerName(), Member->PlayerRole == ETreasurePlayerRole::Scout ? TEXT("地图师") : TEXT("探索者")), FLinearColor::White, ModeX, PlayerY, GEngine->GetSmallFont(), 0.9f);
+                    PlayerY += 25.f;
+                }
+            DrawText(TEXT("合作房间"), FLinearColor::White, PanelX + 48.f, PanelY + 150.f,
                 GEngine->GetLargeFont(), 1.2f);
-            DrawText(FString::Printf(TEXT("玩家  %d / 2"), GS->PlayerArray.Num()),
+            DrawText(FString::Printf(TEXT("玩家  %d / 4"), GS->PlayerArray.Num()),
                 FLinearColor(0.86f, 0.92f, 0.90f), PanelX + 48.f, PanelY + 215.f,
                 GEngine->GetLargeFont(), 1.f);
             DrawText(Online ? Online->GetStatus() : TEXT("正在建立 Steam 房间……"),
@@ -147,7 +176,7 @@ void ATreasureSketchHUD::DrawHUD()
                 DrawMenuButton(TEXT("RoomInvite"), TEXT("邀请 Steam 好友"), PanelY + 335.f, true);
                 DrawMenuButton(TEXT("RoomStart"), TEXT("开始游戏"), PanelY + 405.f,
                     GS->PlayerArray.Num() >= 2);
-                DrawText(GS->PlayerArray.Num() >= 2 ? TEXT("两名玩家已到齐") : TEXT("等待另一名玩家加入……"),
+                DrawText(GS->PlayerArray.Num() >= 2 ? TEXT("已有至少两人，可以开始（最多四人）") : TEXT("等待另一名玩家加入……"),
                     FLinearColor(0.70f, 0.82f, 0.78f), PanelX + 48.f, PanelY + 478.f,
                     GEngine->GetSmallFont(), 0.9f);
             }
@@ -191,8 +220,8 @@ void ATreasureSketchHUD::DrawHUD()
     {
         DrawRect(FLinearColor(0.015f, 0.02f, 0.035f, 0.94f), Canvas->SizeX * 0.20f, Canvas->SizeY * 0.25f, Canvas->SizeX * 0.60f, Canvas->SizeY * 0.42f);
         DrawText(TEXT("STEAM 房间已连接"), FLinearColor(0.3f,0.85f,1.f), Canvas->SizeX * 0.32f, Canvas->SizeY * 0.32f, GEngine->GetLargeFont(), 1.2f);
-        DrawText(FString::Printf(TEXT("当前玩家：%d / 2"), GS->PlayerArray.Num()), FLinearColor::White, Canvas->SizeX * 0.39f, Canvas->SizeY * 0.42f, GEngine->GetLargeFont(), 1.f);
-        DrawText(GetNetMode() == NM_ListenServer ? TEXT("两人到齐后，房主按 P 开始") : TEXT("等待房主开始游戏……"),
+        DrawText(FString::Printf(TEXT("当前玩家：%d / 4"), GS->PlayerArray.Num()), FLinearColor::White, Canvas->SizeX * 0.39f, Canvas->SizeY * 0.42f, GEngine->GetLargeFont(), 1.f);
+        DrawText(GetNetMode() == NM_ListenServer ? TEXT("至少两人时，房主按 P 开始") : TEXT("等待房主开始游戏……"),
             FLinearColor(0.95f,0.85f,0.25f), Canvas->SizeX * 0.34f, Canvas->SizeY * 0.52f, GEngine->GetMediumFont(), 1.f);
         if (const UTreasureOnlineSubsystem* Online = GetGameInstance()->GetSubsystem<UTreasureOnlineSubsystem>())
         {
@@ -243,7 +272,7 @@ void ATreasureSketchHUD::DrawHUD()
 
         const bool bSolo = GS->PlayerArray.Num() == 1;
         const FString ChoiceHint = bSolo ? TEXT("单人测试：再玩一次会开始新的岛屿")
-            : TEXT("任一人选择后，双方立即开始新的一局");
+            : TEXT("任一人选择后，全队立即开始新的一局");
         GetTextSize(ChoiceHint, TextWidth, TextHeight, GEngine->GetSmallFont(), 1.f);
         DrawText(ChoiceHint, FLinearColor(0.7f, 0.8f, 0.9f), CenterX - TextWidth * 0.5f,
             CenterY - 30.f, GEngine->GetSmallFont(), 1.f);
@@ -261,7 +290,7 @@ void ATreasureSketchHUD::DrawHUD()
         const bool bSwapRolesHovered = HitBoxesOver.Contains(SwapRolesButtonName);
         DrawRect(bSwapRolesHovered ? FLinearColor(0.30f, 0.57f, 0.82f) : FLinearColor(0.20f, 0.42f, 0.67f),
             SwapRolesButtonMin.X, SwapRolesButtonMin.Y, ButtonWidth, ButtonHeight);
-        const FString SwapRolesText = TEXT("交换角色，再玩一次");
+        const FString SwapRolesText = TEXT("轮换地图师，再玩一次");
         GetTextSize(SwapRolesText, TextWidth, TextHeight, GEngine->GetLargeFont(), 1.f);
         DrawText(SwapRolesText, FLinearColor::White, CenterX - TextWidth * 0.5f,
             SwapRolesButtonMin.Y + (ButtonHeight - TextHeight) * 0.5f, GEngine->GetLargeFont(), 1.f);
@@ -281,7 +310,7 @@ void ATreasureSketchHUD::DrawHUD()
     DrawText(Help, FLinearColor(0.9f,0.9f,0.9f), 35.f, 62.f, GEngine->GetSmallFont(), 1.f);
     if (PC->IsScoutSpectating())
     {
-        DrawText(TEXT("鼠标转向 | Tab 切换视角 | T 显示/隐藏宝藏"),
+        DrawText(TEXT("鼠标转向 | Tab 切换视角 | Q 切换探索者 | T 宝藏"),
             FLinearColor(0.9f, 0.9f, 0.9f), 35.f, 86.f, GEngine->GetSmallFont(), 1.f);
         DrawText(FString::Printf(TEXT("%s  |  宝藏标记：%s"),
             PC->IsHunterFirstPersonView() ? TEXT("寻宝者第一视角") : TEXT("自由飞行"),
@@ -289,6 +318,13 @@ void ATreasureSketchHUD::DrawHUD()
             FLinearColor(0.45f, 0.9f, 0.85f), 35.f, 110.f, GEngine->GetSmallFont(), 1.f);
     }
 
+    if (GS->bSurfacePaintEnabled && bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing && !PC->IsMapOpen())
+    {
+        DrawText(PC->IsSprayCursorMode()
+            ? TEXT("喷漆中：鼠标指向哪里就喷哪里 | 按住右键喷涂 | F退出转动镜头")
+            : TEXT("实验喷漆：按 F 显示鼠标开始喷漆 | M画图 | 每局最多600个色点"),
+            FLinearColor(0.1f, 0.6f, 1.f), 35.f, 86.f, GEngine->GetSmallFont(), 0.9f);
+    }
     const int32 SecondsRemaining = GS->GetSecondsRemaining();
     const FString TimerText = FString::Printf(TEXT("%02d:%02d"), SecondsRemaining / 60, SecondsRemaining % 60);
     const FLinearColor TimerColor = SecondsRemaining <= 10 ? FLinearColor(1.f, 0.12f, 0.08f) : FLinearColor::White;

@@ -8,6 +8,7 @@
 class ATreasureMarker;
 class ACameraActor;
 class ATreasureSketchCharacter;
+class APlayerState;
 
 enum class EScoutSpectatorView : uint8
 {
@@ -40,6 +41,10 @@ public:
     bool IsTestSeedEditing() const { return bTestSeedEditing; }
     int32 GetTestSeed() const;
 
+    int32 GetSpectatedHunterIndex() const { return SpectatedHunterIndex; }
+    UFUNCTION(Client, Reliable)
+    void ClientReturnToLobby();
+    bool IsSprayCursorMode() const { return bSprayCursorMode; }
     bool IsMapOpen() const { return bMapOpen; }
     const TArray<FSketchStroke>& GetStrokes() const { return Strokes; }
     FString GetStatusMessage() const { return StatusMessage; }
@@ -72,9 +77,21 @@ public:
     void ClientHideTreasure();
 
     UFUNCTION(Client, Unreliable)
-    void ClientUpdateHunterView(FVector_NetQuantize ViewLocation, FRotator ViewRotation);
+    void ClientUpdateHunterView(FVector_NetQuantize ViewLocation, FRotator ViewRotation, APlayerState* ViewedPlayer);
 
 private:
+    bool bSprayCursorMode = false;
+    bool bLookInputLocked = false;
+    void SetSprayCursorMode(bool bEnabled);
+    float NextSpraySampleTime = 0.f;
+    float NextServerSprayTime = 0.f;
+    UFUNCTION(Server, Unreliable)
+    void ServerSpraySurface(FVector_NetQuantize ViewOrigin, FVector_NetQuantizeNormal ViewDirection);
+    int32 SpectatedHunterIndex = 0;
+    UPROPERTY()
+    TObjectPtr<APlayerState> ViewedHunterState;
+    UFUNCTION(Server, Reliable)
+    void ServerCycleSpectatedHunter();
     UPROPERTY()
     FString TestSeedText;
     UPROPERTY()

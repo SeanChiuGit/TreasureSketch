@@ -83,7 +83,7 @@ void UTreasureOnlineSubsystem::CreateSession()
 {
     SessionSettings = MakeShared<FOnlineSessionSettings>();
     SessionSettings->bIsLANMatch = false;
-    SessionSettings->NumPublicConnections = 2;
+    SessionSettings->NumPublicConnections = 4;
     SessionSettings->bShouldAdvertise = true;
     SessionSettings->bAllowInvites = true;
     SessionSettings->bAllowJoinInProgress = true;
@@ -94,7 +94,7 @@ void UTreasureOnlineSubsystem::CreateSession()
     CreateHandle = SessionInterface->AddOnCreateSessionCompleteDelegate_Handle(
         FOnCreateSessionCompleteDelegate::CreateUObject(this, &UTreasureOnlineSubsystem::OnCreateSessionComplete));
     Status = TEXT("正在创建 Steam 公网房间……");
-    AddDiagnostic(TEXT("CreateSession：请求创建 2 人 Steam Lobby"));
+    AddDiagnostic(TEXT("CreateSession：请求创建 4 人 Steam Lobby"));
     if (!SessionInterface->CreateSession(0, NAME_GameSession, *SessionSettings))
     {
         SessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(CreateHandle);

@@ -10,6 +10,7 @@
 #include "Engine/Engine.h"
 #include "EngineUtils.h"
 #include "InputKeyEventArgs.h"
+#include "Components/PrimitiveComponent.h"
 
 int32 ATreasureSketchPlayerController::GetTestSeed() const
 {
@@ -107,12 +108,32 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
     Super::PlayerTick(DeltaTime);
     UpdateFrontEnd();
     if (IsFrontEndVisible()) return;
+    const ATreasureSketchGameState* CursorGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    const bool bCanSpray = CursorGS && CursorGS->bGameStarted && CursorGS->bSurfacePaintEnabled
+        && IsLocalScout() && CursorGS->Phase == ETreasureRoundPhase::ScoutDrawing && !bMapOpen;
+    if (bSprayCursorMode && !bCanSpray) SetSprayCursorMode(false);
+    if (bCanSpray && WasInputKeyJustPressed(EKeys::F)) SetSprayCursorMode(!bSprayCursorMode);
     UpdateReplayInput();
+    if (IsScoutSpectating() && WasInputKeyJustPressed(EKeys::Q)) ServerCycleSpectatedHunter();
     UpdateSpectatorCamera(DeltaTime);
     ApplyPhaseInputRules();
     ApplyKeyboardMovementFallback();
     if (!StatusMessage.IsEmpty() && GetWorld()->GetTimeSeconds() >= StatusUntil)
         StatusMessage.Empty();
+    const ATreasureSketchGameState* PaintGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (PaintGS && PaintGS->bGameStarted && PaintGS->bSurfacePaintEnabled && IsLocalScout()
+        && PaintGS->Phase == ETreasureRoundPhase::ScoutDrawing && !bMapOpen && bSprayCursorMode
+        && IsInputKeyDown(EKeys::RightMouseButton) && GetWorld()->GetTimeSeconds() >= NextSpraySampleTime)
+    {
+        NextSpraySampleTime = GetWorld()->GetTimeSeconds() + 0.06f;
+        float MouseX = 0.f, MouseY = 0.f;
+        int32 Width = 0, Height = 0;
+        GetViewportSize(Width, Height);
+        FVector Origin, Direction;
+        if (GetMousePosition(MouseX, MouseY) && MouseX >= 0.f && MouseY >= 0.f
+            && MouseX < Width && MouseY < Height && DeprojectMousePositionToWorld(Origin, Direction))
+            ServerSpraySurface(Origin, Direction);
+    }
     if (!bMapOpen || !IsLocalScout()) { bWasDrawing = false; return; }
 
     float X = 0.f, Y = 0.f;
@@ -137,6 +158,9 @@ bool ATreasureSketchPlayerController::IsFrontEndVisible() const
 
 void ATreasureSketchPlayerController::UpdateFrontEnd()
 {
+    const ATreasureSketchGameState* LobbyGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (FrontEndPage == EFrontEndPage::None && LobbyGS && !LobbyGS->bGameStarted && GetNetMode() != NM_Standalone)
+        FrontEndPage = EFrontEndPage::RoomLobby;
     const bool bVisible = IsFrontEndVisible();
     if (bVisible == bFrontEndInputActive) return;
     bFrontEndInputActive = bVisible;
@@ -157,6 +181,7 @@ void ATreasureSketchPlayerController::UpdateFrontEnd()
         ResetIgnoreMoveInput();
         ResetIgnoreLookInput();
         bInputLocked = false;
+        bLookInputLocked = false;
         SetInputMode(FInputModeGameOnly());
         if (GetPawn()) SetViewTarget(GetPawn());
         if (MenuCamera) MenuCamera->Destroy();
@@ -221,6 +246,15 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
     else if (ActionName == TEXT("MenuSettings")) OpenFrontEndPage(EFrontEndPage::Settings);
     else if (ActionName == TEXT("MenuBack")) OpenFrontEndPage(EFrontEndPage::MainMenu);
     else if (ActionName == TEXT("RoomInvite")) InviteSteamFriend();
+    else if (ActionName == TEXT("ToggleSurfacePaint"))
+    {
+        if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) GM->ToggleSurfacePaint();
+    }
+    else if (ActionName == TEXT("RoomModeCoop"))
+    {
+        if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
+            GM->SelectRoomMode(ETreasureRoomMode::OneMapmaker);
+    }
     else if (ActionName == TEXT("RoomStart")) StartOnlineRound();
     else if (ActionName == TEXT("RoomBack"))
     {
@@ -255,8 +289,13 @@ void ATreasureSketchPlayerController::ApplyPhaseInputRules()
     if (bInputLocked != bShouldLock)
     {
         SetIgnoreMoveInput(bShouldLock);
-        SetIgnoreLookInput(bShouldLock);
         bInputLocked = bShouldLock;
+    }
+    const bool bShouldLockLook = bShouldLock || bSprayCursorMode;
+    if (bLookInputLocked != bShouldLockLook)
+    {
+        SetIgnoreLookInput(bShouldLockLook);
+        bLookInputLocked = bShouldLockLook;
     }
 }
 
@@ -288,11 +327,14 @@ void ATreasureSketchPlayerController::UpdateReplayInput()
 
 ATreasureSketchCharacter* ATreasureSketchPlayerController::FindHunterCharacter() const
 {
-    for (TActorIterator<ATreasureSketchCharacter> It(GetWorld()); It; ++It)
-    {
-        const ATreasureSketchPlayerState* PS = It->GetPlayerState<ATreasureSketchPlayerState>();
-        if (PS && PS->PlayerRole == ETreasurePlayerRole::Hunter) return *It;
-    }
+    if (ViewedHunterState) return Cast<ATreasureSketchCharacter>(ViewedHunterState->GetPawn());
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (!GS) return nullptr;
+    int32 Index = 0;
+    for (APlayerState* State : GS->PlayerArray)
+        if (const ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State))
+            if (PS->PlayerRole == ETreasurePlayerRole::Hunter && Index++ == SpectatedHunterIndex)
+                return Cast<ATreasureSketchCharacter>(PS->GetPawn());
     return nullptr;
 }
 
@@ -412,12 +454,32 @@ void ATreasureSketchPlayerController::SetLocalTreasureMarkerVisible(bool bVisibl
 }
 
 void ATreasureSketchPlayerController::ClientUpdateHunterView_Implementation(
-    FVector_NetQuantize ViewLocation, FRotator ViewRotation)
+    FVector_NetQuantize ViewLocation, FRotator ViewRotation, APlayerState* ViewedPlayer)
 {
+    ViewedHunterState = ViewedPlayer;
     HunterViewLocation = ViewLocation;
     HunterViewRotation = ViewRotation;
     HunterViewUpdatedAt = GetWorld()->GetTimeSeconds();
     bHasHunterView = true;
+}
+
+void ATreasureSketchPlayerController::SetSprayCursorMode(bool bEnabled)
+{
+    if (bSprayCursorMode == bEnabled) return;
+    bSprayCursorMode = bEnabled;
+    bShowMouseCursor = bEnabled;
+    if (bEnabled)
+    {
+        FInputModeGameAndUI SprayInput;
+        SprayInput.SetHideCursorDuringCapture(false);
+        SprayInput.SetLockMouseToViewportBehavior(EMouseLockMode::LockAlways);
+        SetInputMode(SprayInput);
+        int32 Width = 0, Height = 0;
+        GetViewportSize(Width, Height);
+        SetMouseLocation(Width / 2, Height / 2);
+    }
+    else SetInputMode(FInputModeGameOnly());
+    ApplyPhaseInputRules();
 }
 
 void ATreasureSketchPlayerController::ToggleMap()
@@ -426,6 +488,7 @@ void ATreasureSketchPlayerController::ToggleMap()
     if ((GS && GS->IsRoundOver()) || IsHunterWaiting()
         || (IsLocalScout() && GS && GS->Phase != ETreasureRoundPhase::ScoutDrawing))
         return;
+    SetSprayCursorMode(false);
     bMapOpen = !bMapOpen;
     bShowMouseCursor = bMapOpen;
     ApplyPhaseInputRules();
@@ -451,6 +514,7 @@ void ATreasureSketchPlayerController::Handoff()
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (IsLocalScout() && GS && GS->bGameStarted && GS->Phase == ETreasureRoundPhase::ScoutDrawing)
     {
+        SetSprayCursorMode(false);
         SetLocalTreasureMarkerVisible(false);
         ServerSubmitSketch(Strokes);
         bMapOpen = false;
@@ -488,6 +552,30 @@ void ATreasureSketchPlayerController::Dig()
         ServerTryDig(GetPawn()->GetActorLocation());
 }
 
+void ATreasureSketchPlayerController::ServerSpraySurface_Implementation(FVector_NetQuantize ViewOrigin, FVector_NetQuantizeNormal ViewDirection)
+{
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (!GS || !GS->bGameStarted || !GS->bSurfacePaintEnabled || !IsLocalScout() || !GetPawn()
+        || GS->Phase != ETreasureRoundPhase::ScoutDrawing) return;
+    const float Now = GetWorld()->GetTimeSeconds();
+    if (Now < NextServerSprayTime) return;
+    NextServerSprayTime = Now + 0.05f;
+    const FVector Direction = FVector(ViewDirection).GetSafeNormal();
+    if (FVector::DistSquared(ViewOrigin, GetPawn()->GetActorLocation()) > FMath::Square(900.f)
+        || FVector::DotProduct(Direction, GetControlRotation().Vector()) < 0.1f) return;
+    FHitResult Hit;
+    FCollisionQueryParams Query(SCENE_QUERY_STAT(SurfacePaintAim), true, GetPawn());
+    FCollisionObjectQueryParams PaintObjects;
+    PaintObjects.AddObjectTypesToQuery(ECC_WorldStatic);
+    PaintObjects.AddObjectTypesToQuery(ECC_WorldDynamic);
+    // Paint scenery, never players. The water mesh has no collision.
+    if (!GetWorld()->LineTraceSingleByObjectType(Hit, ViewOrigin, FVector(ViewOrigin) + Direction * 1800.f,
+        PaintObjects, Query)) return;
+    UPrimitiveComponent* Component = Hit.GetComponent();
+    if (!Component || !Component->IsVisible() || FVector::DistSquared(Hit.ImpactPoint, GetPawn()->GetActorLocation()) > FMath::Square(1600.f)) return;
+    if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) GM->SpraySurface(Hit);
+}
+
 void ATreasureSketchPlayerController::ServerTryDig_Implementation(FVector_NetQuantize WorldLocation)
 {
     const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
@@ -508,7 +596,12 @@ void ATreasureSketchPlayerController::ClientDigResult_Implementation(bool bFound
 
 void ATreasureSketchPlayerController::ClientStartNewRound_Implementation(int32 NewRoundSerial)
 {
+    SetSprayCursorMode(false);
     StopSpectating();
+    SpectatedHunterIndex = 0;
+    ViewedHunterState = nullptr;
+    NextSpraySampleTime = 0.f;
+    NextServerSprayTime = 0.f;
     PendingSpectatorRoundSerial = NewRoundSerial;
     bHasScoutTreasureLocation = false;
     SetLocalTreasureMarkerVisible(false);
@@ -534,6 +627,24 @@ void ATreasureSketchPlayerController::ClientHideTreasure_Implementation()
 void ATreasureSketchPlayerController::ClearSketch()
 {
     if (IsLocalScout()) Strokes.Reset();
+}
+
+void ATreasureSketchPlayerController::ClientReturnToLobby_Implementation()
+{
+    OpenFrontEndPage(EFrontEndPage::RoomLobby);
+    StatusMessage = TEXT("玩家离开，本局已结束。等待房主重新开始。");
+}
+
+void ATreasureSketchPlayerController::ServerCycleSpectatedHunter_Implementation()
+{
+    if (!IsLocalScout()) return;
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (!GS || GS->Phase != ETreasureRoundPhase::HunterSearching) return;
+    int32 Hunters = 0;
+    for (APlayerState* State : GS->PlayerArray)
+        if (const ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State))
+            Hunters += PS->PlayerRole == ETreasurePlayerRole::Hunter;
+    if (Hunters > 0) SpectatedHunterIndex = (SpectatedHunterIndex + 1) % Hunters;
 }
 
 void ATreasureSketchPlayerController::NewRound()

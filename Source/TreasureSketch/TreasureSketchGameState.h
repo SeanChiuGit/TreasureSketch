@@ -14,13 +14,25 @@ enum class ETreasureRoundPhase : uint8
     HunterTimedOut
 };
 
+UENUM(BlueprintType)
+enum class ETreasureRoomMode : uint8
+{
+    OneMapmaker,
+    OneExplorer,
+    TeamVersus
+};
+
 UCLASS()
 class TREASURESKETCH_API ATreasureSketchGameState : public AGameStateBase
 {
     GENERATED_BODY()
 
 public:
+    static constexpr int32 MaxRoomPlayers = 4;
     ATreasureSketchGameState();
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    ETreasureRoomMode RoomMode = ETreasureRoomMode::OneMapmaker;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
     UPROPERTY(Replicated, BlueprintReadOnly)
@@ -37,6 +49,9 @@ public:
 
     UPROPERTY(Replicated, BlueprintReadOnly)
     bool bGameStarted = false;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    bool bSurfacePaintEnabled = false;
 
     bool IsRoundOver() const
     {

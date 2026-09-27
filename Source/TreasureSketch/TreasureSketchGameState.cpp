@@ -10,6 +10,8 @@ ATreasureSketchGameState::ATreasureSketchGameState()
 void ATreasureSketchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+    DOREPLIFETIME(ATreasureSketchGameState, RoomMode);
+    DOREPLIFETIME(ATreasureSketchGameState, bSurfacePaintEnabled);
     DOREPLIFETIME(ATreasureSketchGameState, IslandSeed);
     DOREPLIFETIME(ATreasureSketchGameState, RoundSerial);
     DOREPLIFETIME(ATreasureSketchGameState, Phase);
