@@ -60,6 +60,7 @@ public:
     FVector2D GetPaperSize() const;
     void ClearSketch();
     void RequestReplay(bool bSwapRoles = false);
+    void RequestRoundReview(bool bReviewing);
     bool IsLocalScout() const;
     bool IsHunterWaiting() const;
     bool IsScoutSpectating() const { return SpectatorCamera != nullptr; }
@@ -98,6 +99,12 @@ public:
 
     UFUNCTION(Client, Reliable)
     void ClientHideTreasure();
+
+    UFUNCTION(Client, Reliable)
+    void ClientBeginReview(int32 RoundSerial, const TArray<FSketchPage>& Pages, FVector_NetQuantize TreasureLocation);
+
+    UFUNCTION(Client, Reliable)
+    void ClientEndReview(int32 RoundSerial);
 
     UFUNCTION(Client, Unreliable)
     void ClientUpdateHunterView(FVector_NetQuantize ViewLocation, FRotator ViewRotation, APlayerState* ViewedPlayer);
@@ -206,4 +213,7 @@ private:
 
     UFUNCTION(Server, Reliable)
     void ServerRequestReplay(bool bSwapRoles);
+
+    UFUNCTION(Server, Reliable)
+    void ServerRequestRoundReview(bool bReviewing);
 };

@@ -25,6 +25,7 @@ void ATreasureSketchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProper
     DOREPLIFETIME(ATreasureSketchGameState, Phase);
     DOREPLIFETIME(ATreasureSketchGameState, RoundEndServerTime);
     DOREPLIFETIME(ATreasureSketchGameState, bGameStarted);
+    DOREPLIFETIME(ATreasureSketchGameState, bReviewingRound);
 }
 
 void ATreasureSketchGameState::ApplyMovementSpeed()

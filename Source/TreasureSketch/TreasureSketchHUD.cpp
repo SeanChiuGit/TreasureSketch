@@ -283,17 +283,18 @@ void ATreasureSketchHUD::DrawHUD()
         return;
     }
 
-    if (GS->IsRoundOver())
+    if (GS->IsRoundOver() && !GS->bReviewingRound)
     {
         const bool bWon = GS->Phase == ETreasureRoundPhase::Won;
         const float CenterX = Canvas->SizeX * 0.5f;
         const float CenterY = Canvas->SizeY * 0.5f;
         const float PanelWidth = FMath::Min(620.f, Canvas->SizeX * 0.82f);
-        const float PanelHeight = 380.f;
+        const float PanelHeight = 510.f;
         const float ButtonWidth = FMath::Min(360.f, PanelWidth - 48.f);
         const float ButtonHeight = 56.f;
         const FVector2D SameRolesButtonMin(CenterX - ButtonWidth * 0.5f, CenterY + 8.f);
         const FVector2D SwapRolesButtonMin(CenterX - ButtonWidth * 0.5f, CenterY + 78.f);
+        const FVector2D ReviewButtonMin(CenterX - ButtonWidth * 0.5f, CenterY + (GS->PlayerArray.Num() == 1 ? 78.f : 142.f));
         const FName SameRolesButtonName(TEXT("ReplaySameRoles"));
         const FName SwapRolesButtonName(TEXT("ReplaySwapRoles"));
 
@@ -306,21 +307,21 @@ void ATreasureSketchHUD::DrawHUD()
         GetTextSize(Title, TextWidth, TextHeight, GEngine->GetLargeFont(), 1.35f);
         DrawText(Title, bWon ? FLinearColor(0.95f, 0.85f, 0.25f) : FLinearColor(1.f, 0.35f, 0.25f),
             CenterX - TextWidth * 0.5f,
-            CenterY - 140.f, GEngine->GetLargeFont(), 1.35f);
+            CenterY - 185.f, GEngine->GetLargeFont(), 1.35f);
 
         const FString Hint = bWon ? TEXT("找到宝藏了！再来一座新岛屿？")
             : GS->Phase == ETreasureRoundPhase::ScoutTimedOut ? TEXT("侦察者未能及时交图，再试一次？")
             : TEXT("寻宝者未能及时找到宝藏，再试一次？");
         GetTextSize(Hint, TextWidth, TextHeight, GEngine->GetMediumFont(), 1.f);
         DrawText(Hint, FLinearColor::White, CenterX - TextWidth * 0.5f,
-            CenterY - 72.f, GEngine->GetMediumFont(), 1.f);
+            CenterY - 117.f, GEngine->GetMediumFont(), 1.f);
 
         const bool bSolo = GS->PlayerArray.Num() == 1;
         const FString ChoiceHint = bSolo ? TEXT("单人测试：再玩一次会开始新的岛屿")
             : TEXT("任一人选择后，全队立即开始新的一局");
         GetTextSize(ChoiceHint, TextWidth, TextHeight, GEngine->GetSmallFont(), 1.f);
         DrawText(ChoiceHint, FLinearColor(0.7f, 0.8f, 0.9f), CenterX - TextWidth * 0.5f,
-            CenterY - 30.f, GEngine->GetSmallFont(), 1.f);
+            CenterY - 75.f, GEngine->GetSmallFont(), 1.f);
 
         const bool bSameRolesHovered = HitBoxesOver.Contains(SameRolesButtonName);
         DrawRect(bSameRolesHovered ? FLinearColor(0.24f, 0.69f, 0.52f) : FLinearColor(0.16f, 0.52f, 0.40f),
@@ -333,7 +334,7 @@ void ATreasureSketchHUD::DrawHUD()
 
         if (GetNetMode() != NM_Client)
         {
-            const FVector2D SetupMin(CenterX - ButtonWidth * 0.5f, CenterY + (bSolo ? 78.f : 142.f));
+            const FVector2D SetupMin(CenterX - ButtonWidth * 0.5f, CenterY + (bSolo ? 142.f : 207.f));
             DrawRect(FLinearColor(0.15f, 0.30f, 0.30f), SetupMin.X, SetupMin.Y, ButtonWidth, 40.f);
             const FString Label = bSolo ? TEXT("返回测试菜单") : TEXT("全队返回大厅");
             GetTextSize(Label, TextWidth, TextHeight, GEngine->GetSmallFont(), 1.f);
@@ -345,19 +346,28 @@ void ATreasureSketchHUD::DrawHUD()
             const FString Label = TEXT("由房主选择让全队返回大厅");
             GetTextSize(Label, TextWidth, TextHeight, GEngine->GetSmallFont(), 1.f);
             DrawText(Label, FLinearColor(0.7f, 0.8f, 0.9f), CenterX - TextWidth * 0.5f,
-                CenterY + 154.f, GEngine->GetSmallFont(), 1.f);
+                CenterY + 213.f, GEngine->GetSmallFont(), 1.f);
         }
 
-        if (bSolo) return;
-        const bool bSwapRolesHovered = HitBoxesOver.Contains(SwapRolesButtonName);
-        DrawRect(bSwapRolesHovered ? FLinearColor(0.30f, 0.57f, 0.82f) : FLinearColor(0.20f, 0.42f, 0.67f),
-            SwapRolesButtonMin.X, SwapRolesButtonMin.Y, ButtonWidth, ButtonHeight);
-        const FString SwapRolesText = GS->RoomMode == ETreasureRoomMode::OneExplorer
-            ? TEXT("轮换探索者，再玩一次") : TEXT("轮换地图师，再玩一次");
-        GetTextSize(SwapRolesText, TextWidth, TextHeight, GEngine->GetLargeFont(), 1.f);
-        DrawText(SwapRolesText, FLinearColor::White, CenterX - TextWidth * 0.5f,
-            SwapRolesButtonMin.Y + (ButtonHeight - TextHeight) * 0.5f, GEngine->GetLargeFont(), 1.f);
-        AddHitBox(SwapRolesButtonMin, FVector2D(ButtonWidth, ButtonHeight), SwapRolesButtonName, true, 0);
+        if (!bSolo)
+        {
+            const bool bSwapRolesHovered = HitBoxesOver.Contains(SwapRolesButtonName);
+            DrawRect(bSwapRolesHovered ? FLinearColor(0.30f, 0.57f, 0.82f) : FLinearColor(0.20f, 0.42f, 0.67f),
+                SwapRolesButtonMin.X, SwapRolesButtonMin.Y, ButtonWidth, ButtonHeight);
+            const FString SwapRolesText = GS->RoomMode == ETreasureRoomMode::OneExplorer
+                ? TEXT("轮换探索者，再玩一次") : TEXT("轮换地图师，再玩一次");
+            GetTextSize(SwapRolesText, TextWidth, TextHeight, GEngine->GetLargeFont(), 1.f);
+            DrawText(SwapRolesText, FLinearColor::White, CenterX - TextWidth * 0.5f,
+                SwapRolesButtonMin.Y + (ButtonHeight - TextHeight) * 0.5f, GEngine->GetLargeFont(), 1.f);
+            AddHitBox(SwapRolesButtonMin, FVector2D(ButtonWidth, ButtonHeight), SwapRolesButtonName, true, 0);
+        }
+        DrawRect(HitBoxesOver.Contains(TEXT("BeginRoundReview")) ? FLinearColor(0.65f, 0.48f, 0.18f) : FLinearColor(0.48f, 0.34f, 0.13f),
+            ReviewButtonMin.X, ReviewButtonMin.Y, ButtonWidth, 50.f);
+        const FString ReviewText = TEXT("留在岛上复盘");
+        GetTextSize(ReviewText, TextWidth, TextHeight, GEngine->GetLargeFont(), 1.f);
+        DrawText(ReviewText, FLinearColor::White, CenterX - TextWidth * 0.5f,
+            ReviewButtonMin.Y + (50.f - TextHeight) * 0.5f, GEngine->GetLargeFont(), 1.f);
+        AddHitBox(ReviewButtonMin, FVector2D(ButtonWidth, 50.f), TEXT("BeginRoundReview"), true, 0);
         return;
     }
 
@@ -370,7 +380,8 @@ void ATreasureSketchHUD::DrawHUD()
     const FString RoleLabel = FString::Printf(TEXT("%s / %s"),
         bScout ? TEXT("侦察者") : TEXT("寻宝者"),
         GetNetMode() == NM_ListenServer ? TEXT("主机") : TEXT("已连接客户端"));
-    const FString Help = PC->IsScoutSpectating()
+    const FString Help = GS->bReviewingRound ? TEXT("复盘中：WASD 逛岛 | M 查看图纸 | 宝藏位置已显示")
+        : PC->IsScoutSpectating()
         ? TEXT("观战：WASD 飞行 | Space 上升 | Ctrl 下降 | Shift 加速")
         : bScout && PC->HasSubmittedSketch() ? TEXT("已交图，等待其他地图师完成；到时自动收齐")
         : bScout ? TEXT("WASD 移动 | M 打开白纸画图 | C 清空 | Enter 交图")
@@ -398,9 +409,12 @@ void ATreasureSketchHUD::DrawHUD()
     const FString TimerText = FString::Printf(TEXT("%02d:%02d"), SecondsRemaining / 60, SecondsRemaining % 60);
     const FLinearColor TimerColor = SecondsRemaining <= 10 ? FLinearColor(1.f, 0.12f, 0.08f) : FLinearColor::White;
     const float TimerWidth = 150.f;
-    DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), Canvas->SizeX - TimerWidth - 28.f, 22.f, TimerWidth, 58.f);
-    DrawText(TimerText, TimerColor, Canvas->SizeX - TimerWidth - 6.f, 30.f, GEngine->GetLargeFont(), 1.25f);
-    if (GS->RoomMode == ETreasureRoomMode::OneExplorer && GS->Phase == ETreasureRoundPhase::ScoutDrawing)
+    if (!GS->bReviewingRound)
+    {
+        DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), Canvas->SizeX - TimerWidth - 28.f, 22.f, TimerWidth, 58.f);
+        DrawText(TimerText, TimerColor, Canvas->SizeX - TimerWidth - 6.f, 30.f, GEngine->GetLargeFont(), 1.25f);
+    }
+    if (!GS->bReviewingRound && GS->RoomMode == ETreasureRoomMode::OneExplorer && GS->Phase == ETreasureRoundPhase::ScoutDrawing)
         DrawText(FString::Printf(TEXT("已交图 %d / %d"), Submitted, Mapmakers), FLinearColor::White,
             Canvas->SizeX - TimerWidth - 28.f, 86.f, GEngine->GetSmallFont(), 1.f);
 
@@ -408,13 +422,23 @@ void ATreasureSketchHUD::DrawHUD()
         DrawText(PC->GetStatusMessage(), FLinearColor::Yellow, 35.f, Canvas->SizeY - 70.f, GEngine->GetMediumFont(), 1.f);
 
     const bool bWatchingLiveSketch = PC->IsHunterWaiting();
-    if (!PC->IsMapOpen() && !bWatchingLiveSketch) return;
+    auto DrawReviewButton = [&]()
+    {
+        if (!GS->bReviewingRound) return;
+        const FVector2D ButtonMin(Canvas->SizeX - 244.f, 22.f);
+        DrawRect(HitBoxesOver.Contains(TEXT("EndRoundReview")) ? FLinearColor(0.67f, 0.41f, 0.19f)
+            : FLinearColor(0.48f, 0.29f, 0.13f), ButtonMin.X, ButtonMin.Y, 220.f, 46.f);
+        DrawText(TEXT("复盘完了 · 返回结算"), FLinearColor::White, ButtonMin.X + 12.f, ButtonMin.Y + 12.f, GEngine->GetSmallFont(), 1.f);
+        AddHitBox(ButtonMin, FVector2D(220.f, 46.f), TEXT("EndRoundReview"), true, 0);
+    };
+    if (!PC->IsMapOpen() && !bWatchingLiveSketch) { DrawReviewButton(); return; }
     if (bWatchingLiveSketch)
         DrawRect(FLinearColor(0.01f, 0.015f, 0.025f, 0.96f), 0.f, 0.f, Canvas->SizeX, Canvas->SizeY);
     const FVector2D Min = PC->GetPaperMin();
     const FVector2D Size = PC->GetPaperSize();
     DrawRect(FLinearColor(0.96f, 0.94f, 0.86f, 0.98f), Min.X, Min.Y, Size.X, Size.Y);
-    DrawText(bScout ? TEXT("空白纸：请画岛屿轮廓、地形地标和藏宝点")
+    DrawText(GS->bReviewingRound ? TEXT("复盘地图 · 可对照宝藏位置")
+        : bScout ? TEXT("空白纸：请画岛屿轮廓、地形地标和藏宝点")
         : bWatchingLiveSketch ? TEXT("地图师的实时画纸 · 只能观看") : TEXT("地图师留下的手绘地图"),
         FLinearColor::Black, Min.X + 18.f, Min.Y + 14.f, GEngine->GetSmallFont(), 1.f);
     if (bWatchingLiveSketch && PC->GetSketchPageCount() == 0)
@@ -430,7 +454,7 @@ void ATreasureSketchHUD::DrawHUD()
             DrawLine(A.X, A.Y, B.X, B.Y, FLinearColor(0.08f,0.07f,0.05f), 4.f);
         }
     }
-    if (!bScout && PC->GetSketchPageCount() > 0)
+    if ((!bScout || GS->bReviewingRound) && PC->GetSketchPageCount() > 0)
     {
         const float FooterY = Min.Y + Size.Y + 4.f;
         DrawRect(FLinearColor(0.96f, 0.94f, 0.86f), Min.X, FooterY, Size.X, 28.f);
@@ -456,6 +480,7 @@ void ATreasureSketchHUD::DrawHUD()
         DrawText(FString::Printf(TEXT("绘图剩余 %s · 到时自动交图"), *TimerText), TimerColor,
             Canvas->SizeX - TimerWidth - 185.f, 28.f, GEngine->GetSmallFont(), 1.f);
     }
+    DrawReviewButton();
 }
 
 void ATreasureSketchHUD::NotifyHitBoxClick(FName BoxName)

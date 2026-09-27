@@ -50,6 +50,10 @@ public:
     UPROPERTY(Replicated, BlueprintReadOnly)
     bool bGameStarted = false;
 
+    // Keep the result phase while temporarily letting the party inspect the island.
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    bool bReviewingRound = false;
+
     UPROPERTY(Replicated, BlueprintReadOnly)
     bool bSurfacePaintEnabled = false;
 

@@ -145,6 +145,7 @@ void ATreasureSketchGameMode::BuildRound()
         GS->IslandSeed = IslandSeed;
         ++GS->RoundSerial;
         GS->Phase = ETreasureRoundPhase::ScoutDrawing;
+        GS->bReviewingRound = false;
         GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + GS->DrawingDurationSeconds;
         GS->bGameStarted = false;
     }
@@ -365,6 +366,7 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
         GS->IslandSeed = IslandSeed;
         ++GS->RoundSerial;
         GS->Phase = bFullFlowTest ? ETreasureRoundPhase::ScoutDrawing : ETreasureRoundPhase::HunterSearching;
+        GS->bReviewingRound = false;
         GS->bGameStarted = true;
         GS->ForceNetUpdate();
         GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + (bFullFlowTest ? GS->DrawingDurationSeconds
@@ -655,10 +657,31 @@ bool ATreasureSketchGameMode::TryDig(const FVector& WorldLocation, float& OutDis
     return false;
 }
 
+void ATreasureSketchGameMode::SetRoundReview(bool bReviewing)
+{
+    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!HasAuthority() || !GS || !GS->bGameStarted || !GS->IsRoundOver()
+        || GS->bReviewingRound == bReviewing) return;
+
+    GS->bReviewingRound = bReviewing;
+    GS->ForceNetUpdate();
+    const TArray<FSketchPage> Pages = bReviewing ? CollectSketchPages() : TArray<FSketchPage>();
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+        if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
+        {
+            if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(PC->GetPawn()))
+                if (const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
+                    PS && PS->PlayerRole == ETreasurePlayerRole::Scout)
+                    Character->SetSpectatorHidden(!bReviewing);
+            if (bReviewing) PC->ClientBeginReview(GS->RoundSerial, Pages, TreasureLocation);
+            else PC->ClientEndReview(GS->RoundSerial);
+        }
+}
+
 void ATreasureSketchGameMode::StartNewRound(bool bSwapRoles)
 {
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
-    if (!GS) return;
+    if (!GS || GS->bReviewingRound) return;
     if (Island && Island->Tags.Contains(TEXT("SoloFullFlowTest")))
     {
         StartSoloTest(-3);

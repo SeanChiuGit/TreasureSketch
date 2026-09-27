@@ -31,6 +31,7 @@ public:
     void BroadcastSketchClear(ATreasureSketchPlayerState* Scout);
     bool TryDig(const FVector& WorldLocation, float& OutDistance);
     void StartNewRound(bool bSwapRoles = false);
+    void SetRoundReview(bool bReviewing);
     void StartHostedRound();
     bool SelectRoomMode(ETreasureRoomMode Mode);
     void NormalizeRoomRoles(APlayerState* Excluded = nullptr, ATreasureSketchPlayerState* PreferredSinglePlayer = nullptr);

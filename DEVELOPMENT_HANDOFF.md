@@ -78,3 +78,10 @@
 - `TreasureSketch.RoomSettings.MultiMapmaker` 新增对实时增量、各作者隔离、清空、最终替换、等待中翻页、旧回合拒收以及单地图师模式的检查。
 - UE 5.6 TreasureSketchEditor Win64 Development 编译通过；无窗口 `TreasureSketch.RoomSettings.MultiMapmaker` 和 `TreasureSketch.RoomSettings.RoundFlow` 测试均通过，日志位于 `Saved/CodexRelease/live-sketch-tests.log`。没有进行游戏窗口或真实多人交互测试。
 - 现有 v0.8.0 Release 不包含本轮改动；本轮仅提交推送源码。
+
+## 结算后岛上复盘
+
+- 结算页新增“留在岛上复盘”，任一玩家点击后全队同步进入复盘；结束按钮返回原结算页。保留原胜负结果、新局与回大厅选择。
+- 复盘沿用已生成岛屿，不重置种子、地形或图纸。地图师角色重新显示并可走动；所有人都收到最终图纸及宝藏位置，本地显示红色 X，碰撞范围仍遵守房间设置。M 打开只读图纸，多图纸可翻页。
+- 复盘不恢复寻宝计时、挖掘或绘图；离开房间、新局和回大厅仍走原清理流程。此功能未加入现有 v0.8.0 Release；交互测试仍由用户负责。
+- UE 5.6 TreasureSketchEditor Win64 Development 编译成功；无窗口 `TreasureSketch.RoomSettings.MultiMapmaker` 与 `TreasureSketch.RoomSettings.RoundFlow` 测试通过，日志在 `Saved/CodexRelease/review-tests.log`。用户负责实际窗口与多人交互测试。
