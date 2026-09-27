@@ -39,6 +39,8 @@ public:
     virtual bool InputKey(const FInputKeyEventArgs& Params) override;
     FString GetTestSeedText() const { return TestSeedText; }
     bool IsTestSeedEditing() const { return bTestSeedEditing; }
+    bool IsMapScaleEditing() const { return bMapScaleEditing; }
+    FString GetMapScaleText() const { return MapScaleText; }
     int32 GetTestSeed() const;
 
     int32 GetSpectatedHunterIndex() const { return SpectatedHunterIndex; }
@@ -80,6 +82,10 @@ public:
     void ClientUpdateHunterView(FVector_NetQuantize ViewLocation, FRotator ViewRotation, APlayerState* ViewedPlayer);
 
 private:
+    bool bMapScaleEditing = false;
+    bool bReplaceMapScaleText = false;
+    FString MapScaleText;
+    bool CommitMapScale();
     bool bSprayCursorMode = false;
     bool bLookInputLocked = false;
     void SetSprayCursorMode(bool bEnabled);

@@ -20,8 +20,46 @@ int32 ATreasureSketchPlayerController::GetTestSeed() const
         ? static_cast<int32>(Value) : 0;
 }
 
+bool ATreasureSketchPlayerController::CommitMapScale()
+{
+    if (!bMapScaleEditing) return true;
+    float Scale = 0.f;
+    ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>();
+    if (!GM || !LexTryParseString(Scale, *MapScaleText) || !GM->SetRoomMapScale(Scale)) return false;
+    bMapScaleEditing = false;
+    return true;
+}
+
 bool ATreasureSketchPlayerController::InputKey(const FInputKeyEventArgs& Params)
 {
+    if (bMapScaleEditing && IsFrontEndVisible() && (Params.Event == IE_Pressed || Params.Event == IE_Repeat))
+    {
+        const FKey Digits[] = { EKeys::Zero, EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four,
+            EKeys::Five, EKeys::Six, EKeys::Seven, EKeys::Eight, EKeys::Nine };
+        const FKey Numpad[] = { EKeys::NumPadZero, EKeys::NumPadOne, EKeys::NumPadTwo, EKeys::NumPadThree,
+            EKeys::NumPadFour, EKeys::NumPadFive, EKeys::NumPadSix, EKeys::NumPadSeven, EKeys::NumPadEight, EKeys::NumPadNine };
+        for (int32 Digit = 0; Digit < 10; ++Digit)
+            if (Params.Key == Digits[Digit] || Params.Key == Numpad[Digit])
+            {
+                if (bReplaceMapScaleText) { MapScaleText.Empty(); bReplaceMapScaleText = false; }
+                if (MapScaleText.Len() < 7) MapScaleText += FString::FromInt(Digit);
+                return true;
+            }
+        if (Params.Key == EKeys::Period || Params.Key == EKeys::Decimal)
+        {
+            if (bReplaceMapScaleText) { MapScaleText.Empty(); bReplaceMapScaleText = false; }
+            if (!MapScaleText.Contains(TEXT(".")) && MapScaleText.Len() < 7) MapScaleText += TEXT(".");
+        }
+        else if (Params.Key == EKeys::BackSpace)
+        {
+            MapScaleText = bReplaceMapScaleText ? FString() : MapScaleText.LeftChop(1);
+            bReplaceMapScaleText = false;
+        }
+        else if (Params.Key == EKeys::Delete) { MapScaleText.Empty(); bReplaceMapScaleText = false; }
+        else if (Params.Key == EKeys::Enter) CommitMapScale();
+        else if (Params.Key == EKeys::Escape) bMapScaleEditing = false;
+        return true;
+    }
     if (bTestSeedEditing && IsFrontEndVisible() && FrontEndPage == EFrontEndPage::SoloTest
         && (Params.Event == IE_Pressed || Params.Event == IE_Repeat))
     {
@@ -213,6 +251,20 @@ void ATreasureSketchPlayerController::OpenFrontEndPage(EFrontEndPage NewPage)
 
 void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
 {
+    if (ActionName == TEXT("MapScaleInput"))
+    {
+        if (!IsLocalController() || (FrontEndPage != EFrontEndPage::RoomLobby && FrontEndPage != EFrontEndPage::SoloTest)
+            || !GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) return;
+        const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+        if (!GS || GS->bGameStarted) return;
+        MapScaleText = FString::Printf(TEXT("%.6g"), GS->RoomMapScale);
+        bMapScaleEditing = true;
+        bReplaceMapScaleText = true;
+        bTestSeedEditing = false;
+        return;
+    }
+    if (ActionName == TEXT("MenuBack") || ActionName == TEXT("RoomBack")) bMapScaleEditing = false;
+    if (!CommitMapScale()) return;
     if (ActionName == TEXT("TestSeedInput")) { bTestSeedEditing = true; return; }
     if (ActionName == TEXT("TestSeedClear")) { TestSeedText.Empty(); bTestSeedEditing = false; return; }
     bTestSeedEditing = false;

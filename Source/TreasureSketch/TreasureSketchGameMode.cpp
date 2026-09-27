@@ -104,7 +104,10 @@ void ATreasureSketchGameMode::BuildRound()
     Island = GetWorld()->SpawnActorDeferred<AProceduralIsland>(AProceduralIsland::StaticClass(), FTransform::Identity);
     Island->Seed = IslandSeed;
     if (const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>())
+    {
         Island->GridSize = GS->RoomGridSize;
+        Island->CellSize = GS->GetRoomCellSize();
+    }
     FString RequestedTheme;
     if (FParse::Value(FCommandLine::Get(), TEXT("IslandTheme="), RequestedTheme))
         Island->Theme = RequestedTheme.Equals(TEXT("Ruins"), ESearchCase::IgnoreCase)
@@ -135,6 +138,18 @@ bool ATreasureSketchGameMode::SelectRoomMode(ETreasureRoomMode Mode)
     return true;
 }
 
+bool ATreasureSketchGameMode::SetRoomMapScale(float Scale)
+{
+    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!HasAuthority() || !GS || GS->bGameStarted || GetNetMode() == NM_DedicatedServer
+        || !FMath::IsFinite(Scale) || Scale < GS->MinMapScale || Scale > GS->MaxMapScale) return false;
+    GS->RoomMapScale = Scale;
+    // Keep mesh cells near the existing 3.3m spacing while matching the requested extent exactly.
+    GS->RoomGridSize = FMath::RoundToInt(38.f * Scale) + 1;
+    GS->ForceNetUpdate();
+    return true;
+}
+
 void ATreasureSketchGameMode::AdjustRoomSetting(FName Setting, int32 Direction)
 {
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
@@ -142,11 +157,7 @@ void ATreasureSketchGameMode::AdjustRoomSetting(FName Setting, int32 Direction)
         || (Direction != -1 && Direction != 1)) return;
     if (Setting == TEXT("MapSize"))
     {
-        int32 Index = 1;
-        for (int32 I = 0; I < UE_ARRAY_COUNT(ATreasureSketchGameState::RoomGridSizes); ++I)
-            if (GS->RoomGridSize == ATreasureSketchGameState::RoomGridSizes[I]) Index = I;
-        Index = FMath::Clamp(Index + Direction, 0, 3);
-        GS->RoomGridSize = ATreasureSketchGameState::RoomGridSizes[Index];
+        SetRoomMapScale(FMath::Clamp(GS->RoomMapScale + Direction * 0.25f, GS->MinMapScale, GS->MaxMapScale));
     }
     else
     {
@@ -195,7 +206,7 @@ void ATreasureSketchGameMode::StartHostedRound()
             { Scouts += PS->PlayerRole == ETreasurePlayerRole::Scout; Hunters += PS->PlayerRole == ETreasurePlayerRole::Hunter; }
         if (Scouts != 1 || Hunters != GS->PlayerArray.Num() - 1) return;
         // Lobby previews may have been built before the host changed map size.
-        if (!Island || Island->GridSize != GS->RoomGridSize)
+        if (!Island || Island->GridSize != GS->RoomGridSize || !FMath::IsNearlyEqual(Island->CellSize, GS->GetRoomCellSize()))
         {
             HideTreasureFromScout();
             if (Island) Island->Destroy();
@@ -244,7 +255,11 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
         : ThemeChoice == 1 ? EIslandTheme::JungleRuins
         : AProceduralIsland::SelectThemeFromTable(IslandSeed, true);
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
-    if (GS && (bHunterGameplayTest || bFullFlowTest)) Island->GridSize = GS->RoomGridSize;
+    if (GS && (bHunterGameplayTest || bFullFlowTest))
+    {
+        Island->GridSize = GS->RoomGridSize;
+        Island->CellSize = GS->GetRoomCellSize();
+    }
     Island->FinishSpawning(FTransform::Identity);
     if (bHunterGameplayTest) Island->Tags.Add(TEXT("SoloHunterGameplayTest"));
     if (bFullFlowTest) Island->Tags.Add(TEXT("SoloFullFlowTest"));

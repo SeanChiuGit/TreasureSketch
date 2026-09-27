@@ -179,6 +179,7 @@ void AProceduralIsland::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
     DOREPLIFETIME(AProceduralIsland, Seed);
     DOREPLIFETIME(AProceduralIsland, Theme);
     DOREPLIFETIME(AProceduralIsland, GridSize);
+    DOREPLIFETIME(AProceduralIsland, CellSize);
 }
 
 EIslandTheme AProceduralIsland::SelectThemeFromTable(int32 InSeed, bool bIncludeLockedThemes)

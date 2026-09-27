@@ -30,6 +30,7 @@ public:
     void StartHostedRound();
     bool SelectRoomMode(ETreasureRoomMode Mode);
     void AdjustRoomSetting(FName Setting, int32 Direction);
+    bool SetRoomMapScale(float Scale);
     void ReturnToSetup();
     void StartSoloTest(int32 ThemeChoice);
     void ToggleSurfacePaint();

@@ -58,12 +58,17 @@ public:
     int32 RoomGridSize = 39;
 
     UPROPERTY(Replicated, BlueprintReadOnly)
+    float RoomMapScale = 1.f;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
     int32 DrawingDurationSeconds = 120;
 
     UPROPERTY(Replicated, BlueprintReadOnly)
     int32 SearchingDurationSeconds = 120;
 
-    static constexpr int32 RoomGridSizes[] = {25, 39, 51, 61};
+    static constexpr float MinMapScale = 0.5f;
+    static constexpr float MaxMapScale = 5.f;
+    float GetRoomCellSize() const { return 330.f * 38.f * RoomMapScale / (RoomGridSize - 1); }
     static constexpr int32 MinPhaseSeconds = 30;
     static constexpr int32 MaxPhaseSeconds = 600;
     static constexpr int32 PhaseSecondsStep = 30;

@@ -66,9 +66,18 @@ void ATreasureSketchHUD::DrawHUD()
                     if (bEnabled) AddHitBox(FVector2D(X, Y + 3.f), FVector2D(38.f, 34.f), I == 0 ? Less : More, true, 10);
                 }
             };
-            const TCHAR* SizeLabel = GS->RoomGridSize == 25 ? TEXT("小") : GS->RoomGridSize == 39 ? TEXT("标准")
-                : GS->RoomGridSize == 51 ? TEXT("大") : TEXT("超大");
-            DrawRoomSetting(FString::Printf(TEXT("地图大小：%s"), SizeLabel), SettingsY, TEXT("RoomMapSmaller"), TEXT("RoomMapLarger"), GS->RoomGridSize > 25, GS->RoomGridSize < 61);
+            DrawRoomSetting(TEXT("边长倍数："), SettingsY, TEXT("RoomMapSmaller"), TEXT("RoomMapLarger"), GS->RoomMapScale > GS->MinMapScale, GS->RoomMapScale < GS->MaxMapScale);
+            const float InputX = SettingsX + 110.f;
+            const float InputW = SettingsW - 202.f;
+            const bool bEditingScale = PC->IsMapScaleEditing();
+            const FString ScaleText = bEditingScale ? PC->GetMapScaleText() : FString::Printf(TEXT("%.6g"), GS->RoomMapScale);
+            float ParsedScale = 0.f;
+            const bool bValidScale = LexTryParseString(ParsedScale, *ScaleText) && FMath::IsFinite(ParsedScale)
+                && ParsedScale >= GS->MinMapScale && ParsedScale <= GS->MaxMapScale;
+            DrawRect(bEditingScale ? FLinearColor(0.15f, 0.30f, 0.30f) : FLinearColor(0.08f, 0.12f, 0.13f), InputX, SettingsY + 3.f, InputW, 34.f);
+            DrawText(ScaleText + (bEditingScale ? TEXT("_") : TEXT(" 倍")), bValidScale ? FLinearColor::White : FLinearColor(1.f, 0.4f, 0.3f),
+                InputX + 8.f, SettingsY + 12.f, GEngine->GetSmallFont(), 0.9f);
+            if (bCanAdjustSettings) AddHitBox(FVector2D(InputX, SettingsY + 3.f), FVector2D(InputW, 34.f), TEXT("MapScaleInput"), true, 10);
             DrawRoomSetting(FString::Printf(TEXT("绘图时间：%d 秒"), GS->DrawingDurationSeconds), SettingsY + 47.f, TEXT("RoomDrawingLess"), TEXT("RoomDrawingMore"), GS->DrawingDurationSeconds > GS->MinPhaseSeconds, GS->DrawingDurationSeconds < GS->MaxPhaseSeconds);
             DrawRoomSetting(FString::Printf(TEXT("寻宝时间：%d 秒"), GS->SearchingDurationSeconds), SettingsY + 94.f, TEXT("RoomSearchingLess"), TEXT("RoomSearchingMore"), GS->SearchingDurationSeconds > GS->MinPhaseSeconds, GS->SearchingDurationSeconds < GS->MaxPhaseSeconds);
         };
@@ -111,7 +120,7 @@ void ATreasureSketchHUD::DrawHUD()
             AddHitBox(FVector2D(SeedX, SeedY + 40.f), FVector2D(SeedW, 54.f), TEXT("TestSeedInput"), true, 10);
             DrawText(TEXT("数字键输入，退格删除，Enter完成"), FLinearColor(0.75f, 0.84f, 0.82f),
                 SeedX, SeedY + 110.f, GEngine->GetSmallFont(), 0.9f);
-            DrawText(TEXT("种子、大小、时间仅影响两个玩法测试"), FLinearColor(0.75f, 0.84f, 0.82f),
+            DrawText(TEXT("边长0.5至5倍；点击输入，Enter确认"), FLinearColor(0.75f, 0.84f, 0.82f),
                 SeedX, SeedY + 138.f, GEngine->GetSmallFont(), 0.9f);
             DrawRect(FLinearColor(0.09f, 0.17f, 0.18f), SeedX, SeedY + 170.f, 130.f, 44.f);
             DrawText(TEXT("清空种子"), FLinearColor::White, SeedX + 12.f, SeedY + 180.f, GEngine->GetMediumFont(), 1.f);
@@ -182,7 +191,7 @@ void ATreasureSketchHUD::DrawHUD()
                 AddHitBox(FVector2D(ModeX, PanelY + 180.f), FVector2D(ModeW, 30.f), TEXT("RoomModeCoop"), true, 10);
             DrawDifficultySettings(ModeX, PanelY + 290.f, ModeW, bHost);
             float PlayerY = PanelY + 500.f;
-            DrawText(bHost ? TEXT("房主调整，开局生效；重玩沿用") : TEXT("房主调整设置；开局生效"), FLinearColor(0.75f, 0.84f, 0.82f), ModeX, PanelY + 480.f, GEngine->GetSmallFont(), 0.85f);
+            DrawText(bHost ? TEXT("边长0.5至5倍，Enter确认；重玩沿用") : TEXT("房主调整设置；开局生效"), FLinearColor(0.75f, 0.84f, 0.82f), ModeX, PanelY + 480.f, GEngine->GetSmallFont(), 0.85f);
             for (APlayerState* State : GS->PlayerArray)
                 if (const ATreasureSketchPlayerState* Member = Cast<ATreasureSketchPlayerState>(State))
                 {
