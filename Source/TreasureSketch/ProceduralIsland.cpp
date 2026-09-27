@@ -3,6 +3,8 @@
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Engine/ExponentialHeightFog.h"
+#include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
@@ -238,6 +240,14 @@ void AProceduralIsland::CreateRuntimeForestFog()
 {
     if (Theme != EIslandTheme::MistForest || WeatherFogActor || !GetWorld()) return;
 
+    // PIE inherits editor viewport show flags. If Fog was unchecked in the editor's Show menu,
+    // even a valid registered fog actor is deliberately skipped by the renderer.
+    if (GEngine && GEngine->GameViewport)
+    {
+        GEngine->GameViewport->EngineShowFlags.SetFog(true);
+        GEngine->GameViewport->EngineShowFlags.SetVolumetricFog(true);
+    }
+
     // A world fog actor is used deliberately. A fog component nested inside the procedural
     // island was reporting visible but was not consistently registered in the renderer.
     FActorSpawnParameters SpawnParameters;
@@ -261,9 +271,14 @@ void AProceduralIsland::CreateRuntimeForestFog()
     Fog->SetVisibility(true, true);
     Fog->MarkRenderStateDirty();
 
-    UE_LOG(LogTemp, Warning, TEXT("TREASURE_FOREST_FOG Actor=%s Registered=%s Visible=%s Density=0.20 Extinction=8.0 Height=%.0f"),
+    const bool bFogShowFlag = GEngine && GEngine->GameViewport
+        ? GEngine->GameViewport->EngineShowFlags.Fog : false;
+    const bool bVolumetricShowFlag = GEngine && GEngine->GameViewport
+        ? GEngine->GameViewport->EngineShowFlags.VolumetricFog : false;
+    UE_LOG(LogTemp, Warning, TEXT("TREASURE_FOREST_FOG Actor=%s Registered=%s Visible=%s ShowFog=%s ShowVolumetric=%s Density=0.20 Extinction=8.0 Height=%.0f"),
         *GetNameSafe(WeatherFogActor), Fog->IsRegistered() ? TEXT("YES") : TEXT("NO"),
-        Fog->IsVisible() ? TEXT("YES") : TEXT("NO"), Fog->GetComponentLocation().Z);
+        Fog->IsVisible() ? TEXT("YES") : TEXT("NO"), bFogShowFlag ? TEXT("YES") : TEXT("NO"),
+        bVolumetricShowFlag ? TEXT("YES") : TEXT("NO"), Fog->GetComponentLocation().Z);
 }
 
 bool AProceduralIsland::ToggleDebugFog()
