@@ -50,6 +50,29 @@ void ATreasureSketchHUD::DrawHUD()
             AddHitBox(Min, Size, Name, true, 10);
         };
 
+        auto DrawDifficultySettings = [&](float SettingsX, float SettingsY, float SettingsW, bool bCanAdjustSettings)
+        {
+            auto DrawRoomSetting = [&](const FString& Label, float Y, FName Less, FName More, bool bCanLess, bool bCanMore)
+            {
+                DrawRect(FLinearColor(0.06f, 0.12f, 0.13f), SettingsX, Y, SettingsW, 40.f);
+                DrawText(Label, FLinearColor::White, SettingsX + 10.f, Y + 12.f, GEngine->GetSmallFont(), 0.9f);
+                const float ButtonX = SettingsX + SettingsW - 84.f;
+                for (int32 I = 0; I < 2; ++I)
+                {
+                    const bool bEnabled = bCanAdjustSettings && (I == 0 ? bCanLess : bCanMore);
+                    const float X = ButtonX + I * 42.f;
+                    DrawRect(bEnabled ? FLinearColor(0.15f, 0.30f, 0.30f) : FLinearColor(0.08f, 0.12f, 0.13f), X, Y + 3.f, 38.f, 34.f);
+                    DrawText(I == 0 ? TEXT("-") : TEXT("+"), bEnabled ? FLinearColor::White : FLinearColor(0.35f, 0.40f, 0.40f), X + 13.f, Y + 9.f, GEngine->GetMediumFont(), 1.f);
+                    if (bEnabled) AddHitBox(FVector2D(X, Y + 3.f), FVector2D(38.f, 34.f), I == 0 ? Less : More, true, 10);
+                }
+            };
+            const TCHAR* SizeLabel = GS->RoomGridSize == 25 ? TEXT("小") : GS->RoomGridSize == 39 ? TEXT("标准")
+                : GS->RoomGridSize == 51 ? TEXT("大") : TEXT("超大");
+            DrawRoomSetting(FString::Printf(TEXT("地图大小：%s"), SizeLabel), SettingsY, TEXT("RoomMapSmaller"), TEXT("RoomMapLarger"), GS->RoomGridSize > 25, GS->RoomGridSize < 61);
+            DrawRoomSetting(FString::Printf(TEXT("绘图时间：%d 秒"), GS->DrawingDurationSeconds), SettingsY + 47.f, TEXT("RoomDrawingLess"), TEXT("RoomDrawingMore"), GS->DrawingDurationSeconds > GS->MinPhaseSeconds, GS->DrawingDurationSeconds < GS->MaxPhaseSeconds);
+            DrawRoomSetting(FString::Printf(TEXT("寻宝时间：%d 秒"), GS->SearchingDurationSeconds), SettingsY + 94.f, TEXT("RoomSearchingLess"), TEXT("RoomSearchingMore"), GS->SearchingDurationSeconds > GS->MinPhaseSeconds, GS->SearchingDurationSeconds < GS->MaxPhaseSeconds);
+        };
+
         const EFrontEndPage Page = PC->GetFrontEndPage();
         if (Page == EFrontEndPage::MainMenu)
         {
@@ -66,7 +89,7 @@ void ATreasureSketchHUD::DrawHUD()
         {
             DrawText(TEXT("单人测试"), FLinearColor::White, PanelX + 48.f, PanelY + 150.f,
                 GEngine->GetLargeFont(), 1.25f);
-            DrawText(TEXT("地图测试显示宝藏；玩法测试：空白图、隐藏宝藏、120秒"),
+            DrawText(TEXT("地图测试显示宝藏；玩法测试可调大小和时间"),
                 FLinearColor(0.75f, 0.84f, 0.82f), PanelX + 48.f, PanelY + 205.f,
                 GEngine->GetSmallFont(), 0.9f);
             DrawMenuButton(TEXT("SoloRuins"), TEXT("测试遗迹岛"), PanelY + 225.f, true);
@@ -88,15 +111,16 @@ void ATreasureSketchHUD::DrawHUD()
             AddHitBox(FVector2D(SeedX, SeedY + 40.f), FVector2D(SeedW, 54.f), TEXT("TestSeedInput"), true, 10);
             DrawText(TEXT("数字键输入，退格删除，Enter完成"), FLinearColor(0.75f, 0.84f, 0.82f),
                 SeedX, SeedY + 110.f, GEngine->GetSmallFont(), 0.9f);
-            DrawText(TEXT("仅应用于两个玩法测试；不影响地图测试"), FLinearColor(0.75f, 0.84f, 0.82f),
+            DrawText(TEXT("种子、大小、时间仅影响两个玩法测试"), FLinearColor(0.75f, 0.84f, 0.82f),
                 SeedX, SeedY + 138.f, GEngine->GetSmallFont(), 0.9f);
             DrawRect(FLinearColor(0.09f, 0.17f, 0.18f), SeedX, SeedY + 170.f, 130.f, 44.f);
             DrawText(TEXT("清空种子"), FLinearColor::White, SeedX + 12.f, SeedY + 180.f, GEngine->GetMediumFont(), 1.f);
             AddHitBox(FVector2D(SeedX, SeedY + 170.f), FVector2D(130.f, 44.f), TEXT("TestSeedClear"), true, 10);
-            DrawRect(GS->bSurfacePaintEnabled ? FLinearColor(0.12f, 0.38f, 0.60f) : FLinearColor(0.09f, 0.17f, 0.18f), SeedX, SeedY + 280.f, SeedW, 48.f);
-            DrawText(GS->bSurfacePaintEnabled ? TEXT("实验喷漆：开启（点击关闭）") : TEXT("实验喷漆：关闭（点击开启）"), FLinearColor::White, SeedX + 10.f, SeedY + 295.f, GEngine->GetSmallFont(), 0.9f);
-            AddHitBox(FVector2D(SeedX, SeedY + 280.f), FVector2D(SeedW, 48.f), TEXT("ToggleSurfacePaint"), true, 10);
-            DrawText(TEXT("完整流程测试：转动视角瞄准，按住右键喷漆"), FLinearColor::White, SeedX, SeedY + 345.f, GEngine->GetSmallFont(), 0.85f);
+            DrawDifficultySettings(SeedX, SeedY + 230.f, SeedW, true);
+            DrawRect(GS->bSurfacePaintEnabled ? FLinearColor(0.12f, 0.38f, 0.60f) : FLinearColor(0.09f, 0.17f, 0.18f), SeedX, SeedY + 375.f, SeedW, 36.f);
+            DrawText(GS->bSurfacePaintEnabled ? TEXT("实验喷漆：开启（点击关闭）") : TEXT("实验喷漆：关闭（点击开启）"), FLinearColor::White, SeedX + 10.f, SeedY + 386.f, GEngine->GetSmallFont(), 0.9f);
+            AddHitBox(FVector2D(SeedX, SeedY + 375.f), FVector2D(SeedW, 36.f), TEXT("ToggleSurfacePaint"), true, 10);
+            DrawText(TEXT("完整流程测试：转动视角瞄准，按住右键喷漆"), FLinearColor::White, SeedX, SeedY + 423.f, GEngine->GetSmallFont(), 0.85f);
             if (!SeedText.IsEmpty() && PC->GetTestSeed() == 0)
                 DrawText(TEXT("请输入1至2147483647，或清空以随机"), FLinearColor(1.f, 0.4f, 0.3f),
                     SeedX, SeedY + 232.f, GEngine->GetSmallFont(), 0.9f);
@@ -141,28 +165,29 @@ void ATreasureSketchHUD::DrawHUD()
             const UTreasureOnlineSubsystem* Online = GetGameInstance()->GetSubsystem<UTreasureOnlineSubsystem>();
             const float ModeX = PanelX + PanelW + 28.f;
             const float ModeW = FMath::Max(180.f, FMath::Min(410.f, W - ModeX - 24.f));
-            DrawRect(GS->bSurfacePaintEnabled ? FLinearColor(0.12f, 0.38f, 0.60f) : FLinearColor(0.09f, 0.17f, 0.18f), ModeX, PanelY + 585.f, ModeW, 48.f);
-            DrawText(GS->bSurfacePaintEnabled ? TEXT("实验喷漆：开启") : TEXT("实验喷漆：关闭"), FLinearColor::White, ModeX + 10.f, PanelY + 600.f, GEngine->GetSmallFont(), 0.9f);
-            if (GetNetMode() == NM_ListenServer)
-                AddHitBox(FVector2D(ModeX, PanelY + 585.f), FVector2D(ModeW, 48.f), TEXT("ToggleSurfacePaint"), true, 10);
+            const bool bHost = GetNetMode() == NM_ListenServer;
+            DrawRect(GS->bSurfacePaintEnabled ? FLinearColor(0.12f, 0.38f, 0.60f) : FLinearColor(0.09f, 0.17f, 0.18f), ModeX, PanelY + 435.f, ModeW, 36.f);
+            DrawText(GS->bSurfacePaintEnabled ? TEXT("实验喷漆：开启") : TEXT("实验喷漆：关闭"), FLinearColor::White, ModeX + 10.f, PanelY + 446.f, GEngine->GetSmallFont(), 0.9f);
+            if (bHost)
+                AddHitBox(FVector2D(ModeX, PanelY + 435.f), FVector2D(ModeW, 36.f), TEXT("ToggleSurfacePaint"), true, 10);
             DrawText(TEXT("游戏模式"), FLinearColor::White, ModeX, PanelY + 150.f, GEngine->GetMediumFont());
             const TCHAR* Modes[] = { TEXT("一名地图师，多名探索者（已选择）"), TEXT("多名地图师，一名探索者（待开发）"), TEXT("2对2 对抗（待开发）") };
             for (int32 ModeIndex = 0; ModeIndex < 3; ++ModeIndex)
             {
-                const float ModeY = PanelY + 195.f + ModeIndex * 65.f;
-                DrawRect(ModeIndex == 0 ? FLinearColor(0.72f, 0.43f, 0.16f) : FLinearColor(0.08f, 0.12f, 0.13f), ModeX, ModeY, ModeW, 54.f);
-                DrawText(Modes[ModeIndex], ModeIndex == 0 ? FLinearColor::White : FLinearColor(0.45f, 0.5f, 0.5f), ModeX + 10.f, ModeY + 16.f, GEngine->GetSmallFont(), 0.9f);
+                const float ModeY = PanelY + 180.f + ModeIndex * 34.f;
+                DrawRect(ModeIndex == 0 ? FLinearColor(0.72f, 0.43f, 0.16f) : FLinearColor(0.08f, 0.12f, 0.13f), ModeX, ModeY, ModeW, 30.f);
+                DrawText(Modes[ModeIndex], ModeIndex == 0 ? FLinearColor::White : FLinearColor(0.45f, 0.5f, 0.5f), ModeX + 10.f, ModeY + 8.f, GEngine->GetSmallFont(), 0.9f);
             }
             if (GetNetMode() == NM_ListenServer)
-                AddHitBox(FVector2D(ModeX, PanelY + 195.f), FVector2D(ModeW, 54.f), TEXT("RoomModeCoop"), true, 10);
-            DrawText(TEXT("房主先当地图师，其余玩家为探索者"), FLinearColor::White, ModeX, PanelY + 405.f, GEngine->GetSmallFont(), 0.9f);
-            DrawText(TEXT("同一张手绘图；任一人找到宝藏，全队成功"), FLinearColor::White, ModeX, PanelY + 430.f, GEngine->GetSmallFont(), 0.9f);
-            float PlayerY = PanelY + 465.f;
+                AddHitBox(FVector2D(ModeX, PanelY + 180.f), FVector2D(ModeW, 30.f), TEXT("RoomModeCoop"), true, 10);
+            DrawDifficultySettings(ModeX, PanelY + 290.f, ModeW, bHost);
+            float PlayerY = PanelY + 500.f;
+            DrawText(bHost ? TEXT("房主调整，开局生效；重玩沿用") : TEXT("房主调整设置；开局生效"), FLinearColor(0.75f, 0.84f, 0.82f), ModeX, PanelY + 480.f, GEngine->GetSmallFont(), 0.85f);
             for (APlayerState* State : GS->PlayerArray)
                 if (const ATreasureSketchPlayerState* Member = Cast<ATreasureSketchPlayerState>(State))
                 {
                     DrawText(FString::Printf(TEXT("%s — %s"), *Member->GetPlayerName(), Member->PlayerRole == ETreasurePlayerRole::Scout ? TEXT("地图师") : TEXT("探索者")), FLinearColor::White, ModeX, PlayerY, GEngine->GetSmallFont(), 0.9f);
-                    PlayerY += 25.f;
+                    PlayerY += 22.f;
                 }
             DrawText(TEXT("合作房间"), FLinearColor::White, PanelX + 48.f, PanelY + 150.f,
                 GEngine->GetLargeFont(), 1.2f);
@@ -186,7 +211,7 @@ void ATreasureSketchHUD::DrawHUD()
                 DrawText(TEXT("已加入房间，等待房主开始游戏……"), FLinearColor(0.70f, 0.82f, 0.78f),
                     PanelX + 48.f, PanelY + 345.f, GEngine->GetMediumFont(), 0.9f);
             }
-            DrawMenuButton(TEXT("RoomBack"), TEXT("离开房间并返回主菜单"), PanelY + 545.f);
+            DrawMenuButton(TEXT("RoomBack"), TEXT("离开房间并返回主菜单"), PanelY + PanelH - 64.f);
         }
         return;
     }
@@ -286,6 +311,16 @@ void ATreasureSketchHUD::DrawHUD()
         DrawText(SameRolesText, FLinearColor::White, CenterX - TextWidth * 0.5f,
             SameRolesButtonMin.Y + (ButtonHeight - TextHeight) * 0.5f, GEngine->GetLargeFont(), 1.f);
         AddHitBox(SameRolesButtonMin, FVector2D(ButtonWidth, ButtonHeight), SameRolesButtonName, true, 0);
+
+        if (GetNetMode() != NM_Client)
+        {
+            const FVector2D SetupMin(CenterX - ButtonWidth * 0.5f, CenterY + (bSolo ? 78.f : 142.f));
+            DrawRect(FLinearColor(0.15f, 0.30f, 0.30f), SetupMin.X, SetupMin.Y, ButtonWidth, 40.f);
+            const FString Label = bSolo ? TEXT("返回测试菜单，调整大小和时间") : TEXT("返回大厅，调整大小和时间");
+            GetTextSize(Label, TextWidth, TextHeight, GEngine->GetSmallFont(), 1.f);
+            DrawText(Label, FLinearColor::White, CenterX - TextWidth * 0.5f, SetupMin.Y + 12.f, GEngine->GetSmallFont(), 1.f);
+            AddHitBox(SetupMin, FVector2D(ButtonWidth, 40.f), TEXT("ReturnToSetup"), true, 0);
+        }
 
         if (bSolo) return;
         const bool bSwapRolesHovered = HitBoxesOver.Contains(SwapRolesButtonName);

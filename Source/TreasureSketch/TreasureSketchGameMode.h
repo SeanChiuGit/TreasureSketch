@@ -29,6 +29,8 @@ public:
     void StartNewRound(bool bSwapRoles = false);
     void StartHostedRound();
     bool SelectRoomMode(ETreasureRoomMode Mode);
+    void AdjustRoomSetting(FName Setting, int32 Direction);
+    void ReturnToSetup();
     void StartSoloTest(int32 ThemeChoice);
     void ToggleSurfacePaint();
     void SpraySurface(const FHitResult& Hit);

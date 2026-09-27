@@ -30,7 +30,7 @@ public:
     UPROPERTY(EditAnywhere, ReplicatedUsing=OnRep_Seed, Category="Island")
     EIslandTheme Theme = EIslandTheme::PirateBeach;
 
-    UPROPERTY(EditAnywhere, Category="Island", meta=(ClampMin="17", ClampMax="61"))
+    UPROPERTY(EditAnywhere, ReplicatedUsing=OnRep_Seed, Category="Island", meta=(ClampMin="17", ClampMax="61"))
     int32 GridSize = 39;
 
     UPROPERTY(EditAnywhere, Category="Island")

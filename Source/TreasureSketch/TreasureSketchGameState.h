@@ -53,6 +53,21 @@ public:
     UPROPERTY(Replicated, BlueprintReadOnly)
     bool bSurfacePaintEnabled = false;
 
+    // Room settings survive replay and are authoritative on the host.
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    int32 RoomGridSize = 39;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    int32 DrawingDurationSeconds = 120;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    int32 SearchingDurationSeconds = 120;
+
+    static constexpr int32 RoomGridSizes[] = {25, 39, 51, 61};
+    static constexpr int32 MinPhaseSeconds = 30;
+    static constexpr int32 MaxPhaseSeconds = 600;
+    static constexpr int32 PhaseSecondsStep = 30;
+
     bool IsRoundOver() const
     {
         return Phase == ETreasureRoundPhase::Won

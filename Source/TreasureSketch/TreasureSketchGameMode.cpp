@@ -12,11 +12,6 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 
-namespace
-{
-constexpr float PhaseDurationSeconds = 120.f;
-}
-
 ATreasureSketchGameMode::ATreasureSketchGameMode()
 {
     PrimaryActorTick.bCanEverTick = true;
@@ -108,6 +103,8 @@ void ATreasureSketchGameMode::BuildRound()
     Stream.Initialize(IslandSeed ^ 0x35D1A7);
     Island = GetWorld()->SpawnActorDeferred<AProceduralIsland>(AProceduralIsland::StaticClass(), FTransform::Identity);
     Island->Seed = IslandSeed;
+    if (const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>())
+        Island->GridSize = GS->RoomGridSize;
     FString RequestedTheme;
     if (FParse::Value(FCommandLine::Get(), TEXT("IslandTheme="), RequestedTheme))
         Island->Theme = RequestedTheme.Equals(TEXT("Ruins"), ESearchCase::IgnoreCase)
@@ -122,7 +119,7 @@ void ATreasureSketchGameMode::BuildRound()
         GS->IslandSeed = IslandSeed;
         ++GS->RoundSerial;
         GS->Phase = ETreasureRoundPhase::ScoutDrawing;
-        GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + PhaseDurationSeconds;
+        GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + GS->DrawingDurationSeconds;
         GS->bGameStarted = false;
     }
     UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_ROUND_READY Seed=%d Theme=%s Shape=%s Treasure=%s"),
@@ -136,6 +133,49 @@ bool ATreasureSketchGameMode::SelectRoomMode(ETreasureRoomMode Mode)
     GS->RoomMode = Mode;
     GS->ForceNetUpdate();
     return true;
+}
+
+void ATreasureSketchGameMode::AdjustRoomSetting(FName Setting, int32 Direction)
+{
+    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!HasAuthority() || (GetNetMode() != NM_ListenServer && GetNetMode() != NM_Standalone) || !GS || GS->bGameStarted
+        || (Direction != -1 && Direction != 1)) return;
+    if (Setting == TEXT("MapSize"))
+    {
+        int32 Index = 1;
+        for (int32 I = 0; I < UE_ARRAY_COUNT(ATreasureSketchGameState::RoomGridSizes); ++I)
+            if (GS->RoomGridSize == ATreasureSketchGameState::RoomGridSizes[I]) Index = I;
+        Index = FMath::Clamp(Index + Direction, 0, 3);
+        GS->RoomGridSize = ATreasureSketchGameState::RoomGridSizes[Index];
+    }
+    else
+    {
+        int32* Duration = Setting == TEXT("DrawingTime") ? &GS->DrawingDurationSeconds
+            : Setting == TEXT("SearchingTime") ? &GS->SearchingDurationSeconds : nullptr;
+        if (!Duration) return;
+        *Duration = FMath::Clamp(*Duration + Direction * ATreasureSketchGameState::PhaseSecondsStep,
+            ATreasureSketchGameState::MinPhaseSeconds, ATreasureSketchGameState::MaxPhaseSeconds);
+    }
+    GS->ForceNetUpdate();
+}
+
+void ATreasureSketchGameMode::ReturnToSetup()
+{
+    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!HasAuthority() || !GS || !GS->IsRoundOver()) return;
+    HideTreasureFromScout();
+    if (Island) Island->Destroy();
+    BuildRound();
+    GS->ForceNetUpdate();
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+        if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
+        {
+            if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(PC->GetPawn()))
+                Character->SetSpectatorHidden(false);
+            PC->ClientStartNewRound(GS->RoundSerial);
+            PC->ClientReturnToLobby();
+        }
+    RevealTreasureToScout();
 }
 
 void ATreasureSketchGameMode::StartHostedRound()
@@ -154,6 +194,17 @@ void ATreasureSketchGameMode::StartHostedRound()
             if (const ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State))
             { Scouts += PS->PlayerRole == ETreasurePlayerRole::Scout; Hunters += PS->PlayerRole == ETreasurePlayerRole::Hunter; }
         if (Scouts != 1 || Hunters != GS->PlayerArray.Num() - 1) return;
+        // Lobby previews may have been built before the host changed map size.
+        if (!Island || Island->GridSize != GS->RoomGridSize)
+        {
+            HideTreasureFromScout();
+            if (Island) Island->Destroy();
+            BuildRound();
+            for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+                if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
+                    PC->ClientStartNewRound(GS->RoundSerial);
+            RevealTreasureToScout();
+        }
         TArray<FVector> PlayerSpawns;
         for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
             if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
@@ -161,8 +212,9 @@ void ATreasureSketchGameMode::StartHostedRound()
                     Pawn->SetActorLocation(FindPlayerSpawn(PlayerSpawns), false, nullptr, ETeleportType::ResetPhysics);
         GS->bGameStarted = true;
         GS->ForceNetUpdate();
-        GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + PhaseDurationSeconds;
-        UE_LOG(LogTemp, Display, TEXT("TREASURE_ONLINE_START players=%d"), GS->PlayerArray.Num());
+        GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + GS->DrawingDurationSeconds;
+        UE_LOG(LogTemp, Display, TEXT("TREASURE_ONLINE_START players=%d grid=%d drawing=%d searching=%d"),
+            GS->PlayerArray.Num(), GS->RoomGridSize, GS->DrawingDurationSeconds, GS->SearchingDurationSeconds);
     }
 }
 
@@ -191,12 +243,13 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
     Island->Theme = ThemeChoice == 0 ? EIslandTheme::PirateBeach
         : ThemeChoice == 1 ? EIslandTheme::JungleRuins
         : AProceduralIsland::SelectThemeFromTable(IslandSeed, true);
+    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (GS && (bHunterGameplayTest || bFullFlowTest)) Island->GridSize = GS->RoomGridSize;
     Island->FinishSpawning(FTransform::Identity);
     if (bHunterGameplayTest) Island->Tags.Add(TEXT("SoloHunterGameplayTest"));
     if (bFullFlowTest) Island->Tags.Add(TEXT("SoloFullFlowTest"));
     TreasureLocation = Island->FindRandomLandPoint(Stream, 170.f) + FVector(0.f, 0.f, 35.f);
 
-    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (GS)
     {
         GS->IslandSeed = IslandSeed;
@@ -204,7 +257,8 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
         GS->Phase = bFullFlowTest ? ETreasureRoundPhase::ScoutDrawing : ETreasureRoundPhase::HunterSearching;
         GS->bGameStarted = true;
         GS->ForceNetUpdate();
-        GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + ((bHunterGameplayTest || bFullFlowTest) ? PhaseDurationSeconds : 3600.f);
+        GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + (bFullFlowTest ? GS->DrawingDurationSeconds
+            : bHunterGameplayTest ? GS->SearchingDurationSeconds : 3600.f);
     }
 
     for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
@@ -371,7 +425,7 @@ void ATreasureSketchGameMode::HandoffToHunter(const TArray<FSketchStroke>& Submi
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing) return;
     GS->Phase = ETreasureRoundPhase::HunterSearching;
-    GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + PhaseDurationSeconds;
+    GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + GS->SearchingDurationSeconds;
     HideTreasureFromScout();
     UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_HANDOFF Hunter active; marker hidden"));
 

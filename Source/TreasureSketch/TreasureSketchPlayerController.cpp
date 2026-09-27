@@ -252,6 +252,26 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
             GM->SelectRoomMode(ETreasureRoomMode::OneMapmaker);
     }
     else if (ActionName == TEXT("RoomStart")) StartOnlineRound();
+    else if (ActionName == TEXT("ReturnToSetup"))
+    {
+        if (IsLocalController())
+            if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) GM->ReturnToSetup();
+    }
+    else if (ActionName == TEXT("RoomMapSmaller") || ActionName == TEXT("RoomMapLarger")
+        || ActionName == TEXT("RoomDrawingLess") || ActionName == TEXT("RoomDrawingMore")
+        || ActionName == TEXT("RoomSearchingLess") || ActionName == TEXT("RoomSearchingMore"))
+    {
+        if (!IsLocalController() || (FrontEndPage != EFrontEndPage::RoomLobby && FrontEndPage != EFrontEndPage::SoloTest)) return;
+        if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
+        {
+            const bool bMap = ActionName == TEXT("RoomMapSmaller") || ActionName == TEXT("RoomMapLarger");
+            const bool bDrawing = ActionName == TEXT("RoomDrawingLess") || ActionName == TEXT("RoomDrawingMore");
+            const bool bIncrease = ActionName == TEXT("RoomMapLarger") || ActionName == TEXT("RoomDrawingMore")
+                || ActionName == TEXT("RoomSearchingMore");
+            GM->AdjustRoomSetting(bMap ? TEXT("MapSize") : bDrawing ? TEXT("DrawingTime") : TEXT("SearchingTime"),
+                bIncrease ? 1 : -1);
+        }
+    }
     else if (ActionName == TEXT("RoomBack"))
     {
         if (UTreasureOnlineSubsystem* Online = GetGameInstance()->GetSubsystem<UTreasureOnlineSubsystem>())
@@ -632,8 +652,9 @@ void ATreasureSketchPlayerController::ClearSketch()
 
 void ATreasureSketchPlayerController::ClientReturnToLobby_Implementation()
 {
-    OpenFrontEndPage(EFrontEndPage::RoomLobby);
-    StatusMessage = TEXT("玩家离开，本局已结束。等待房主重新开始。");
+    bReplayInputActive = false;
+    OpenFrontEndPage(GetNetMode() == NM_Standalone ? EFrontEndPage::SoloTest : EFrontEndPage::RoomLobby);
+    StatusMessage = TEXT("已返回设置，可调整后再次开始。");
 }
 
 void ATreasureSketchPlayerController::ServerCycleSpectatedHunter_Implementation()
