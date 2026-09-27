@@ -42,3 +42,17 @@
 - 扩充 RoomSettings.RoundFlow 自动化测试：设置锁定/保留、绘图超时自动进入寻宝、迟到交图不重置寻宝计时、单人自动交图。
 - 本轮仅做源码检查，未编译、未运行自动化测试、未操作游戏窗口。新增 UPROPERTY 和 RPC，应关闭编辑器后完整构建。用户负责交互测试；按既有约定仅提交推送源码，不更新 Release。
 - 建议用户验证：2–4 人等待倒计时；主机/客户端分别当地图师画图并等待超时；清空后重画、空白超时、连续重玩无旧图；寻宝阶段独立计时；两项设置客户端一致且重玩保留；轮换角色后出生点两种模式；成功/失败后房主返回大厅与单人返回测试菜单。
+## 本轮 Windows Release 已发布
+
+用户随后明确要求 push、打包和发布，已完成：
+- Release：`v0.8.0-room-settings-rc1`（预发布测试版）。
+- 地址：https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.8.0-room-settings-rc1
+- 游戏源码提交：`4825626`，来自 `codex/multiplayer-modes`。
+- 包：`TreasureSketch-v0.8.0-room-settings-rc1-4825626-Windows.zip`，386996303 字节。
+- SHA-256：`7cceaa71a3f2adf34a3aa7c8393083a490796b534583dad292887cac4af1196f`。
+- UE 5.6 编辑器与 Win64 Development 游戏编译，以及 Build/Cook/Stage/Pak/Archive 成功。
+- `TreasureSketch.RoomSettings.RoundFlow` 通过无窗口自动化测试。引擎测试启动与测试世界清理有诊断信息，未声称日志零警告。
+- ZIP 必需文件检查通过（游戏 EXE、Steam DLL、steam_appid、测试说明），上传文件大小和 SHA-256 校验通过。
+- 打包期间使用版本库配置，结束后已逐字节恢复本机 DefaultEngine.ini；本机配置未提交。
+- 未打开或控制游戏窗口，未进行多人交互验证；游玩测试仍由用户负责。
+- 本机包保存在 `Builds/TreasureSketch-v0.8.0-room-settings-rc1-4825626`；构建、自动化测试和发布日志在 `Saved/CodexRelease/`。
