@@ -47,6 +47,10 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     GM->AdjustRoomSetting(TEXT("SpreadPlayerSpawns"), 1);
     TestFalse(TEXT("Can hide treasure range without hiding marker"), GS->bTreasureRangeVisible);
     TestTrue(TEXT("Can choose spread out spawns"), GS->bSpreadPlayerSpawns);
+    TestEqual(TEXT("Dig cooldown defaults to ten seconds"), GS->DigCooldownSeconds, 10);
+    GM->AdjustRoomSetting(TEXT("DigCooldown"), -1);
+    TestEqual(TEXT("Host can reduce dig cooldown in five-second steps"), GS->DigCooldownSeconds, 5);
+    GM->AdjustRoomSetting(TEXT("DigCooldown"), 1);
     GM->AdjustRoomSetting(TEXT("DrawingTime"), -1);
     GM->AdjustRoomSetting(TEXT("SearchingTime"), 1);
     GM->ToggleSurfacePaint();
@@ -67,8 +71,10 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Cannot change settings during round"), GS->DrawingDurationSeconds, 90);
     GM->AdjustRoomSetting(TEXT("TreasureRange"), 1);
     GM->AdjustRoomSetting(TEXT("SpreadPlayerSpawns"), 1);
+    GM->AdjustRoomSetting(TEXT("DigCooldown"), 1);
     TestFalse(TEXT("Range setting locked during round"), GS->bTreasureRangeVisible);
     TestTrue(TEXT("Spawn setting locked during round"), GS->bSpreadPlayerSpawns);
+    TestEqual(TEXT("Dig cooldown is locked during round"), GS->DigCooldownSeconds, 10);
     GS->RoundEndServerTime = -1.f;
     GM->Tick(0.f);
     TestEqual(TEXT("Drawing timeout automatically starts searching"), GS->Phase, ETreasureRoundPhase::HunterSearching);
@@ -85,6 +91,7 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Replay retains forest selection"), GS->bForestInMapPool);
     TestEqual(TEXT("Replay returns to configured drawing time"), GS->GetSecondsRemaining(), 90);
     TestEqual(TEXT("Replay keeps searching setting"), GS->SearchingDurationSeconds, 150);
+    TestEqual(TEXT("Replay keeps dig cooldown setting"), GS->DigCooldownSeconds, 10);
     GS->Phase = ETreasureRoundPhase::Won;
     GM->ReturnToSetup();
     TestFalse(TEXT("Lobby return retains beach exclusion"), GS->bBeachInMapPool);
@@ -96,6 +103,7 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     TestFalse(TEXT("Return to setup stops round without removing party"), GS->bGameStarted);
     TestEqual(TEXT("Return keeps party"), GS->PlayerArray.Num(), 2);
     TestEqual(TEXT("Return keeps settings"), GS->SearchingDurationSeconds, 150);
+    TestEqual(TEXT("Return keeps dig cooldown setting"), GS->DigCooldownSeconds, 10);
     TestFalse(TEXT("Return keeps range setting"), GS->bTreasureRangeVisible);
     TestTrue(TEXT("Return keeps spawn setting"), GS->bSpreadPlayerSpawns);
 

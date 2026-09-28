@@ -318,6 +318,11 @@ void ATreasureSketchGameMode::AdjustRoomSetting(FName Setting, int32 Direction)
     {
         GS->bSpreadPlayerSpawns = !GS->bSpreadPlayerSpawns;
     }
+    else if (Setting == TEXT("DigCooldown"))
+    {
+        GS->DigCooldownSeconds = FMath::Clamp(GS->DigCooldownSeconds + Direction * ATreasureSketchGameState::DigCooldownStepSeconds,
+            ATreasureSketchGameState::MinDigCooldownSeconds, ATreasureSketchGameState::MaxDigCooldownSeconds);
+    }
     else
     {
         int32* Duration = Setting == TEXT("DrawingTime") ? &GS->DrawingDurationSeconds
@@ -710,13 +715,24 @@ void ATreasureSketchGameMode::BeginHunterSearching(const TArray<FSketchPage>& Pa
     }
 }
 
-bool ATreasureSketchGameMode::TryDig(const FVector& WorldLocation, float& OutDistance)
+bool ATreasureSketchGameMode::TryDig(ATreasureSketchPlayerState* Hunter, const FVector& WorldLocation,
+    float& OutDistance, bool& bAttempted)
 {
-    OutDistance = FVector::Dist2D(WorldLocation, TreasureLocation);
-    const float VerticalDistance = FMath::Abs(WorldLocation.Z - TreasureLocation.Z);
+    bAttempted = false;
+    OutDistance = 0.f;
+    if (!HasAuthority() || !Hunter || Hunter->PlayerRole != ETreasurePlayerRole::Hunter) return false;
     if (FinishIfTimeExpired()) return false;
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
-    if (!GS || GS->Phase != ETreasureRoundPhase::HunterSearching) return false;
+    if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::HunterSearching
+        || !GS->PlayerArray.Contains(Hunter)) return false;
+    const float ServerTime = GS->GetServerWorldTimeSeconds();
+    if (Hunter->GetDigCooldownRemaining(GS->RoundSerial, ServerTime) > 0.f) return false;
+    bAttempted = true;
+    Hunter->DigCooldownRoundSerial = GS->RoundSerial;
+    Hunter->NextDigServerTime = ServerTime + GS->DigCooldownSeconds;
+    Hunter->ForceNetUpdate();
+    OutDistance = FVector::Dist2D(WorldLocation, TreasureLocation);
+    const float VerticalDistance = FMath::Abs(WorldLocation.Z - TreasureLocation.Z);
     if (OutDistance <= TreasureRules::DigHorizontalRadius
         && VerticalDistance <= TreasureRules::DigVerticalHalfHeight)
     {

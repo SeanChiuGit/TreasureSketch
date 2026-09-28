@@ -140,3 +140,10 @@
 - 地图师在绘图阶段按 Tab 切换地面与自由飞行俯视镜头；即使画纸打开也可按 Tab 切换，M 仍可随时画图。俯视期间锁住角色本体移动与喷漆输入，切回地面保留宝藏标记。进入寻宝阶段后，Tab 仍按原逻辑切换观战自由飞行与探索者第一视角。
 - 用户负责实际镜头、鼠标与多人交互测试。此改动尚未包含在 v0.9.0 Release。
 - UE 5.6 TreasureSketchEditor Win64 Development 编译成功；`TreasureSketch.RoomSettings.MultiMapmaker` 与 `TreasureSketch.RoomSettings.RoundFlow` 无窗口测试通过，日志位于 `Saved/CodexRelease/spray-overhead-build.log` 和 `Saved/CodexRelease/spray-overhead-tests.log`。测试涵盖俯视与画纸切换、宝藏标记保留、喷点接受/重复扣量和新局重置。
+
+## 挖掘冷却
+
+- 房主在大厅可设置挖掘冷却，默认 10 秒，范围 0–60 秒、每次加减 5 秒；0 秒为无冷却。设置全员同步，开局锁定，重玩和返回大厅保留。
+- 冷却按探索者独立计算；服务端仅在寻宝阶段的有效尝试后启动，冷却中重复请求不再次判定也不延长倒计时。PlayerState 同步下一次可挖的服务端时间和回合编号，HUD 显示就绪或剩余秒数；新回合编号使旧冷却失效。服务端使用角色实际位置判定挖掘。
+- 用户负责窗口与联机交互测试。此改动未进入现有 v0.9.0 Release。
+- UE 5.6 TreasureSketchEditor Win64 Development 编译成功；`TreasureSketch.RoomSettings.MultiMapmaker` 与 `TreasureSketch.RoomSettings.RoundFlow` 无窗口测试通过，日志位于 `Saved/CodexRelease/dig-cooldown-build.log` 和 `Saved/CodexRelease/dig-cooldown-tests.log`。测试覆盖设置锁定与保留、独立冷却、重复挖掘、0 秒冷却及新回合清除旧冷却。

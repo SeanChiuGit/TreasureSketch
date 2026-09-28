@@ -23,6 +23,7 @@ void ATreasureSketchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProper
     DOREPLIFETIME(ATreasureSketchGameState, MovementSpeedMultiplier);
     DOREPLIFETIME(ATreasureSketchGameState, DrawingDurationSeconds);
     DOREPLIFETIME(ATreasureSketchGameState, SearchingDurationSeconds);
+    DOREPLIFETIME(ATreasureSketchGameState, DigCooldownSeconds);
     DOREPLIFETIME(ATreasureSketchGameState, IslandSeed);
     DOREPLIFETIME(ATreasureSketchGameState, RoundSerial);
     DOREPLIFETIME(ATreasureSketchGameState, Phase);

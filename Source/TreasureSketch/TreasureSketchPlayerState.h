@@ -26,4 +26,15 @@ public:
 
     UPROPERTY(Replicated, BlueprintReadOnly)
     bool bSketchSubmitted = false;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    int32 DigCooldownRoundSerial = 0;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    float NextDigServerTime = 0.f;
+
+    float GetDigCooldownRemaining(int32 CurrentRoundSerial, float ServerTime) const
+    {
+        return DigCooldownRoundSerial == CurrentRoundSerial ? FMath::Max(0.f, NextDigServerTime - ServerTime) : 0.f;
+    }
 };

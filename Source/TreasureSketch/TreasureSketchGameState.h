@@ -84,6 +84,13 @@ public:
     UPROPERTY(Replicated, BlueprintReadOnly)
     int32 SearchingDurationSeconds = 120;
 
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    int32 DigCooldownSeconds = 10;
+
+    static constexpr int32 MinDigCooldownSeconds = 0;
+    static constexpr int32 MaxDigCooldownSeconds = 60;
+    static constexpr int32 DigCooldownStepSeconds = 5;
+
     UPROPERTY(ReplicatedUsing=ApplyMovementSpeed, BlueprintReadOnly)
     float MovementSpeedMultiplier = 1.f;
 

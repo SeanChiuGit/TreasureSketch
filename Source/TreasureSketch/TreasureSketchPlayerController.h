@@ -214,7 +214,7 @@ private:
     void ServerSubmitSketch(int32 RoundSerial, const TArray<FSketchStroke>& CompletedStrokes);
 
     UFUNCTION(Server, Reliable)
-    void ServerTryDig(FVector_NetQuantize WorldLocation);
+    void ServerTryDig();
 
     UFUNCTION(Server, Reliable)
     void ServerRequestReplay(bool bSwapRoles);

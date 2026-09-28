@@ -54,16 +54,16 @@ void ATreasureSketchHUD::DrawHUD()
         {
             auto DrawRoomSetting = [&](const FString& Label, float Y, FName Less, FName More, bool bCanLess, bool bCanMore)
             {
-                DrawRect(FLinearColor(0.06f, 0.12f, 0.13f), SettingsX, Y, SettingsW, 32.f);
-                DrawText(Label, FLinearColor::White, SettingsX + 10.f, Y + 9.f, GEngine->GetSmallFont(), 0.9f);
+                DrawRect(FLinearColor(0.06f, 0.12f, 0.13f), SettingsX, Y, SettingsW, 30.f);
+                DrawText(Label, FLinearColor::White, SettingsX + 10.f, Y + 8.f, GEngine->GetSmallFont(), 0.9f);
                 const float ButtonX = SettingsX + SettingsW - 84.f;
                 for (int32 I = 0; I < 2; ++I)
                 {
                     const bool bEnabled = bCanAdjustSettings && (I == 0 ? bCanLess : bCanMore);
                     const float X = ButtonX + I * 42.f;
-                    DrawRect(bEnabled ? FLinearColor(0.15f, 0.30f, 0.30f) : FLinearColor(0.08f, 0.12f, 0.13f), X, Y + 2.f, 38.f, 28.f);
-                    DrawText(I == 0 ? TEXT("-") : TEXT("+"), bEnabled ? FLinearColor::White : FLinearColor(0.35f, 0.40f, 0.40f), X + 13.f, Y + 5.f, GEngine->GetMediumFont(), 1.f);
-                    if (bEnabled) AddHitBox(FVector2D(X, Y + 2.f), FVector2D(38.f, 28.f), I == 0 ? Less : More, true, 10);
+                    DrawRect(bEnabled ? FLinearColor(0.15f, 0.30f, 0.30f) : FLinearColor(0.08f, 0.12f, 0.13f), X, Y + 2.f, 38.f, 26.f);
+                    DrawText(I == 0 ? TEXT("-") : TEXT("+"), bEnabled ? FLinearColor::White : FLinearColor(0.35f, 0.40f, 0.40f), X + 13.f, Y + 4.f, GEngine->GetMediumFont(), 1.f);
+                    if (bEnabled) AddHitBox(FVector2D(X, Y + 2.f), FVector2D(38.f, 26.f), I == 0 ? Less : More, true, 10);
                 }
             };
             DrawRoomSetting(TEXT("面积倍数："), SettingsY, TEXT("RoomMapSmaller"), TEXT("RoomMapLarger"), GS->RoomMapScale > GS->MinMapScale, GS->RoomMapScale < GS->MaxMapScale);
@@ -74,20 +74,23 @@ void ATreasureSketchHUD::DrawHUD()
             float ParsedScale = 0.f;
             const bool bValidScale = LexTryParseString(ParsedScale, *ScaleText) && FMath::IsFinite(ParsedScale)
                 && ParsedScale >= GS->MinMapScale && ParsedScale <= GS->MaxMapScale;
-            DrawRect(bEditingScale ? FLinearColor(0.15f, 0.30f, 0.30f) : FLinearColor(0.08f, 0.12f, 0.13f), InputX, SettingsY + 2.f, InputW, 28.f);
+            DrawRect(bEditingScale ? FLinearColor(0.15f, 0.30f, 0.30f) : FLinearColor(0.08f, 0.12f, 0.13f), InputX, SettingsY + 2.f, InputW, 26.f);
             DrawText(ScaleText + (bEditingScale ? TEXT("_") : TEXT(" 倍")), bValidScale ? FLinearColor::White : FLinearColor(1.f, 0.4f, 0.3f),
-                InputX + 8.f, SettingsY + 9.f, GEngine->GetSmallFont(), 0.9f);
-            if (bCanAdjustSettings) AddHitBox(FVector2D(InputX, SettingsY + 2.f), FVector2D(InputW, 28.f), TEXT("MapScaleInput"), true, 10);
-            DrawRoomSetting(FString::Printf(TEXT("绘图时间：%d 秒"), GS->DrawingDurationSeconds), SettingsY + 36.f, TEXT("RoomDrawingLess"), TEXT("RoomDrawingMore"), GS->DrawingDurationSeconds > GS->MinPhaseSeconds, GS->DrawingDurationSeconds < GS->MaxPhaseSeconds);
-            DrawRoomSetting(FString::Printf(TEXT("寻宝时间：%d 秒"), GS->SearchingDurationSeconds), SettingsY + 72.f, TEXT("RoomSearchingLess"), TEXT("RoomSearchingMore"), GS->SearchingDurationSeconds > GS->MinPhaseSeconds, GS->SearchingDurationSeconds < GS->MaxPhaseSeconds);
-            DrawRoomSetting(FString::Printf(TEXT("移动速度：%.2f 倍"), GS->MovementSpeedMultiplier), SettingsY + 108.f, TEXT("RoomSpeedLess"), TEXT("RoomSpeedMore"), GS->MovementSpeedMultiplier > GS->MinMovementSpeed, GS->MovementSpeedMultiplier < GS->MaxMovementSpeed);
+                InputX + 8.f, SettingsY + 8.f, GEngine->GetSmallFont(), 0.9f);
+            if (bCanAdjustSettings) AddHitBox(FVector2D(InputX, SettingsY + 2.f), FVector2D(InputW, 26.f), TEXT("MapScaleInput"), true, 10);
+            DrawRoomSetting(FString::Printf(TEXT("绘图时间：%d 秒"), GS->DrawingDurationSeconds), SettingsY + 30.f, TEXT("RoomDrawingLess"), TEXT("RoomDrawingMore"), GS->DrawingDurationSeconds > GS->MinPhaseSeconds, GS->DrawingDurationSeconds < GS->MaxPhaseSeconds);
+            DrawRoomSetting(FString::Printf(TEXT("寻宝时间：%d 秒"), GS->SearchingDurationSeconds), SettingsY + 60.f, TEXT("RoomSearchingLess"), TEXT("RoomSearchingMore"), GS->SearchingDurationSeconds > GS->MinPhaseSeconds, GS->SearchingDurationSeconds < GS->MaxPhaseSeconds);
+            DrawRoomSetting(FString::Printf(TEXT("挖掘冷却：%d 秒"), GS->DigCooldownSeconds), SettingsY + 90.f,
+                TEXT("RoomDigCooldownLess"), TEXT("RoomDigCooldownMore"),
+                GS->DigCooldownSeconds > GS->MinDigCooldownSeconds, GS->DigCooldownSeconds < GS->MaxDigCooldownSeconds);
+            DrawRoomSetting(FString::Printf(TEXT("移动速度：%.2f 倍"), GS->MovementSpeedMultiplier), SettingsY + 120.f, TEXT("RoomSpeedLess"), TEXT("RoomSpeedMore"), GS->MovementSpeedMultiplier > GS->MinMovementSpeed, GS->MovementSpeedMultiplier < GS->MaxMovementSpeed);
             auto DrawRoomToggle = [&](FName Name, const FString& Label, float Y)
             {
-                DrawRect(bCanAdjustSettings ? FLinearColor(0.15f, 0.30f, 0.30f) : FLinearColor(0.08f, 0.12f, 0.13f), SettingsX, Y, SettingsW, 32.f);
-                DrawText(Label, FLinearColor::White, SettingsX + 10.f, Y + 9.f, GEngine->GetSmallFont(), 0.9f);
-                if (bCanAdjustSettings) AddHitBox(FVector2D(SettingsX, Y), FVector2D(SettingsW, 32.f), Name, true, 10);
+                DrawRect(bCanAdjustSettings ? FLinearColor(0.15f, 0.30f, 0.30f) : FLinearColor(0.08f, 0.12f, 0.13f), SettingsX, Y, SettingsW, 30.f);
+                DrawText(Label, FLinearColor::White, SettingsX + 10.f, Y + 8.f, GEngine->GetSmallFont(), 0.9f);
+                if (bCanAdjustSettings) AddHitBox(FVector2D(SettingsX, Y), FVector2D(SettingsW, 30.f), Name, true, 10);
             };
-            DrawRoomToggle(TEXT("ToggleTreasureRange"), GS->bTreasureRangeVisible ? TEXT("宝藏判定范围：显示（点击切换）") : TEXT("宝藏判定范围：隐藏（点击切换）"), SettingsY + 144.f);
+            DrawRoomToggle(TEXT("ToggleTreasureRange"), GS->bTreasureRangeVisible ? TEXT("宝藏判定范围：显示（点击切换）") : TEXT("宝藏判定范围：隐藏（点击切换）"), SettingsY + 150.f);
             DrawRoomToggle(TEXT("ToggleSpreadPlayerSpawns"), GS->bSpreadPlayerSpawns ? TEXT("出生点：分散登岛（点击切换）") : TEXT("出生点：同一区域（点击切换）"), SettingsY + 180.f);
         };
 
@@ -461,6 +464,7 @@ void ATreasureSketchHUD::DrawHUD()
         ? TEXT("观战：WASD 飞行 | Space 上升 | Ctrl 下降 | Shift 加速 | M 查看地图")
         : bScout && PC->HasSubmittedSketch() ? TEXT("已交图，等待其他地图师完成；到时自动收齐")
         : bScout ? TEXT("WASD 移动 | Tab 俯视侦察 | M 打开白纸画图 | C 清空 | Enter 交图")
+        : GS->Phase == ETreasureRoundPhase::HunterSearching ? TEXT("寻宝中：WASD 移动 | M 查看地图 | E 挖掘")
         : TEXT("等待交图；收到后 M 查看地图 | E 挖掘");
     DrawText(FString::Printf(TEXT("%s  |  岛屿种子 %d"), *RoleLabel, GS->IslandSeed), FLinearColor::White, 35.f, 28.f, GEngine->GetLargeFont(), 1.f);
     DrawText(Help, FLinearColor(0.9f,0.9f,0.9f), 35.f, 62.f, GEngine->GetSmallFont(), 1.f);
@@ -472,6 +476,15 @@ void ATreasureSketchHUD::DrawHUD()
             PC->IsHunterFirstPersonView() ? TEXT("寻宝者第一视角") : TEXT("自由飞行"),
             PC->IsSpectatorTreasureVisible() ? TEXT("显示") : TEXT("隐藏")),
             FLinearColor(0.45f, 0.9f, 0.85f), 35.f, 110.f, GEngine->GetSmallFont(), 1.f);
+    }
+    if (!bScout && GS->Phase == ETreasureRoundPhase::HunterSearching)
+    {
+        const int32 CooldownRemaining = FMath::CeilToInt(PS->GetDigCooldownRemaining(
+            GS->RoundSerial, GS->GetServerWorldTimeSeconds()));
+        DrawText(CooldownRemaining > 0 ? FString::Printf(TEXT("挖掘冷却：%d 秒"), CooldownRemaining)
+            : GS->DigCooldownSeconds == 0 ? TEXT("挖掘就绪（无冷却）：按 E") : TEXT("挖掘就绪：按 E"),
+            CooldownRemaining > 0 ? FLinearColor(1.f, 0.72f, 0.35f) : FLinearColor(0.4f, 0.95f, 0.65f),
+            35.f, 86.f, GEngine->GetSmallFont(), 1.f);
     }
 
     if (GS->bSurfacePaintEnabled && bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing && !PC->IsMapOpen())

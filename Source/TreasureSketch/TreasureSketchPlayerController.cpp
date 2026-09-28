@@ -486,6 +486,7 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
     else if (ActionName == TEXT("RoomMapSmaller") || ActionName == TEXT("RoomMapLarger")
         || ActionName == TEXT("RoomDrawingLess") || ActionName == TEXT("RoomDrawingMore")
         || ActionName == TEXT("RoomSearchingLess") || ActionName == TEXT("RoomSearchingMore")
+        || ActionName == TEXT("RoomDigCooldownLess") || ActionName == TEXT("RoomDigCooldownMore")
         || ActionName == TEXT("RoomSpeedLess") || ActionName == TEXT("RoomSpeedMore"))
     {
         if (!IsLocalController() || (FrontEndPage != EFrontEndPage::RoomLobby && FrontEndPage != EFrontEndPage::SoloTest)) return;
@@ -493,10 +494,13 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
         {
             const bool bMap = ActionName == TEXT("RoomMapSmaller") || ActionName == TEXT("RoomMapLarger");
             const bool bDrawing = ActionName == TEXT("RoomDrawingLess") || ActionName == TEXT("RoomDrawingMore");
+            const bool bDigCooldown = ActionName == TEXT("RoomDigCooldownLess") || ActionName == TEXT("RoomDigCooldownMore");
             const bool bSpeed = ActionName == TEXT("RoomSpeedLess") || ActionName == TEXT("RoomSpeedMore");
             const bool bIncrease = ActionName == TEXT("RoomMapLarger") || ActionName == TEXT("RoomDrawingMore")
-                || ActionName == TEXT("RoomSearchingMore") || ActionName == TEXT("RoomSpeedMore");
-            GM->AdjustRoomSetting(bSpeed ? TEXT("MovementSpeed") : bMap ? TEXT("MapSize") : bDrawing ? TEXT("DrawingTime") : TEXT("SearchingTime"),
+                || ActionName == TEXT("RoomSearchingMore") || ActionName == TEXT("RoomSpeedMore")
+                || ActionName == TEXT("RoomDigCooldownMore");
+            GM->AdjustRoomSetting(bDigCooldown ? TEXT("DigCooldown") : bSpeed ? TEXT("MovementSpeed")
+                : bMap ? TEXT("MapSize") : bDrawing ? TEXT("DrawingTime") : TEXT("SearchingTime"),
                 bIncrease ? 1 : -1);
         }
     }
@@ -919,11 +923,14 @@ void ATreasureSketchPlayerController::ClientReplaceLiveSketch_Implementation(int
 
 void ATreasureSketchPlayerController::Dig()
 {
-    if (bPauseMenuOpen) return;
+    if (bPauseMenuOpen || bMapOpen) return;
     if (!GetPawn()) return;
     const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
-    if (PS && PS->PlayerRole == ETreasurePlayerRole::Hunter)
-        ServerTryDig(GetPawn()->GetActorLocation());
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (PS && GS && PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->bGameStarted
+        && GS->Phase == ETreasureRoundPhase::HunterSearching
+        && PS->GetDigCooldownRemaining(GS->RoundSerial, GS->GetServerWorldTimeSeconds()) <= 0.f)
+        ServerTryDig();
 }
 
 void ATreasureSketchPlayerController::ServerSpraySurface_Implementation(FVector_NetQuantize ViewOrigin, FVector_NetQuantizeNormal ViewDirection)
@@ -958,15 +965,16 @@ void ATreasureSketchPlayerController::ServerSpraySurface_Implementation(FVector_
     if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) GM->SpraySurface(Hit);
 }
 
-void ATreasureSketchPlayerController::ServerTryDig_Implementation(FVector_NetQuantize WorldLocation)
+void ATreasureSketchPlayerController::ServerTryDig_Implementation()
 {
-    const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
-    if (!PS || PS->PlayerRole != ETreasurePlayerRole::Hunter) return;
+    ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
+    if (!PS || !GetPawn()) return;
     float Distance = 0.f;
+    bool bAttempted = false;
     bool bFound = false;
     if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
-        bFound = GM->TryDig(WorldLocation, Distance);
-    ClientDigResult(bFound, Distance);
+        bFound = GM->TryDig(PS, GetPawn()->GetActorLocation(), Distance, bAttempted);
+    if (bAttempted) ClientDigResult(bFound, Distance);
 }
 
 void ATreasureSketchPlayerController::ClientDigResult_Implementation(bool bFound, float Distance)

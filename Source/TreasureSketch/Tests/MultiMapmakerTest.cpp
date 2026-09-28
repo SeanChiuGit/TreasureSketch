@@ -112,6 +112,20 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Still waits for last mapmaker"), GS->Phase, ETreasureRoundPhase::ScoutDrawing);
     GM->SubmitPlayerSketch(Players[3], {});
     TestEqual(TEXT("All maps release explorer"), GS->Phase, ETreasureRoundPhase::HunterSearching);
+    float DigDistance = 0.f;
+    bool bDigAttempted = false;
+    const FVector WrongDigLocation = GM->GetTreasureLocation() + FVector(10000.f, 0.f, 0.f);
+    TestFalse(TEXT("A distant dig misses"), GM->TryDig(Players[0], WrongDigLocation, DigDistance, bDigAttempted));
+    TestTrue(TEXT("The first dig is attempted"), bDigAttempted);
+    TestTrue(TEXT("Dig starts the configured cooldown"), Players[0]->GetDigCooldownRemaining(
+        GS->RoundSerial, GS->GetServerWorldTimeSeconds()) > 0.f);
+    const float FirstNextDigTime = Players[0]->NextDigServerTime;
+    GM->TryDig(Players[0], WrongDigLocation, DigDistance, bDigAttempted);
+    TestFalse(TEXT("Repeated dig during cooldown is ignored"), bDigAttempted);
+    TestEqual(TEXT("Ignored dig does not extend cooldown"), Players[0]->NextDigServerTime, FirstNextDigTime);
+    Players[0]->NextDigServerTime = GS->GetServerWorldTimeSeconds() - 1.f;
+    GM->TryDig(Players[0], WrongDigLocation, DigDistance, bDigAttempted);
+    TestTrue(TEXT("Explorer can dig again after cooldown"), bDigAttempted);
     World->SetNetDriver(nullptr);
     Explorer->UpdateWaitingSketchInput();
     TestFalse(TEXT("Waiting page input stops at handoff"), Explorer->bWaitingSketchInputActive);
@@ -184,6 +198,8 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     TestFalse(TEXT("Treasure marker hides after review"), Controllers[1]->bTreasureMarkerVisible);
     World->SetNetDriver(Driver);
     GM->StartNewRound(true);
+    TestEqual(TEXT("New round clears the previous explorer's cooldown"), Players[0]->GetDigCooldownRemaining(
+        GS->RoundSerial, GS->GetServerWorldTimeSeconds()), 0.f);
     TestFalse(TEXT("Next round clears review state"), GS->bReviewingRound);
     TestEqual(TEXT("Replay keeps mode"), GS->RoomMode, ETreasureRoomMode::OneExplorer);
     TestEqual(TEXT("Explorer rotates to next player"), Players[1]->PlayerRole, ETreasurePlayerRole::Hunter);
@@ -224,6 +240,17 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     Controllers[2]->ClientInitializeLiveSketch_Implementation(GS->RoundSerial, SingleMapmakerPage);
     TestEqual(TEXT("Original mode explorer can view live page"), Controllers[2]->GetSketchPageCount(), 1);
     World->SetNetDriver(Driver);
+    GM->SubmitPlayerSketch(Players[0], {});
+    TestEqual(TEXT("Single mapmaker releases multiple explorers"), GS->Phase, ETreasureRoundPhase::HunterSearching);
+    GM->TryDig(Players[2], GM->GetTreasureLocation() + FVector(10000.f, 0.f, 0.f), DigDistance, bDigAttempted);
+    TestTrue(TEXT("One explorer's dig starts their own cooldown"), bDigAttempted);
+    TestEqual(TEXT("Another explorer has an independent cooldown"), Players[3]->GetDigCooldownRemaining(
+        GS->RoundSerial, GS->GetServerWorldTimeSeconds()), 0.f);
+    GS->DigCooldownSeconds = 0;
+    GM->TryDig(Players[3], GM->GetTreasureLocation() + FVector(10000.f, 0.f, 0.f), DigDistance, bDigAttempted);
+    TestTrue(TEXT("Zero cooldown accepts the first dig"), bDigAttempted);
+    GM->TryDig(Players[3], GM->GetTreasureLocation() + FVector(10000.f, 0.f, 0.f), DigDistance, bDigAttempted);
+    TestTrue(TEXT("Zero cooldown accepts an immediate second dig"), bDigAttempted);
 
     World->SetNetDriver(nullptr);
     Driver->SetWorld(nullptr);
