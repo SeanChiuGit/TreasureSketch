@@ -23,10 +23,14 @@ public:
 
 protected:
     virtual void BeginPlay() override;
+    virtual void CheckJumpInput(float DeltaTime) override;
 
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
 private:
+    friend class FExplorerRaceFlowTest;
+    static constexpr float NormalJumpVelocity = 620.f;
+    static constexpr float LowWaterJumpVelocity = 900.f;
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<USpringArmComponent> CameraBoom;
 

@@ -167,3 +167,11 @@
 - UE 5.6 编辑器和 Win64 Development 游戏编译、Build/Cook/Stage/Pak/Archive 成功；两个 RoomSettings 无窗口自动化测试通过。ZIP 检查包含 EXE、Steam DLL、steam_appid、PAK 和包内说明。
 - 打包使用版本库配置，结束后本机 `Config/DefaultEngine.ini` 哈希与打包前一致，未提交也未分发本机令牌。未打开游戏窗口，真实多人交互测试由用户负责。
 - 本机归档和 ZIP 位于 `Builds/TreasureSketch-v0.10.0-lobby-overhead-cooldown-rc1-23f11cf*`；构建与发布日志在 `Saved/CodexRelease/package-v0.10.log` 和 `Saved/CodexRelease/publish-v0.10.log`。
+
+## 掉出地图与鬼魂视角修复
+
+- 游戏及复盘期间，服务端每帧检查可见玩家角色；低于岛屿原点 600 单位时清除下落速度并传送到岛屿安全出生点。观战地图师的隐藏角色不受影响。
+- 玩家脚部低于水面时跳跃初速从 620 提高到 900，回到正常高度即恢复 620；判定放在 `CheckJumpInput`，让联机客户端预测和服务端移动重放使用相同规则。无需记录安全位置。
+- 寻宝阶段鬼魂自由飞行的鼠标视角灵敏度从 0.15 提高到 0.45；绘图阶段俯视保持原灵敏度。
+- 游戏窗口与多人手感测试由用户负责。
+- UE 5.6 TreasureSketchEditor Win64 Development 完整编译成功；`TreasureSketch.RoomSettings` 下的 ExplorerRace、MultiMapmaker、RoundFlow 三项无窗口自动化测试通过，日志在 `Saved/CodexRelease/fall-ghost-tests.log`。掉落与跳跃判定已加入 ExplorerRace 测试。

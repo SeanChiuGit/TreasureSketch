@@ -17,7 +17,7 @@ ATreasureSketchCharacter::ATreasureSketchCharacter()
 {
     GetCapsuleComponent()->InitCapsuleSize(42.f, 96.f);
     GetCharacterMovement()->MaxWalkSpeed = 520.f;
-    GetCharacterMovement()->JumpZVelocity = 620.f;
+    GetCharacterMovement()->JumpZVelocity = NormalJumpVelocity;
     GetCharacterMovement()->AirControl = 0.25f;
 
     CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
@@ -114,6 +114,16 @@ void ATreasureSketchCharacter::SetMovementSpeedMultiplier(float Multiplier)
     GetCharacterMovement()->MaxWalkSpeed = 520.f * Scale;
     GetCharacterMovement()->MaxAcceleration = 2048.f * Scale;
     GetCharacterMovement()->BrakingDecelerationWalking = 2048.f * Scale;
+}
+
+void ATreasureSketchCharacter::CheckJumpInput(float DeltaTime)
+{
+    if (bPressedJump)
+    {
+        const float FeetZ = GetActorLocation().Z - GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+        GetCharacterMovement()->JumpZVelocity = FeetZ < 5.f ? LowWaterJumpVelocity : NormalJumpVelocity;
+    }
+    Super::CheckJumpInput(DeltaTime);
 }
 
 void ATreasureSketchCharacter::SetSpectatorHidden(bool bShouldHide)

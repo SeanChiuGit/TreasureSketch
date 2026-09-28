@@ -9,6 +9,7 @@
 #include "TreasureSketchPlayerState.h"
 #include "TreasureRules.h"
 #include "Engine/World.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "TimerManager.h"
@@ -48,7 +49,25 @@ void ATreasureSketchGameMode::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
     FinishIfTimeExpired();
+    RecoverFallenPlayers();
     SendHunterViewToScout(DeltaSeconds);
+}
+
+void ATreasureSketchGameMode::RecoverFallenPlayers()
+{
+    const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!HasAuthority() || !Island || !GS || !GS->bGameStarted
+        || (GS->IsRoundOver() && !GS->bReviewingRound)) return;
+    const float FallLimitZ = Island->GetActorLocation().Z - 600.f;
+    for (APlayerState* State : GS->PlayerArray)
+        if (const ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State))
+            if (const ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(PS->GetOwner()))
+                if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(PC->GetPawn()))
+                    if (!Character->IsHidden() && Character->GetActorLocation().Z < FallLimitZ)
+                    {
+                        Character->GetCharacterMovement()->StopMovementImmediately();
+                        Character->SetActorLocation(Island->FindSpawnPoint(), false, nullptr, ETeleportType::ResetPhysics);
+                    }
 }
 
 bool ATreasureSketchGameMode::FinishIfTimeExpired()

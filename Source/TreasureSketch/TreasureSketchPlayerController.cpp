@@ -709,8 +709,9 @@ void ATreasureSketchPlayerController::UpdateSpectatorCamera(float DeltaTime)
     float MouseX = 0.f, MouseY = 0.f;
     GetInputMouseDelta(MouseX, MouseY);
     FRotator Rotation = SpectatorCamera->GetActorRotation();
-    Rotation.Yaw += MouseX * 0.15f;
-    Rotation.Pitch = FMath::ClampAngle(Rotation.Pitch - MouseY * 0.15f, -85.f, 85.f);
+    const float MouseSensitivity = bDrawingView ? 0.15f : 0.45f;
+    Rotation.Yaw += MouseX * MouseSensitivity;
+    Rotation.Pitch = FMath::ClampAngle(Rotation.Pitch - MouseY * MouseSensitivity, -85.f, 85.f);
     Rotation.Roll = 0.f;
     SpectatorCamera->SetActorRotation(Rotation);
 

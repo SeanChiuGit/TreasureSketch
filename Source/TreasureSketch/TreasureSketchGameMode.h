@@ -61,6 +61,7 @@ private:
     UPROPERTY() TObjectPtr<ATreasureSurfacePaint> SurfacePaint;
     void ResetSurfacePaint();
     void PlaceRoundPlayers();
+    void RecoverFallenPlayers();
     TArray<FVector> MapmakerLandingSpawns;
 
     FVector FindPlayerSpawn(TArray<FVector>& UsedSpawns) const;

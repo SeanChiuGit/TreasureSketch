@@ -3,6 +3,7 @@
 #include "Misc/AutomationTest.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "IpNetDriver.h"
 #include "../TreasureSketchGameMode.h"
 #include "../TreasureSketchGameState.h"
@@ -63,6 +64,19 @@ bool FExplorerRaceFlowTest::RunTest(const FString& Parameters)
             auto* TargetPawn = World->SpawnActor<ATreasureSketchCharacter>();
             Controllers[1]->Possess(ShovingPawn);
             Controllers[2]->Possess(TargetPawn);
+            ShovingPawn->SetActorLocation(FVector(0.f, 0.f, -1000.f));
+            GM->RecoverFallenPlayers();
+            TestTrue(TEXT("Fallen explorer returns to the island"), ShovingPawn->GetActorLocation().Z > 0.f);
+            ShovingPawn->SetActorLocation(FVector(0.f, 0.f, 50.f));
+            ShovingPawn->Jump();
+            ShovingPawn->CheckJumpInput(0.f);
+            TestEqual(TEXT("Low-water jump has extra lift"), ShovingPawn->GetCharacterMovement()->JumpZVelocity, 900.f);
+            ShovingPawn->StopJumping();
+            ShovingPawn->SetActorLocation(FVector(0.f, 0.f, 500.f));
+            ShovingPawn->Jump();
+            ShovingPawn->CheckJumpInput(0.f);
+            TestEqual(TEXT("Land jump keeps its original lift"), ShovingPawn->GetCharacterMovement()->JumpZVelocity, 620.f);
+            ShovingPawn->StopJumping();
             ShovingPawn->SetActorLocation(FVector(0.f, 0.f, 5000.f));
             TargetPawn->SetActorLocation(FVector(150.f, 0.f, 5000.f));
             Controllers[1]->SetControlRotation(FRotator::ZeroRotator);
