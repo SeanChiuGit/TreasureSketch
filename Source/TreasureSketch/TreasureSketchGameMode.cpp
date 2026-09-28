@@ -181,7 +181,8 @@ bool ATreasureSketchGameMode::SelectRoomMode(ETreasureRoomMode Mode)
 {
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (!HasAuthority() || !GS || GS->bGameStarted
-        || (Mode != ETreasureRoomMode::OneMapmaker && Mode != ETreasureRoomMode::OneExplorer)) return false;
+        || (Mode != ETreasureRoomMode::OneMapmaker && Mode != ETreasureRoomMode::OneExplorer
+            && Mode != ETreasureRoomMode::ExplorerRace)) return false;
     if (GS->RoomMode == Mode) return true;
     ATreasureSketchPlayerState* SinglePlayer = nullptr;
     const ETreasurePlayerRole PreviousSingleRole = GS->RoomMode == ETreasureRoomMode::OneExplorer
@@ -191,6 +192,9 @@ bool ATreasureSketchGameMode::SelectRoomMode(ETreasureRoomMode Mode)
         { SinglePlayer = PS; break; }
     HideTreasureFromScout();
     GS->RoomMode = Mode;
+    GS->RaceRoundIndex = 0;
+    GS->RaceTotalRounds = 0;
+    GS->RaceRoundWinner.Reset();
     NormalizeRoomRoles(nullptr, SinglePlayer);
     RevealTreasureToScout();
     GS->ForceNetUpdate();
@@ -201,7 +205,7 @@ bool ATreasureSketchGameMode::ClaimSingleRoomRole(ATreasureSketchPlayerState* Pl
 {
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (!HasAuthority() || !GS || GS->bGameStarted || !Player || !GS->PlayerArray.Contains(Player)
-        || (GS->RoomMode != ETreasureRoomMode::OneMapmaker && GS->RoomMode != ETreasureRoomMode::OneExplorer)) return false;
+        || GS->RoomMode == ETreasureRoomMode::TeamVersus) return false;
     const ETreasurePlayerRole SingleRole = GS->RoomMode == ETreasureRoomMode::OneExplorer
         ? ETreasurePlayerRole::Hunter : ETreasurePlayerRole::Scout;
     if (Player->PlayerRole == SingleRole) return true;
@@ -338,6 +342,9 @@ void ATreasureSketchGameMode::ReturnToSetup()
 {
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (!HasAuthority() || !GS || !GS->bGameStarted) return;
+    GS->RaceRoundIndex = 0;
+    GS->RaceTotalRounds = 0;
+    GS->RaceRoundWinner.Reset();
     HideTreasureFromScout();
     if (Island) Island->Destroy();
     BuildRound();
@@ -358,8 +365,9 @@ void ATreasureSketchGameMode::StartHostedRound()
     if (ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>())
     {
         if (GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing) return;
-        if (GS->PlayerArray.Num() < 2 || GS->PlayerArray.Num() > ATreasureSketchGameState::MaxRoomPlayers
-            || (GS->RoomMode != ETreasureRoomMode::OneMapmaker && GS->RoomMode != ETreasureRoomMode::OneExplorer))
+        if (GS->PlayerArray.Num() < (GS->RoomMode == ETreasureRoomMode::ExplorerRace ? 3 : 2)
+            || GS->PlayerArray.Num() > ATreasureSketchGameState::MaxRoomPlayers
+            || GS->RoomMode == ETreasureRoomMode::TeamVersus)
         {
             UE_LOG(LogTemp, Warning, TEXT("TREASURE_ONLINE_START waiting for second player"));
             return;
@@ -370,6 +378,20 @@ void ATreasureSketchGameMode::StartHostedRound()
             { Scouts += PS->PlayerRole == ETreasurePlayerRole::Scout; Hunters += PS->PlayerRole == ETreasurePlayerRole::Hunter; }
         const int32 ExpectedScouts = GS->RoomMode == ETreasureRoomMode::OneExplorer ? GS->PlayerArray.Num() - 1 : 1;
         if (Scouts != ExpectedScouts || Hunters != GS->PlayerArray.Num() - ExpectedScouts) return;
+        if (GS->RoomMode == ETreasureRoomMode::ExplorerRace)
+        {
+            GS->RaceRoundIndex = 1;
+            GS->RaceTotalRounds = GS->PlayerArray.Num();
+            GS->RaceRoundWinner.Reset();
+            for (APlayerState* State : GS->PlayerArray)
+                if (ATreasureSketchPlayerState* Member = Cast<ATreasureSketchPlayerState>(State))
+                {
+                    Member->RacePoints = 0;
+                    Member->RaceFinds = 0;
+                    Member->NextShoveServerTime = 0.f;
+                    Member->ForceNetUpdate();
+                }
+        }
         // Lobby previews may have been built before the host changed map size.
         FString RequestedTheme;
         const bool bThemeForced = FParse::Value(FCommandLine::Get(), TEXT("IslandTheme="), RequestedTheme);
@@ -493,6 +515,9 @@ void ATreasureSketchGameMode::Logout(AController* Exiting)
     NormalizeRoomRoles(const_cast<APlayerState*>(DepartingState));
     if (GS->bGameStarted)
     {
+        GS->RaceRoundIndex = 0;
+        GS->RaceTotalRounds = 0;
+        GS->RaceRoundWinner.Reset();
         HideTreasureFromScout();
         if (Island) Island->Destroy();
         BuildRound();
@@ -579,7 +604,8 @@ void ATreasureSketchGameMode::SendHunterViewToScout(float DeltaSeconds)
 void ATreasureSketchGameMode::HandoffToHunter(const TArray<FSketchStroke>& SubmittedStrokes)
 {
     const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
-    if (!GS || GS->RoomMode != ETreasureRoomMode::OneMapmaker) return;
+    if (!GS || (GS->RoomMode != ETreasureRoomMode::OneMapmaker
+        && GS->RoomMode != ETreasureRoomMode::ExplorerRace)) return;
     FSketchPage Page;
     Page.MapmakerName = TEXT("地图师");
     Page.Strokes = SubmittedStrokes;
@@ -736,11 +762,67 @@ bool ATreasureSketchGameMode::TryDig(ATreasureSketchPlayerState* Hunter, const F
     if (OutDistance <= TreasureRules::DigHorizontalRadius
         && VerticalDistance <= TreasureRules::DigVerticalHalfHeight)
     {
+        if (GS->RoomMode == ETreasureRoomMode::ExplorerRace)
+        {
+            GS->RaceRoundWinner = Hunter->GetPlayerName();
+            Hunter->RacePoints += 2;
+            ++Hunter->RaceFinds;
+            Hunter->ForceNetUpdate();
+            for (APlayerState* State : GS->PlayerArray)
+                if (ATreasureSketchPlayerState* Member = Cast<ATreasureSketchPlayerState>(State);
+                    Member && Member->PlayerRole == ETreasurePlayerRole::Scout)
+                {
+                    ++Member->RacePoints;
+                    Member->ForceNetUpdate();
+                }
+        }
         GS->Phase = ETreasureRoundPhase::Won;
+        GS->ForceNetUpdate();
         UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_FOUND Distance=%.1f"), OutDistance);
         return true;
     }
     return false;
+}
+
+bool ATreasureSketchGameMode::TryShove(ATreasureSketchPlayerController* ShovingPlayer)
+{
+    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!HasAuthority() || !GS || GS->RoomMode != ETreasureRoomMode::ExplorerRace
+        || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::HunterSearching
+        || !ShovingPlayer || !ShovingPlayer->GetPawn()) return false;
+    ATreasureSketchPlayerState* ShovingState = ShovingPlayer->GetPlayerState<ATreasureSketchPlayerState>();
+    ATreasureSketchCharacter* ShovingCharacter = Cast<ATreasureSketchCharacter>(ShovingPlayer->GetPawn());
+    const float Now = GS->GetServerWorldTimeSeconds();
+    if (!ShovingState || ShovingState->PlayerRole != ETreasurePlayerRole::Hunter
+        || !ShovingCharacter || ShovingState->NextShoveServerTime > Now) return false;
+
+    ATreasureSketchCharacter* Target = nullptr;
+    float BestDistanceSquared = FMath::Square(260.f);
+    const FVector Origin = ShovingCharacter->GetActorLocation();
+    const FVector Facing = ShovingPlayer->GetControlRotation().Vector().GetSafeNormal2D();
+    for (APlayerState* State : GS->PlayerArray)
+        if (const ATreasureSketchPlayerState* OtherState = Cast<ATreasureSketchPlayerState>(State);
+            OtherState && OtherState != ShovingState && OtherState->PlayerRole == ETreasurePlayerRole::Hunter)
+            if (const ATreasureSketchPlayerController* Other = Cast<ATreasureSketchPlayerController>(OtherState->GetOwner()))
+                if (ATreasureSketchCharacter* OtherCharacter = Cast<ATreasureSketchCharacter>(Other->GetPawn()))
+                {
+                    const FVector Delta = OtherCharacter->GetActorLocation() - Origin;
+                    const float DistanceSquared = Delta.SizeSquared2D();
+                    if (FMath::Abs(Delta.Z) <= 140.f && DistanceSquared < BestDistanceSquared
+                        && FVector::DotProduct(Facing, Delta.GetSafeNormal2D()) > 0.35f)
+                    { Target = OtherCharacter; BestDistanceSquared = DistanceSquared; }
+                }
+    if (!Target) return false;
+    FCollisionQueryParams ObstacleQuery(SCENE_QUERY_STAT(ExplorerRaceShove), false);
+    ObstacleQuery.AddIgnoredActor(ShovingCharacter);
+    ObstacleQuery.AddIgnoredActor(Target);
+    if (GetWorld()->LineTraceTestByChannel(Origin + FVector(0.f, 0.f, 65.f),
+        Target->GetActorLocation() + FVector(0.f, 0.f, 65.f), ECC_Visibility, ObstacleQuery)) return false;
+    const FVector Direction = (Target->GetActorLocation() - Origin).GetSafeNormal2D();
+    Target->LaunchCharacter(Direction * 850.f + FVector(0.f, 0.f, 170.f), true, true);
+    ShovingState->NextShoveServerTime = Now + 5.f;
+    ShovingState->ForceNetUpdate();
+    return true;
 }
 
 void ATreasureSketchGameMode::SetRoundReview(bool bReviewing)
@@ -780,6 +862,30 @@ void ATreasureSketchGameMode::StartNewRound(bool bSwapRoles)
     }
 
     if (!GS->IsRoundOver() || GS->PlayerArray.Num() < 2) return;
+    if (GS->RoomMode == ETreasureRoomMode::ExplorerRace)
+    {
+        if (GS->RaceRoundIndex >= GS->RaceTotalRounds)
+        {
+            GS->RaceRoundIndex = 1;
+            GS->RaceTotalRounds = GS->PlayerArray.Num();
+            for (APlayerState* State : GS->PlayerArray)
+                if (ATreasureSketchPlayerState* Member = Cast<ATreasureSketchPlayerState>(State))
+                {
+                    Member->RacePoints = 0;
+                    Member->RaceFinds = 0;
+                    Member->ForceNetUpdate();
+                }
+        }
+        else ++GS->RaceRoundIndex;
+        GS->RaceRoundWinner.Reset();
+        for (APlayerState* State : GS->PlayerArray)
+            if (ATreasureSketchPlayerState* Member = Cast<ATreasureSketchPlayerState>(State))
+            {
+                Member->NextShoveServerTime = 0.f;
+                Member->ForceNetUpdate();
+            }
+        bSwapRoles = true;
+    }
     if (bSwapRoles)
     {
         if (!GS->IsRoundOver()) return;

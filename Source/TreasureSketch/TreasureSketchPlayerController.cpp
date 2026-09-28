@@ -128,6 +128,7 @@ void ATreasureSketchPlayerController::SetupInputComponent()
     InputComponent->BindAction("Map", IE_Pressed, this, &ATreasureSketchPlayerController::ToggleMap);
     InputComponent->BindAction("Handoff", IE_Pressed, this, &ATreasureSketchPlayerController::Handoff);
     InputComponent->BindAction("Dig", IE_Pressed, this, &ATreasureSketchPlayerController::Dig);
+    InputComponent->BindAction("Shove", IE_Pressed, this, &ATreasureSketchPlayerController::Shove);
     InputComponent->BindAction("ClearSketch", IE_Pressed, this, &ATreasureSketchPlayerController::ClearSketch);
     InputComponent->BindAction("NewRound", IE_Pressed, this, &ATreasureSketchPlayerController::NewRound);
     InputComponent->BindAction("HostOnline", IE_Pressed, this, &ATreasureSketchPlayerController::HostOnlineGame);
@@ -459,11 +460,18 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
     {
         if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) GM->ToggleSurfacePaint();
     }
-    else if (ActionName == TEXT("RoomModeCoop") || ActionName == TEXT("RoomModeOneExplorer"))
+    else if (ActionName == TEXT("RoomModeCoop") || ActionName == TEXT("RoomModeOneExplorer")
+        || ActionName == TEXT("RoomModeRaceToggle"))
     {
         if (!IsLocalController() || FrontEndPage != EFrontEndPage::RoomLobby) return;
         if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
-            GM->SelectRoomMode(ActionName == TEXT("RoomModeOneExplorer") ? ETreasureRoomMode::OneExplorer : ETreasureRoomMode::OneMapmaker);
+        {
+            const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+            const ETreasureRoomMode Mode = ActionName == TEXT("RoomModeOneExplorer") ? ETreasureRoomMode::OneExplorer
+                : ActionName == TEXT("RoomModeRaceToggle") && GS && GS->RoomMode != ETreasureRoomMode::ExplorerRace
+                    ? ETreasureRoomMode::ExplorerRace : ETreasureRoomMode::OneMapmaker;
+            GM->SelectRoomMode(Mode);
+        }
     }
     else if (ActionName == TEXT("RoomPoolBeach") || ActionName == TEXT("RoomPoolForest"))
     {
@@ -965,6 +973,23 @@ void ATreasureSketchPlayerController::ServerSpraySurface_Implementation(FVector_
     if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) GM->SpraySurface(Hit);
 }
 
+void ATreasureSketchPlayerController::Shove()
+{
+    const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
+    const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
+    if (!bPauseMenuOpen && !bMapOpen && GetPawn() && GS && PS
+        && GS->RoomMode == ETreasureRoomMode::ExplorerRace && GS->bGameStarted
+        && GS->Phase == ETreasureRoundPhase::HunterSearching
+        && PS->PlayerRole == ETreasurePlayerRole::Hunter
+        && PS->NextShoveServerTime <= GS->GetServerWorldTimeSeconds()) ServerTryShove();
+}
+
+void ATreasureSketchPlayerController::ServerTryShove_Implementation()
+{
+    if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
+        GM->TryShove(this);
+}
+
 void ATreasureSketchPlayerController::ServerTryDig_Implementation()
 {
     ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
@@ -979,7 +1004,9 @@ void ATreasureSketchPlayerController::ServerTryDig_Implementation()
 
 void ATreasureSketchPlayerController::ClientDigResult_Implementation(bool bFound, float Distance)
 {
-    StatusMessage = bFound ? TEXT("找到宝箱！合作成功！")
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    StatusMessage = bFound ? (GS && GS->RoomMode == ETreasureRoomMode::ExplorerRace
+        ? TEXT("你率先找到宝箱！本局获胜，获得 2 分！") : TEXT("找到宝箱！合作成功！"))
         : FString::Printf(TEXT("这里没有宝箱（误差 %.0f 米）。继续参照地图寻找。"), Distance / 100.f);
     StatusUntil = GetWorld()->GetTimeSeconds() + 6.f;
 }

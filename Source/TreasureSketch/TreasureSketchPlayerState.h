@@ -33,6 +33,15 @@ public:
     UPROPERTY(Replicated, BlueprintReadOnly)
     float NextDigServerTime = 0.f;
 
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    int32 RacePoints = 0;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    int32 RaceFinds = 0;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    float NextShoveServerTime = 0.f;
+
     float GetDigCooldownRemaining(int32 CurrentRoundSerial, float ServerTime) const
     {
         return DigCooldownRoundSerial == CurrentRoundSerial ? FMath::Max(0.f, NextDigServerTime - ServerTime) : 0.f;

@@ -26,6 +26,9 @@ void ATreasureSketchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProper
     DOREPLIFETIME(ATreasureSketchGameState, DigCooldownSeconds);
     DOREPLIFETIME(ATreasureSketchGameState, IslandSeed);
     DOREPLIFETIME(ATreasureSketchGameState, RoundSerial);
+    DOREPLIFETIME(ATreasureSketchGameState, RaceRoundIndex);
+    DOREPLIFETIME(ATreasureSketchGameState, RaceTotalRounds);
+    DOREPLIFETIME(ATreasureSketchGameState, RaceRoundWinner);
     DOREPLIFETIME(ATreasureSketchGameState, Phase);
     DOREPLIFETIME(ATreasureSketchGameState, RoundEndServerTime);
     DOREPLIFETIME(ATreasureSketchGameState, bGameStarted);

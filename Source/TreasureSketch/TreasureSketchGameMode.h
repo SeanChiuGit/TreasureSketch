@@ -9,6 +9,7 @@
 class AProceduralIsland;
 class ATreasureSurfacePaint;
 class ATreasureSketchPlayerState;
+class ATreasureSketchPlayerController;
 enum class EIslandTheme : uint8;
 
 UCLASS()
@@ -31,6 +32,7 @@ public:
     void BroadcastSketchDelta(ATreasureSketchPlayerState* Scout, int32 StrokeIndex, const TArray<FVector2D>& Points);
     void BroadcastSketchClear(ATreasureSketchPlayerState* Scout);
     bool TryDig(ATreasureSketchPlayerState* Hunter, const FVector& WorldLocation, float& OutDistance, bool& bAttempted);
+    bool TryShove(ATreasureSketchPlayerController* ShovingPlayer);
     void StartNewRound(bool bSwapRoles = false);
     void SetRoundReview(bool bReviewing);
     void StartHostedRound();

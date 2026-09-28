@@ -59,6 +59,7 @@ public:
     FVector2D GetPaperMin() const;
     FVector2D GetPaperSize() const;
     void ClearSketch();
+    void Shove();
     void RequestReplay(bool bSwapRoles = false);
     void RequestRoundReview(bool bReviewing);
     bool IsLocalScout() const;
@@ -215,6 +216,9 @@ private:
 
     UFUNCTION(Server, Reliable)
     void ServerTryDig();
+
+    UFUNCTION(Server, Reliable)
+    void ServerTryShove();
 
     UFUNCTION(Server, Reliable)
     void ServerRequestReplay(bool bSwapRoles);

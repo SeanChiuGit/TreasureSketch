@@ -1,5 +1,13 @@
 # TreasureSketch 开发接手说明
 
+## 探索者对抗分支（开发中）
+
+- 新分支 `codex/three-player-race` 从 `codex/multiplayer-modes` 建立，房间内的“探索者对抗”开关默认关闭；开启后至少 3 人开局，一名地图师、其余探索者竞速。
+- 寻宝阶段探索者按 G 推开正前方近距离对手，服务端核对角色、距离、朝向、遮挡和 5 秒冷却。首位挖到宝藏者得 2 分，地图师得 1 分；超时不加分。结算显示本局胜者和累计排名。
+- 竞赛按人数轮换地图师，三人进行三局；最终展示总分领先者及并列情况。可重开竞赛或回大厅，合作玩法保持原规则。
+- UE 5.6 完整编辑器构建成功；`TreasureSketch.RoomSettings.ExplorerRace` 无窗口测试通过。交互测试仍由用户负责，重点验证实际多人推人手感、战绩同步、三局轮换与复盘。
+- `Config/DefaultEngine.ini` 有本机私有配置，未修改，不可加入提交或发布包。
+
 当前开发分支：`codex/multiplayer-modes`。
 本机仓库：`D:\My projects\TreasureSketch`，项目文件 `TreasureSketch.uproject`，引擎 UE 5.6。
 

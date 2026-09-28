@@ -19,6 +19,7 @@ enum class ETreasureRoomMode : uint8
 {
     OneMapmaker,
     OneExplorer,
+    ExplorerRace,
     TeamVersus
 };
 
@@ -47,6 +48,15 @@ public:
 
     UPROPERTY(Replicated, BlueprintReadOnly)
     int32 RoundSerial = 0;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    int32 RaceRoundIndex = 0;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    int32 RaceTotalRounds = 0;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    FString RaceRoundWinner;
 
     UPROPERTY(Replicated, BlueprintReadOnly)
     ETreasureRoundPhase Phase = ETreasureRoundPhase::ScoutDrawing;
