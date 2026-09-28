@@ -7,7 +7,7 @@ public class TreasureSketch : ModuleRules
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         PublicDependencyModuleNames.AddRange(new string[] {
             "Core", "CoreUObject", "Engine", "InputCore", "ProceduralMeshComponent",
-            "OnlineSubsystem", "OnlineSubsystemUtils"
+            "OnlineSubsystem", "OnlineSubsystemUtils", "SlateCore"
         });
     }
 }
