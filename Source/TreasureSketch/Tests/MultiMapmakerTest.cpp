@@ -92,10 +92,10 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Live pages are ready during drawing"), Explorer->GetSketchPageCount(), 3);
     if (LivePages.Num() == 3)
     {
-        Explorer->ClientAppendLiveSketch_Implementation(GS->RoundSerial, Players[1]->GetPlayerId(), 0, 1, FirstStroke.Points);
+        Explorer->ClientAppendLiveSketch_Implementation(GS->RoundSerial, Players[1]->GetPlayerId(), 0, 1, 0, FirstStroke.Points);
         TestEqual(TEXT("First mapmaker's strokes appear live"), Explorer->GetStrokes()[0].Points.Num(), 2);
         TestEqual(TEXT("Live stroke keeps its chosen color"), Explorer->GetStrokes()[0].ColorIndex, 1);
-        Explorer->ClientAppendLiveSketch_Implementation(GS->RoundSerial, Players[2]->GetPlayerId(), 0, 2, OtherStroke.Points);
+        Explorer->ClientAppendLiveSketch_Implementation(GS->RoundSerial, Players[2]->GetPlayerId(), 0, 2, 0, OtherStroke.Points);
         Explorer->CycleSketchPage(1);
         TestEqual(TEXT("Waiting explorer can switch to second live page"), Explorer->GetActiveSketchPage(), 1);
         TestEqual(TEXT("Second live page stays independent"), Explorer->GetStrokes()[0].Points[0], FVector2D(0.5f, 0.6f));
@@ -109,21 +109,29 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
         Explorer->ClientReplaceLiveSketch_Implementation(GS->RoundSerial, SubmittedPage);
         Explorer->CycleSketchPage(-1);
         TestEqual(TEXT("Early submission replaces live page with final drawing"), Explorer->GetStrokes()[0].Points.Num(), 2);
-        Explorer->ClientAppendLiveSketch_Implementation(GS->RoundSerial - 1, Players[1]->GetPlayerId(), 0, 2, OtherStroke.Points);
+        Explorer->ClientAppendLiveSketch_Implementation(GS->RoundSerial - 1, Players[1]->GetPlayerId(), 0, 2, 0, OtherStroke.Points);
         TestEqual(TEXT("Old round live update is rejected"), Explorer->GetStrokes()[0].Points.Num(), 2);
     }
     World->SetNetDriver(Driver);
     GS->bLimitedInk = true;
     GS->InkLimit = 2;
-    Controllers[1]->ServerAppendDrawing_Implementation(GS->RoundSerial, 0, 1,
+    Controllers[1]->ServerAppendDrawing_Implementation(GS->RoundSerial, 0, 1, 0,
         { FVector2D(0.1f, 0.2f), FVector2D(0.2f, 0.3f), FVector2D(0.3f, 0.4f) });
     TestTrue(TEXT("Server rejects strokes exceeding ink limit"), Controllers[1]->ServerDrawing.IsEmpty());
-    Controllers[1]->ServerAppendDrawing_Implementation(GS->RoundSerial, 0, 1, FirstStroke.Points);
+    Controllers[1]->ServerAppendDrawing_Implementation(GS->RoundSerial, 0, 1, 0, FirstStroke.Points);
     TestEqual(TEXT("Server accepts ink within limit"), Controllers[1]->ServerDrawing[0].Points.Num(), 2);
+    Controllers[1]->ServerAppendDrawing_Implementation(GS->RoundSerial, 1, 5, 1, FirstStroke.Points);
+    TestEqual(TEXT("Large eraser is accepted without using ink"), Controllers[1]->ServerDrawing.Num(), 2);
+    TestEqual(TEXT("Large eraser size is kept"), Controllers[1]->ServerDrawing[1].EraserSize, static_cast<uint8>(1));
+    Controllers[1]->ServerAppendDrawing_Implementation(GS->RoundSerial, 2, 5, 2, FirstStroke.Points);
+    TestEqual(TEXT("Invalid eraser size is rejected"), Controllers[1]->ServerDrawing.Num(), 2);
     GS->bLimitedInk = false;
+    FSketchStroke LargeEraser = FirstStroke;
+    LargeEraser.ColorIndex = 5;
+    LargeEraser.EraserSize = 1;
     GM->SubmitPlayerSketch(Players[0], { FirstStroke });
     TestFalse(TEXT("Explorer cannot submit a map"), Players[0]->bSketchSubmitted);
-    GM->SubmitPlayerSketch(Players[1], { FirstStroke });
+    GM->SubmitPlayerSketch(Players[1], { FirstStroke, LargeEraser });
     GM->SubmitPlayerSketch(Players[1], { OtherStroke });
     TestTrue(TEXT("Submission readiness is stored"), Players[1]->bSketchSubmitted);
     TestEqual(TEXT("One map does not release explorer"), GS->Phase, ETreasureRoundPhase::ScoutDrawing);
@@ -155,6 +163,8 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     {
         TestEqual(TEXT("Page identifies its author"), Pages[0].MapmakerName, FString(TEXT("Player1")));
         TestEqual(TEXT("Duplicate submit cannot overwrite page"), Pages[0].Strokes[0].Points[0], FVector2D(0.1f, 0.2f));
+        if (TestEqual(TEXT("Final page retains eraser stroke"), Pages[0].Strokes.Num(), 2))
+            TestEqual(TEXT("Final page keeps large eraser width"), Pages[0].Strokes[1].EraserSize, static_cast<uint8>(1));
         TestEqual(TEXT("Second page retains independent drawing"), Pages[1].Strokes[0].Points[0], FVector2D(0.5f, 0.6f));
         TestTrue(TEXT("Blank third page remains blank"), Pages[2].Strokes.IsEmpty());
     }

@@ -12,6 +12,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Misc/DateTime.h"
 #include "TimerManager.h"
 
 namespace
@@ -88,6 +89,7 @@ bool ATreasureSketchGameMode::FinishIfTimeExpired()
     GS->Phase = ETreasureRoundPhase::HunterTimedOut;
     GS->ResultServerTime = GS->GetServerWorldTimeSeconds();
     if (GS->RoomMode == ETreasureRoomMode::ExplorerRace) ScoreRaceRound(nullptr);
+    RecordCompletedRound();
     HideTreasureFromScout();
     UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_TIMEOUT Phase=%s"),
         bScoutTimedOut ? TEXT("ScoutDrawing") : TEXT("HunterSearching"));
@@ -437,6 +439,7 @@ void ATreasureSketchGameMode::StartHostedRound()
         if (Scouts != ExpectedScouts || Hunters != GS->PlayerArray.Num() - ExpectedScouts) return;
         if (GS->RoomMode == ETreasureRoomMode::ExplorerRace)
         {
+            CurrentRaceSeriesId = FGuid::NewGuid().ToString(EGuidFormats::Digits);
             GS->RaceRoundIndex = 1;
             GS->RaceTotalRounds = GS->PlayerArray.Num();
             GS->RaceRoundWinner.Reset();
@@ -720,13 +723,15 @@ void ATreasureSketchGameMode::SubmitPlayerSketch(ATreasureSketchPlayerState* Sco
     int32 InkUsed = 0, EraserUsed = 0;
     for (const FSketchStroke& Stroke : SubmittedStrokes)
     {
-        if (Stroke.ColorIndex > 5 || Stroke.Points.Num() > 10000) continue;
+        if (Stroke.ColorIndex > 5 || Stroke.Points.Num() > 10000 || Stroke.EraserSize > 1
+            || (Stroke.ColorIndex != 5 && Stroke.EraserSize != 0)) continue;
         const bool bEraser = Stroke.ColorIndex == 5;
         const int32 Remaining = bEraser ? 5000 - EraserUsed
             : (GS->bLimitedInk ? GS->InkLimit : 10000) - InkUsed;
         if (Remaining <= 0) continue;
         FSketchStroke SafeStroke;
         SafeStroke.ColorIndex = Stroke.ColorIndex;
+        SafeStroke.EraserSize = Stroke.EraserSize;
         for (const FVector2D& Point : Stroke.Points)
         {
             if (SafeStroke.Points.Num() >= Remaining) break;
@@ -753,7 +758,7 @@ void ATreasureSketchGameMode::SubmitPlayerSketch(ATreasureSketchPlayerState* Sco
     BeginHunterSearching(CollectSketchPages());
 }
 
-void ATreasureSketchGameMode::BroadcastSketchDelta(ATreasureSketchPlayerState* Scout, int32 StrokeIndex, uint8 ColorIndex, const TArray<FVector2D>& Points)
+void ATreasureSketchGameMode::BroadcastSketchDelta(ATreasureSketchPlayerState* Scout, int32 StrokeIndex, uint8 ColorIndex, uint8 EraserSize, const TArray<FVector2D>& Points)
 {
     const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing || !Scout
@@ -762,7 +767,7 @@ void ATreasureSketchGameMode::BroadcastSketchDelta(ATreasureSketchPlayerState* S
         if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
             if (const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
                 PS && PS->PlayerRole == ETreasurePlayerRole::Hunter)
-                PC->ClientAppendLiveSketch(GS->RoundSerial, Scout->GetPlayerId(), StrokeIndex, ColorIndex, Points);
+                PC->ClientAppendLiveSketch(GS->RoundSerial, Scout->GetPlayerId(), StrokeIndex, ColorIndex, EraserSize, Points);
 }
 
 void ATreasureSketchGameMode::BroadcastSketchClear(ATreasureSketchPlayerState* Scout)
@@ -850,6 +855,7 @@ bool ATreasureSketchGameMode::TryDig(ATreasureSketchPlayerState* Hunter, const F
         if (GS->RoomMode == ETreasureRoomMode::ExplorerRace) ScoreRaceRound(Hunter);
         GS->Phase = ETreasureRoundPhase::Won;
         GS->ForceNetUpdate();
+        RecordCompletedRound();
         UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_FOUND Distance=%.1f"), OutDistance);
         return true;
     }
@@ -888,6 +894,51 @@ void ATreasureSketchGameMode::ScoreRaceRound(ATreasureSketchPlayerState* Finder)
             Member->ForceNetUpdate();
         }
     GS->ForceNetUpdate();
+}
+
+void ATreasureSketchGameMode::RecordCompletedRound()
+{
+    const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!HasAuthority() || !GS || !GS->bGameStarted || !GS->IsRoundOver() || !Island) return;
+    FPlayedRoundRecord Base;
+    Base.RecordId = FGuid::NewGuid().ToString(EGuidFormats::Digits);
+    Base.SeriesId = GS->RoomMode == ETreasureRoomMode::ExplorerRace ? CurrentRaceSeriesId : FString();
+    Base.UtcTimeIso = FDateTime::UtcNow().ToIso8601();
+    Base.RoundSerial = GS->RoundSerial;
+    Base.IslandSeed = IslandSeed;
+    Base.Theme = Island->Theme;
+    Base.MapScale = Island->MapScale;
+    Base.RoomMode = GS->RoomMode;
+    Base.Outcome = GS->Phase;
+    Base.WinnerName = GS->RaceRoundWinner;
+    Base.SearchSeconds = FMath::Clamp(GS->ResultServerTime
+        - (GS->RoundEndServerTime - GS->SearchingDurationSeconds), 0.f,
+        static_cast<float>(GS->SearchingDurationSeconds));
+    Base.RaceRoundIndex = GS->RaceRoundIndex;
+    Base.RaceTotalRounds = GS->RaceTotalRounds;
+    Base.bPreprintedIsland = GS->bPreprintedIsland;
+    if (Base.bPreprintedIsland)
+    {
+        constexpr int32 Samples = 48;
+        Base.IslandTemplateMask.SetNumZeroed(Samples * Samples);
+        const float Half = (Island->GridSize - 1) * Island->CellSize * 0.5f;
+        for (int32 Y = 0; Y < Samples; ++Y)
+            for (int32 X = 0; X < Samples; ++X)
+                Base.IslandTemplateMask[Y * Samples + X] = Island->HeightAt(
+                    -Half + (X + 0.5f) * 2.f * Half / Samples,
+                    -Half + (Y + 0.5f) * 2.f * Half / Samples) > 0.f;
+    }
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+        if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
+            if (const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>())
+            {
+                FPlayedRoundRecord Personal = Base;
+                Personal.LocalPlayerName = PS->GetPlayerName();
+                Personal.LocalRole = PS->PlayerRole;
+                Personal.RaceRoundPoints = PS->RaceLastRoundPoints;
+                Personal.RaceTotalPoints = PS->RacePoints;
+                PC->ClientRecordCompletedRound(Personal);
+            }
 }
 
 bool ATreasureSketchGameMode::TryShove(ATreasureSketchPlayerController* ShovingPlayer)
@@ -1009,6 +1060,7 @@ void ATreasureSketchGameMode::StartNewRound(bool bSwapRoles, ATreasureSketchPlay
     {
         if (GS->RaceRoundIndex >= GS->RaceTotalRounds)
         {
+            CurrentRaceSeriesId = FGuid::NewGuid().ToString(EGuidFormats::Digits);
             GS->RaceRoundIndex = 1;
             GS->RaceTotalRounds = GS->PlayerArray.Num();
             for (APlayerState* State : GS->PlayerArray)

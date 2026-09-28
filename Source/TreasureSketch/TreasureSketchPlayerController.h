@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "SketchTypes.h"
+#include "TreasureHistorySave.h"
 #include "TreasureSketchPlayerController.generated.h"
 
 class ATreasureMarker;
@@ -24,7 +25,8 @@ enum class EFrontEndPage : uint8
     RoomLobby,
     RoomDrawingRules,
     SoloTest,
-    Settings
+    Settings,
+    History
 };
 
 UCLASS()
@@ -51,6 +53,14 @@ public:
     bool IsMapOpen() const { return bMapOpen; }
     const TArray<FSketchStroke>& GetStrokes() const { return SketchPages.IsValidIndex(ActiveSketchPage) ? SketchPages[ActiveSketchPage].Strokes : Strokes; }
     uint8 GetSelectedInkColor() const { return SelectedInkColor; }
+    uint8 GetSelectedEraserSize() const { return SelectedEraserSize; }
+    const TArray<FPlayedRoundRecord>& GetHistoryRecords() const;
+    int32 GetHistoryGroupCount() const;
+    int32 GetHistoryListOffset() const { return HistoryListOffset; }
+    int32 GetSelectedHistoryIndex() const { return SelectedHistoryIndex; }
+    int32 GetHistorySketchPageIndex() const { return HistorySketchPageIndex; }
+    const FPlayedRoundRecord* GetSelectedHistoryRecord() const;
+    int32 GetHistoryGroupStart(int32 GroupIndex) const;
     int32 GetInkUsed() const;
     int32 GetDigFeedbackBand() const { return DigFeedbackBand; }
     float GetDigFeedbackRemaining() const;
@@ -88,7 +98,10 @@ public:
     void ClientInitializeLiveSketch(int32 RoundSerial, const TArray<FSketchPage>& Pages);
 
     UFUNCTION(Client, Reliable)
-    void ClientAppendLiveSketch(int32 RoundSerial, int32 MapmakerId, int32 StrokeIndex, uint8 ColorIndex, const TArray<FVector2D>& Points);
+    void ClientAppendLiveSketch(int32 RoundSerial, int32 MapmakerId, int32 StrokeIndex, uint8 ColorIndex, uint8 EraserSize, const TArray<FVector2D>& Points);
+
+    UFUNCTION(Client, Reliable)
+    void ClientRecordCompletedRound(const FPlayedRoundRecord& Record);
 
     UFUNCTION(Client, Reliable)
     void ClientClearLiveSketch(int32 RoundSerial, int32 MapmakerId);
@@ -157,12 +170,18 @@ private:
     float NextDrawingSyncTime = 0.f;
     int32 ServerDrawingRoundSerial = 0;
     uint8 SelectedInkColor = 0;
+    uint8 SelectedEraserSize = 0;
+    UPROPERTY() TObjectPtr<UTreasureHistorySave> HistorySave;
+    int32 HistoryListOffset = 0;
+    int32 SelectedHistoryIndex = -1;
+    int32 HistorySketchPageIndex = 0;
+    void LoadHistory();
     bool bSketchSceneCommitted = false;
     int32 DigFeedbackBand = -1;
     float DigFeedbackUntil = 0.f;
     void FlushDrawingPoints();
     UFUNCTION(Server, Reliable)
-    void ServerAppendDrawing(int32 RoundSerial, int32 StrokeIndex, uint8 ColorIndex, const TArray<FVector2D>& Points);
+    void ServerAppendDrawing(int32 RoundSerial, int32 StrokeIndex, uint8 ColorIndex, uint8 EraserSize, const TArray<FVector2D>& Points);
     UFUNCTION(Server, Reliable)
     void ServerClearDrawing(int32 RoundSerial);
 

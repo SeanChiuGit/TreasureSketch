@@ -29,7 +29,7 @@ public:
 
     void HandoffToHunter(const TArray<struct FSketchStroke>& SubmittedStrokes);
     void SubmitPlayerSketch(ATreasureSketchPlayerState* Scout, const TArray<FSketchStroke>& SubmittedStrokes);
-    void BroadcastSketchDelta(ATreasureSketchPlayerState* Scout, int32 StrokeIndex, uint8 ColorIndex, const TArray<FVector2D>& Points);
+    void BroadcastSketchDelta(ATreasureSketchPlayerState* Scout, int32 StrokeIndex, uint8 ColorIndex, uint8 EraserSize, const TArray<FVector2D>& Points);
     void BroadcastSketchClear(ATreasureSketchPlayerState* Scout);
     bool TryDig(ATreasureSketchPlayerState* Hunter, const FVector& WorldLocation, float& OutDistance, bool& bAttempted);
     bool TryShove(ATreasureSketchPlayerController* ShovingPlayer);
@@ -67,6 +67,8 @@ private:
     FVector FindPlayerSpawn(TArray<FVector>& UsedSpawns) const;
     FVector FindHunterSpawn(TArray<FVector>& UsedSpawns) const;
     void ScoreRaceRound(ATreasureSketchPlayerState* Finder);
+    void RecordCompletedRound();
+    FString CurrentRaceSeriesId;
     void BuildRound();
     bool FinishIfTimeExpired();
     void BeginHunterSearching(const TArray<FSketchPage>& Pages);

@@ -14,6 +14,77 @@
 #include "InputKeyEventArgs.h"
 #include "Components/PrimitiveComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Kismet/GameplayStatics.h"
+
+namespace
+{
+constexpr TCHAR HistorySlot[] = TEXT("TreasureSketchHistory");
+}
+
+void ATreasureSketchPlayerController::LoadHistory()
+{
+    if (HistorySave || !IsLocalController()) return;
+    HistorySave = Cast<UTreasureHistorySave>(UGameplayStatics::LoadGameFromSlot(HistorySlot, 0));
+    if (!HistorySave || HistorySave->Version != 1)
+        HistorySave = Cast<UTreasureHistorySave>(UGameplayStatics::CreateSaveGameObject(UTreasureHistorySave::StaticClass()));
+}
+
+const TArray<FPlayedRoundRecord>& ATreasureSketchPlayerController::GetHistoryRecords() const
+{
+    static const TArray<FPlayedRoundRecord> Empty;
+    return HistorySave ? HistorySave->Records : Empty;
+}
+
+int32 ATreasureSketchPlayerController::GetHistoryGroupStart(int32 GroupIndex) const
+{
+    const TArray<FPlayedRoundRecord>& Records = GetHistoryRecords();
+    int32 Group = -1;
+    TSet<FString> SeenSeries;
+    for (int32 Index = Records.Num() - 1; Index >= 0; --Index)
+    {
+        const FString& Series = Records[Index].SeriesId;
+        if (!Series.IsEmpty() && SeenSeries.Contains(Series)) continue;
+        if (!Series.IsEmpty()) SeenSeries.Add(Series);
+        if (++Group == GroupIndex) return Index;
+    }
+    return INDEX_NONE;
+}
+
+int32 ATreasureSketchPlayerController::GetHistoryGroupCount() const
+{
+    const TArray<FPlayedRoundRecord>& Records = GetHistoryRecords();
+    TSet<FString> SeenSeries;
+    int32 Count = 0;
+    for (int32 Index = Records.Num() - 1; Index >= 0; --Index)
+    {
+        const FString& Series = Records[Index].SeriesId;
+        if (!Series.IsEmpty() && SeenSeries.Contains(Series)) continue;
+        if (!Series.IsEmpty()) SeenSeries.Add(Series);
+        ++Count;
+    }
+    return Count;
+}
+
+const FPlayedRoundRecord* ATreasureSketchPlayerController::GetSelectedHistoryRecord() const
+{
+    const TArray<FPlayedRoundRecord>& Records = GetHistoryRecords();
+    return Records.IsValidIndex(SelectedHistoryIndex) ? &Records[SelectedHistoryIndex] : nullptr;
+}
+
+void ATreasureSketchPlayerController::ClientRecordCompletedRound_Implementation(const FPlayedRoundRecord& Record)
+{
+    if (!IsLocalController()) return;
+    LoadHistory();
+    if (!HistorySave || HistorySave->Records.ContainsByPredicate([&Record](const FPlayedRoundRecord& Existing)
+        { return Existing.RecordId == Record.RecordId; })) return;
+    FPlayedRoundRecord LocalRecord = Record;
+    LocalRecord.LocalTimeText = FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M"));
+    if (CurrentSketchRoundSerial == Record.RoundSerial)
+        LocalRecord.Pages = SketchPages;
+    HistorySave->Records.Add(MoveTemp(LocalRecord));
+    if (!UGameplayStatics::SaveGameToSlot(HistorySave, HistorySlot, 0))
+        UE_LOG(LogTemp, Error, TEXT("TREASURE_HISTORY_SAVE_FAILED"));
+}
 
 int32 ATreasureSketchPlayerController::GetTestSeed() const
 {
@@ -110,6 +181,8 @@ void ATreasureSketchPlayerController::BeginPlay()
 {
     Super::BeginPlay();
     if (!IsLocalController()) return;
+
+    LoadHistory();
 
     FrontEndPage = GetNetMode() == NM_Standalone ? EFrontEndPage::MainMenu : EFrontEndPage::RoomLobby;
     MenuCamera = GetWorld()->SpawnActor<ACameraActor>(ACameraActor::StaticClass(),
@@ -243,6 +316,7 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
             FlushDrawingPoints();
             Strokes.AddDefaulted();
             Strokes.Last().ColorIndex = SelectedInkColor;
+            Strokes.Last().EraserSize = SelectedInkColor == 5 ? SelectedEraserSize : 0;
         }
         const FVector2D Normalized = (FVector2D(X,Y) - GetPaperMin()) / GetPaperSize();
         if (Strokes.Last().Points.IsEmpty() || FVector2D::Distance(Strokes.Last().Points.Last(), Normalized) > 0.003f)
@@ -261,7 +335,8 @@ void ATreasureSketchPlayerController::FlushDrawingPoints()
     if (PendingDrawingPoints.IsEmpty()) return;
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (GS && GS->bGameStarted && GS->Phase == ETreasureRoundPhase::ScoutDrawing && IsLocalScout() && !HasSubmittedSketch())
-        ServerAppendDrawing(GS->RoundSerial, Strokes.Num() - 1, Strokes.Last().ColorIndex, PendingDrawingPoints);
+        ServerAppendDrawing(GS->RoundSerial, Strokes.Num() - 1, Strokes.Last().ColorIndex,
+            Strokes.Last().EraserSize, PendingDrawingPoints);
     PendingDrawingPoints.Reset();
     NextDrawingSyncTime = GetWorld()->GetTimeSeconds() + 0.1f;
 }
@@ -274,12 +349,12 @@ const TArray<FSketchStroke>& ATreasureSketchPlayerController::GetServerDrawing()
     return GS && ServerDrawingRoundSerial == GS->RoundSerial ? ServerDrawing : EmptyDrawing;
 }
 
-void ATreasureSketchPlayerController::ServerAppendDrawing_Implementation(int32 RoundSerial, int32 StrokeIndex, uint8 ColorIndex, const TArray<FVector2D>& Points)
+void ATreasureSketchPlayerController::ServerAppendDrawing_Implementation(int32 RoundSerial, int32 StrokeIndex, uint8 ColorIndex, uint8 EraserSize, const TArray<FVector2D>& Points)
 {
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing
         || GS->RoundSerial != RoundSerial || !IsLocalScout() || HasSubmittedSketch() || StrokeIndex < 0
-        || Points.Num() > 128 || ColorIndex > 5) return;
+        || Points.Num() > 128 || ColorIndex > 5 || EraserSize > 1 || (ColorIndex != 5 && EraserSize != 0)) return;
     if (ServerDrawingRoundSerial != RoundSerial)
     {
         ServerDrawing.Reset();
@@ -289,7 +364,8 @@ void ATreasureSketchPlayerController::ServerAppendDrawing_Implementation(int32 R
     for (const FVector2D& Point : Points)
         if (!FMath::IsFinite(Point.X) || !FMath::IsFinite(Point.Y)
             || Point.X < 0.f || Point.X > 1.f || Point.Y < 0.f || Point.Y > 1.f) return;
-    if (StrokeIndex < ServerDrawing.Num() && ServerDrawing[StrokeIndex].ColorIndex != ColorIndex) return;
+    if (StrokeIndex < ServerDrawing.Num() && (ServerDrawing[StrokeIndex].ColorIndex != ColorIndex
+        || ServerDrawing[StrokeIndex].EraserSize != EraserSize)) return;
     if (GS->bLimitedInk && ColorIndex != 5)
     {
         int32 Used = 0;
@@ -301,10 +377,11 @@ void ATreasureSketchPlayerController::ServerAppendDrawing_Implementation(int32 R
     {
         ServerDrawing.AddDefaulted();
         ServerDrawing.Last().ColorIndex = ColorIndex;
+        ServerDrawing.Last().EraserSize = EraserSize;
     }
     ServerDrawing[StrokeIndex].Points.Append(Points);
     if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
-        GM->BroadcastSketchDelta(GetPlayerState<ATreasureSketchPlayerState>(), StrokeIndex, ColorIndex, Points);
+        GM->BroadcastSketchDelta(GetPlayerState<ATreasureSketchPlayerState>(), StrokeIndex, ColorIndex, EraserSize, Points);
 }
 
 void ATreasureSketchPlayerController::ServerClearDrawing_Implementation(int32 RoundSerial)
@@ -409,7 +486,8 @@ void ATreasureSketchPlayerController::OpenFrontEndPage(EFrontEndPage NewPage)
 void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
 {
     if (ActionName == TEXT("InkBlack") || ActionName == TEXT("InkRed") || ActionName == TEXT("InkBlue")
-        || ActionName == TEXT("InkGreen") || ActionName == TEXT("InkGold") || ActionName == TEXT("InkEraser"))
+        || ActionName == TEXT("InkGreen") || ActionName == TEXT("InkGold")
+        || ActionName == TEXT("InkEraserSmall") || ActionName == TEXT("InkEraserLarge"))
     {
         const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
         if (bMapOpen && IsLocalScout() && !HasSubmittedSketch() && GS && GS->bGameStarted
@@ -419,7 +497,8 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
             bWasDrawing = false;
             SelectedInkColor = ActionName == TEXT("InkRed") ? 1 : ActionName == TEXT("InkBlue") ? 2
                 : ActionName == TEXT("InkGreen") ? 3 : ActionName == TEXT("InkGold") ? 4
-                : ActionName == TEXT("InkEraser") ? 5 : 0;
+                : ActionName == TEXT("InkEraserSmall") || ActionName == TEXT("InkEraserLarge") ? 5 : 0;
+            if (SelectedInkColor == 5) SelectedEraserSize = ActionName == TEXT("InkEraserLarge") ? 1 : 0;
         }
         return;
     }
@@ -485,6 +564,47 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
         JoinOnlineGame();
     }
     else if (ActionName == TEXT("MenuJoinFirst")) ConfirmJoinOnlineGame();
+    else if (ActionName == TEXT("MenuHistory"))
+    {
+        LoadHistory();
+        HistoryListOffset = 0;
+        SelectedHistoryIndex = INDEX_NONE;
+        OpenFrontEndPage(EFrontEndPage::History);
+    }
+    else if (ActionName == TEXT("HistoryBack"))
+    {
+        if (SelectedHistoryIndex != INDEX_NONE) SelectedHistoryIndex = INDEX_NONE;
+        else OpenFrontEndPage(EFrontEndPage::MainMenu);
+    }
+    else if (ActionName == TEXT("HistoryPrevList")) HistoryListOffset = FMath::Max(0, HistoryListOffset - 5);
+    else if (ActionName == TEXT("HistoryNextList"))
+    {
+        if (HistoryListOffset + 5 < GetHistoryGroupCount()) HistoryListOffset += 5;
+    }
+    else if (ActionName.ToString().StartsWith(TEXT("HistorySelect")))
+    {
+        const int32 GroupIndex = HistoryListOffset + FCString::Atoi(*ActionName.ToString().RightChop(13));
+        SelectedHistoryIndex = GetHistoryGroupStart(GroupIndex);
+        HistorySketchPageIndex = 0;
+    }
+    else if (ActionName == TEXT("HistoryPrevRound") || ActionName == TEXT("HistoryNextRound"))
+    {
+        const TArray<FPlayedRoundRecord>& Records = GetHistoryRecords();
+        if (Records.IsValidIndex(SelectedHistoryIndex) && !Records[SelectedHistoryIndex].SeriesId.IsEmpty())
+        {
+            const int32 Step = ActionName == TEXT("HistoryNextRound") ? 1 : -1;
+            const FString Series = Records[SelectedHistoryIndex].SeriesId;
+            for (int32 Next = SelectedHistoryIndex + Step; Records.IsValidIndex(Next); Next += Step)
+                if (Records[Next].SeriesId == Series)
+                { SelectedHistoryIndex = Next; HistorySketchPageIndex = 0; break; }
+        }
+    }
+    else if (ActionName == TEXT("HistoryPrevSketch") || ActionName == TEXT("HistoryNextSketch"))
+    {
+        if (const FPlayedRoundRecord* Record = GetSelectedHistoryRecord(); Record && Record->Pages.Num() > 0)
+            HistorySketchPageIndex = (HistorySketchPageIndex + Record->Pages.Num()
+                + (ActionName == TEXT("HistoryNextSketch") ? 1 : -1)) % Record->Pages.Num();
+    }
     else if (ActionName == TEXT("MenuSolo")) OpenFrontEndPage(EFrontEndPage::SoloTest);
     else if (ActionName == TEXT("RoomDrawingRules")) OpenFrontEndPage(EFrontEndPage::RoomDrawingRules);
     else if (ActionName == TEXT("RoomDrawingRulesBack")) OpenFrontEndPage(EFrontEndPage::RoomLobby);
@@ -967,7 +1087,7 @@ void ATreasureSketchPlayerController::ClientInitializeLiveSketch_Implementation(
 }
 
 void ATreasureSketchPlayerController::ClientAppendLiveSketch_Implementation(
-    int32 RoundSerial, int32 MapmakerId, int32 StrokeIndex, uint8 ColorIndex, const TArray<FVector2D>& Points)
+    int32 RoundSerial, int32 MapmakerId, int32 StrokeIndex, uint8 ColorIndex, uint8 EraserSize, const TArray<FVector2D>& Points)
 {
     if (!bLiveSketchActive || RoundSerial != CurrentSketchRoundSerial || StrokeIndex < 0) return;
     FSketchPage* Page = SketchPages.FindByPredicate([MapmakerId](const FSketchPage& Candidate)
@@ -977,8 +1097,9 @@ void ATreasureSketchPlayerController::ClientAppendLiveSketch_Implementation(
     {
         Page->Strokes.AddDefaulted();
         Page->Strokes.Last().ColorIndex = ColorIndex;
+        Page->Strokes.Last().EraserSize = EraserSize;
     }
-    if (Page->Strokes[StrokeIndex].ColorIndex != ColorIndex) return;
+    if (Page->Strokes[StrokeIndex].ColorIndex != ColorIndex || Page->Strokes[StrokeIndex].EraserSize != EraserSize) return;
     Page->Strokes[StrokeIndex].Points.Append(Points);
 }
 
