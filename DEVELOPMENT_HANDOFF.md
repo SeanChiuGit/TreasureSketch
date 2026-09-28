@@ -5,7 +5,16 @@
 - 画纸顶部提供小橡皮擦（22 px）和大橡皮擦（48 px）；尺寸作为笔画属性通过服务端与实时图纸同步，旧笔画按小橡皮擦读取。
 - 完成回合时由服务端向每位玩家发送种子、地图主题、模式、胜负、用时与个人对抗积分；客户端结合已收到的最终图纸，保存到本机 `Saved/SaveGames/TreasureSketchHistory.sav`。历史包含预印岛屿轮廓快照，避免生成算法变化后旧图显示走样。
 - 主菜单新增“游玩历史”，按对抗赛分组，详情可切换局数及每位地图师的图纸。未完成的回合不会保存；不同电脑的历史不会自动同步。
-- TreasureSketch 与 TreasureSketchEditor Win64 Development 完整构建通过；无窗口 `TreasureSketch.RoomSettings` 四项测试全部成功，包含新增的 HistorySave 测试和大橡皮擦最终交图检查。日志在 `Saved/Logs/Saved/CodexRelease/history-tests.log`。用户负责交互测试；本轮未请求打包 Release。
+- TreasureSketch 与 TreasureSketchEditor Win64 Development 完整构建通过；无窗口 `TreasureSketch.RoomSettings` 四项测试全部成功，包含新增的 HistorySave 测试和大橡皮擦最终交图检查。日志在 `Saved/Logs/Saved/CodexRelease/history-tests.log`。用户负责交互测试；此版本随后已发布，见下方 v0.11.0 记录。
+
+## 最新 Windows 测试 Release：v0.11.0
+
+- 已发布预发布版 `v0.11.0-race-history-rc1`：https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.11.0-race-history-rc1
+- 标签指向源码提交 `a0e1325`，分支 `codex/three-player-race` 后续补交本文档。
+- 附件 `TreasureSketch-v0.11.0-race-history-rc1-a0e1325-Windows.zip`，381224329 字节；SHA-256：`8321e68528ab512e746215ebe478761b0d677ce566001e87a18b31431f0f14b0`。GitHub 附件大小和 digest 与本机 ZIP 一致；Release 为已发布的 prerelease，非 draft。
+- UE 5.6 编辑器与 Win64 Development 游戏完整编译、Build/Cook/Stage/Pak/Archive、ZIP 完整性检查成功；`TreasureSketch.RoomSettings` 四项无窗口自动化测试通过。包中检查了 EXE、Steam DLL、PAK、`steam_appid.txt` 和测试说明。用户负责多人交互与画面手感测试。
+- 打包仅使用版本库中的 `Config/DefaultEngine.ini`；结束后本机私有配置已逐字节恢复，附带的本机令牌未进入包或提交。测试包继续使用 Steam AppID 480。
+- 本机归档和 ZIP 位于 `Builds/TreasureSketch-v0.11.0-race-history-rc1-a0e1325*`，UAT 日志在 `Saved/CodexRelease/package-v0.11.log`。
 
 ## 探索者对抗分支（开发中）
 
