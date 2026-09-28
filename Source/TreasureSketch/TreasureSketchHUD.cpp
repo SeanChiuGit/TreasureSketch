@@ -219,7 +219,7 @@ void ATreasureSketchHUD::DrawHUD()
                         : FString::Printf(TEXT("%s  对抗赛 %d/%d 局"),
                             *TimeText, SavedRounds, Record.RaceTotalRounds);
                     DrawMenuButton(FName(*FString::Printf(TEXT("HistorySelect%d"), Row)), Label,
-                        PanelY + 200.f + Row * 55.f, Row == 0);
+                        PanelY + 200.f + Row * 64.f, Row == 0);
                 }
                 const float NavY = PanelY + PanelH - 100.f;
                 if (PC->GetHistoryListOffset() > 0)
@@ -338,7 +338,7 @@ void ATreasureSketchHUD::DrawHUD()
                 }
             }
             DrawMenuButton(TEXT("HistoryBack"), Selected ? TEXT("返回历史列表") : TEXT("返回主页面"),
-                PanelY + PanelH - 56.f, true);
+                PanelY + PanelH - 70.f, true);
         }
         else if (Page == EFrontEndPage::SoloTest)
         {
@@ -460,7 +460,7 @@ void ATreasureSketchHUD::DrawHUD()
                 AddHitBox(FVector2D(ModeX + 14.f, PanelY + 674.f), FVector2D(ModeW - 28.f, 42.f), TEXT("ToggleSurfacePaint"), true, 10);
             DrawText(bHost ? TEXT("房主可调整 · 开局后锁定") : TEXT("等待房主调整本局规则"),
                 FLinearColor(0.72f, 0.82f, 0.79f), ModeX + 18.f, PanelY + 728.f, BodyFont, 0.88f);
-            float PlayerY = PanelY + 385.f;
+            float PlayerY = PanelY + 408.f;
             const ETreasurePlayerRole SingleRole = GS->RoomMode == ETreasureRoomMode::OneExplorer
                 ? ETreasurePlayerRole::Hunter : ETreasurePlayerRole::Scout;
             int32 Scouts = 0, Hunters = 0;
@@ -489,11 +489,13 @@ void ATreasureSketchHUD::DrawHUD()
             DrawText(FString::Printf(TEXT("玩家  %d / 4"), GS->PlayerArray.Num()),
                 FLinearColor(0.86f, 0.92f, 0.90f), PanelX + 48.f, PanelY + 215.f,
                 DisplayFont, 1.f);
-            DrawText(Online ? Online->GetStatus() : TEXT("正在建立 Steam 房间……"),
+            FString RoomStatus = Online ? Online->GetStatus() : TEXT("正在建立 Steam 房间……");
+            if (RoomStatus.Len() > 24) RoomStatus = RoomStatus.Left(24) + TEXT("…");
+            DrawText(RoomStatus,
                 FLinearColor(0.96f, 0.79f, 0.40f), PanelX + 48.f, PanelY + 265.f,
                 BodyFont, 0.95f);
             const float PoolX = PanelX + 48.f;
-            const float PoolY = PanelY + 294.f;
+            const float PoolY = PanelY + 310.f;
             const float PoolButtonW = (PanelW - 181.f) * 0.5f;
             DrawText(TEXT("地图池"), Parchment, PoolX, PoolY + 9.f, BodyFont, 0.95f);
             for (int32 PoolIndex = 0; PoolIndex < 2; ++PoolIndex)
@@ -510,32 +512,42 @@ void ATreasureSketchHUD::DrawHUD()
                     AddHitBox(FVector2D(ButtonX, PoolY), FVector2D(PoolButtonW, 30.f),
                         PoolIndex == 0 ? TEXT("RoomPoolBeach") : TEXT("RoomPoolForest"), true, 10);
             }
-            DrawText(TEXT("探险队成员"), Parchment, PanelX + 48.f, PanelY + 348.f,
+            DrawText(TEXT("探险队成员"), Parchment, PanelX + 48.f, PanelY + 366.f,
                 BodyFont, 1.05f);
             if (GetNetMode() == NM_ListenServer)
             {
-                DrawMenuButton(TEXT("RoomInvite"), TEXT("邀请 Steam 好友"), PanelY + 570.f, true);
                 const int32 ExpectedScouts = GS->RoomMode == ETreasureRoomMode::OneExplorer ? GS->PlayerArray.Num() - 1 : 1;
                 const bool bCanStart = GS->PlayerArray.Num() >= (GS->RoomMode == ETreasureRoomMode::ExplorerRace ? 3 : 2)
                     && Scouts == ExpectedScouts
                     && Hunters == GS->PlayerArray.Num() - ExpectedScouts;
-                if (bCanStart) DrawMenuButton(TEXT("RoomStart"), TEXT("开始游戏"), PanelY + 640.f, true);
-                else
-                {
-                    DrawRect(FLinearColor(0.08f, 0.12f, 0.13f), PanelX + 48.f, PanelY + 640.f, PanelW - 96.f, 58.f);
-                    DrawText(TEXT("开始游戏"), FLinearColor(0.45f, 0.5f, 0.5f), PanelX + 70.f, PanelY + 656.f, BodyFont, 1.15f);
-                }
-                DrawText(bCanStart ? TEXT("地图师和探索者均已就位，可以开始")
+                DrawText(bCanStart ? TEXT("队伍就绪，可以开始")
                     : GS->RoomMode == ETreasureRoomMode::ExplorerRace && GS->PlayerArray.Num() < 3
-                    ? TEXT("探索者对抗需要至少三名玩家") : GS->PlayerArray.Num() < 2
-                    ? TEXT("等待另一名玩家加入……") : TEXT("至少需要一名地图师和一名探索者"),
-                    FLinearColor(0.70f, 0.82f, 0.78f), PanelX + 48.f, PanelY + 710.f,
-                    BodyFont, 0.95f);
+                    ? TEXT("探索者对抗至少需要三人") : GS->PlayerArray.Num() < 2
+                    ? TEXT("等待另一名玩家加入……") : TEXT("需要地图师和探索者各就位"),
+                    bCanStart ? BrightJade : FLinearColor(0.82f, 0.88f, 0.78f),
+                    PanelX + 48.f, PanelY + 566.f, BodyFont, 0.86f);
+                const float ActionY = PanelY + 598.f;
+                const float ActionGap = 10.f;
+                const float ActionW = (PanelW - 106.f) * 0.5f;
+                auto DrawRoomAction = [&](FName Name, const FString& Label, float X, bool bEnabled, bool bPrimary)
+                {
+                    const FLinearColor Fill = !bEnabled ? FLinearColor(0.07f, 0.11f, 0.12f)
+                        : bPrimary ? FLinearColor(0.76f, 0.30f, 0.055f) : FLinearColor(0.08f, 0.30f, 0.27f);
+                    DrawRect(Fill, X, ActionY, ActionW, 56.f);
+                    DrawRect(bPrimary ? TreasureGold : BrightJade, X, ActionY, 5.f, 56.f);
+                    float LabelW = 0.f, LabelH = 0.f;
+                    GetTextSize(Label, LabelW, LabelH, DisplayFont, 0.76f);
+                    DrawReadableText(Label, bEnabled ? FLinearColor(1.f, 0.96f, 0.82f) : FLinearColor(0.46f, 0.50f, 0.50f),
+                        X + (ActionW - LabelW) * 0.5f, ActionY + (56.f - LabelH) * 0.5f, DisplayFont, 0.76f, true);
+                    if (bEnabled) AddHitBox(FVector2D(X, ActionY), FVector2D(ActionW, 56.f), Name, true, 10);
+                };
+                DrawRoomAction(TEXT("RoomInvite"), TEXT("邀请好友"), PanelX + 48.f, true, false);
+                DrawRoomAction(TEXT("RoomStart"), TEXT("开始游戏"), PanelX + 48.f + ActionW + ActionGap, bCanStart, true);
             }
             else
             {
                 DrawText(TEXT("已加入房间，等待房主开始游戏……"), FLinearColor(0.70f, 0.82f, 0.78f),
-                    PanelX + 48.f, PanelY + 575.f, DisplayFont, 1.f);
+                    PanelX + 48.f, PanelY + 590.f, BodyFont, 0.95f);
             }
             DrawMenuButton(TEXT("RoomBack"), TEXT("离开房间并返回主菜单"), PanelY + PanelH - 64.f);
         }
