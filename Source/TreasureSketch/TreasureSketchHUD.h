@@ -12,4 +12,9 @@ class TREASURESKETCH_API ATreasureSketchHUD : public AHUD
 public:
     virtual void DrawHUD() override;
     virtual void NotifyHitBoxClick(FName BoxName) override;
+
+private:
+    TWeakObjectPtr<class AProceduralIsland> CachedTemplateIsland;
+    int32 CachedTemplateSeed = 0;
+    TArray<uint8> IslandTemplateMask;
 };

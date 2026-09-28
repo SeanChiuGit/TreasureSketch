@@ -66,11 +66,21 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     Controllers[1]->ToggleSpectatorView();
     TestFalse(TEXT("Tab closes the drawing board and returns to the ground"), Controllers[1]->IsDrawingOverheadView() || Controllers[1]->IsMapOpen());
     TestTrue(TEXT("Returning from overhead keeps the treasure marker"), Controllers[1]->bTreasureMarkerVisible);
+    GS->bSketchSceneLock = true;
+    Controllers[1]->ToggleMap();
+    Controllers[1]->ToggleMap();
+    Controllers[1]->ToggleSpectatorView();
+    TestTrue(TEXT("Locked drawing board cannot return to the scene"), Controllers[1]->IsMapOpen()
+        && !Controllers[1]->IsDrawingOverheadView());
+    GS->bSketchSceneLock = false;
+    Controllers[1]->ToggleMap();
     World->SetNetDriver(Driver);
 
     FSketchStroke FirstStroke;
+    FirstStroke.ColorIndex = 1;
     FirstStroke.Points = { FVector2D(0.1f, 0.2f), FVector2D(0.3f, 0.4f) };
     FSketchStroke OtherStroke;
+    OtherStroke.ColorIndex = 2;
     OtherStroke.Points = { FVector2D(0.5f, 0.6f), FVector2D(0.7f, 0.8f) };
     auto* Explorer = Controllers[0];
     World->SetNetDriver(nullptr); // Model a local waiting explorer without a game window.
@@ -82,9 +92,10 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Live pages are ready during drawing"), Explorer->GetSketchPageCount(), 3);
     if (LivePages.Num() == 3)
     {
-        Explorer->ClientAppendLiveSketch_Implementation(GS->RoundSerial, Players[1]->GetPlayerId(), 0, FirstStroke.Points);
+        Explorer->ClientAppendLiveSketch_Implementation(GS->RoundSerial, Players[1]->GetPlayerId(), 0, 1, FirstStroke.Points);
         TestEqual(TEXT("First mapmaker's strokes appear live"), Explorer->GetStrokes()[0].Points.Num(), 2);
-        Explorer->ClientAppendLiveSketch_Implementation(GS->RoundSerial, Players[2]->GetPlayerId(), 0, OtherStroke.Points);
+        TestEqual(TEXT("Live stroke keeps its chosen color"), Explorer->GetStrokes()[0].ColorIndex, 1);
+        Explorer->ClientAppendLiveSketch_Implementation(GS->RoundSerial, Players[2]->GetPlayerId(), 0, 2, OtherStroke.Points);
         Explorer->CycleSketchPage(1);
         TestEqual(TEXT("Waiting explorer can switch to second live page"), Explorer->GetActiveSketchPage(), 1);
         TestEqual(TEXT("Second live page stays independent"), Explorer->GetStrokes()[0].Points[0], FVector2D(0.5f, 0.6f));
@@ -98,10 +109,18 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
         Explorer->ClientReplaceLiveSketch_Implementation(GS->RoundSerial, SubmittedPage);
         Explorer->CycleSketchPage(-1);
         TestEqual(TEXT("Early submission replaces live page with final drawing"), Explorer->GetStrokes()[0].Points.Num(), 2);
-        Explorer->ClientAppendLiveSketch_Implementation(GS->RoundSerial - 1, Players[1]->GetPlayerId(), 0, OtherStroke.Points);
+        Explorer->ClientAppendLiveSketch_Implementation(GS->RoundSerial - 1, Players[1]->GetPlayerId(), 0, 2, OtherStroke.Points);
         TestEqual(TEXT("Old round live update is rejected"), Explorer->GetStrokes()[0].Points.Num(), 2);
     }
     World->SetNetDriver(Driver);
+    GS->bLimitedInk = true;
+    GS->InkLimit = 2;
+    Controllers[1]->ServerAppendDrawing_Implementation(GS->RoundSerial, 0, 1,
+        { FVector2D(0.1f, 0.2f), FVector2D(0.2f, 0.3f), FVector2D(0.3f, 0.4f) });
+    TestTrue(TEXT("Server rejects strokes exceeding ink limit"), Controllers[1]->ServerDrawing.IsEmpty());
+    Controllers[1]->ServerAppendDrawing_Implementation(GS->RoundSerial, 0, 1, FirstStroke.Points);
+    TestEqual(TEXT("Server accepts ink within limit"), Controllers[1]->ServerDrawing[0].Points.Num(), 2);
+    GS->bLimitedInk = false;
     GM->SubmitPlayerSketch(Players[0], { FirstStroke });
     TestFalse(TEXT("Explorer cannot submit a map"), Players[0]->bSketchSubmitted);
     GM->SubmitPlayerSketch(Players[1], { FirstStroke });
@@ -179,12 +198,12 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     World->SetNetDriver(nullptr);
     Controllers[1]->ClientBeginReview_Implementation(GS->RoundSerial, Pages, GM->GetTreasureLocation());
     TestEqual(TEXT("Mapmaker can inspect all final pages in review"), Controllers[1]->GetSketchPageCount(), 3);
-    TestTrue(TEXT("Mapmaker sees treasure during review"), Controllers[1]->bTreasureMarkerVisible);
+    TestFalse(TEXT("Review starts with treasure marker hidden"), Controllers[1]->bTreasureMarkerVisible);
     Controllers[1]->ToggleSpectatorTreasure();
-    TestFalse(TEXT("Mapmaker can hide their review treasure marker"), Controllers[1]->bTreasureMarkerVisible);
+    TestTrue(TEXT("Mapmaker can reveal their review treasure marker"), Controllers[1]->bTreasureMarkerVisible);
     Controllers[1]->bMapOpen = true;
     Controllers[1]->HandleFrontEndAction(TEXT("ToggleReviewTreasure"));
-    TestTrue(TEXT("Map button can show the review treasure marker again"), Controllers[1]->bTreasureMarkerVisible);
+    TestFalse(TEXT("Map button can hide the review treasure marker again"), Controllers[1]->bTreasureMarkerVisible);
     Controllers[1]->bMapOpen = false;
     Explorer->bMapOpen = true;
     Explorer->CycleSketchPage(1);
@@ -251,6 +270,10 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Zero cooldown accepts the first dig"), bDigAttempted);
     GM->TryDig(Players[3], GM->GetTreasureLocation() + FVector(10000.f, 0.f, 0.f), DigDistance, bDigAttempted);
     TestTrue(TEXT("Zero cooldown accepts an immediate second dig"), bDigAttempted);
+    TestTrue(TEXT("Another explorer completes the round"), GM->TryDig(Players[3],
+        GM->GetTreasureLocation(), DigDistance, bDigAttempted));
+    GM->StartNewRound(true, Players[3]);
+    TestEqual(TEXT("Result choice lets the requester become mapmaker"), Players[3]->PlayerRole, ETreasurePlayerRole::Scout);
 
     World->SetNetDriver(nullptr);
     Driver->SetWorld(nullptr);

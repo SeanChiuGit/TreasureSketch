@@ -59,6 +59,9 @@ public:
     FString RaceRoundWinner;
 
     UPROPERTY(Replicated, BlueprintReadOnly)
+    float ResultServerTime = 0.f;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
     ETreasureRoundPhase Phase = ETreasureRoundPhase::ScoutDrawing;
 
     UPROPERTY(Replicated, BlueprintReadOnly)
@@ -83,6 +86,22 @@ public:
     // Nearby uses the same landing area; spread out uses different safe land samples.
     UPROPERTY(Replicated, BlueprintReadOnly)
     bool bSpreadPlayerSpawns = false;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    bool bSketchSceneLock = false;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    bool bPreprintedIsland = false;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    bool bLimitedInk = false;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    int32 InkLimit = 600;
+
+    static constexpr int32 MinInkLimit = 100;
+    static constexpr int32 MaxInkLimit = 2000;
+    static constexpr int32 InkLimitStep = 100;
 
     // Room settings survive replay and are authoritative on the host.
     UPROPERTY(Replicated, BlueprintReadOnly)

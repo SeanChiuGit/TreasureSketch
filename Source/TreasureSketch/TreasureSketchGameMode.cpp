@@ -86,6 +86,8 @@ bool ATreasureSketchGameMode::FinishIfTimeExpired()
         return true;
     }
     GS->Phase = ETreasureRoundPhase::HunterTimedOut;
+    GS->ResultServerTime = GS->GetServerWorldTimeSeconds();
+    if (GS->RoomMode == ETreasureRoomMode::ExplorerRace) ScoreRaceRound(nullptr);
     HideTreasureFromScout();
     UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_TIMEOUT Phase=%s"),
         bScoutTimedOut ? TEXT("ScoutDrawing") : TEXT("HunterSearching"));
@@ -120,6 +122,27 @@ FVector ATreasureSketchGameMode::FindPlayerSpawn(TArray<FVector>& UsedSpawns) co
     }
     UsedSpawns.Add(Result);
     return Result;
+}
+
+FVector ATreasureSketchGameMode::FindHunterSpawn(TArray<FVector>& UsedSpawns) const
+{
+    FVector Candidate = FindPlayerSpawn(UsedSpawns);
+    if (!Island || FVector::Dist2D(Candidate, TreasureLocation) >= TreasureRules::MinimumHunterSpawnDistance)
+        return Candidate;
+    UsedSpawns.Pop();
+    FRandomStream Stream(IslandSeed ^ (UsedSpawns.Num() * 7919) ^ 0x563A);
+    FVector Best = Candidate;
+    for (int32 Attempt = 0; Attempt < 120; ++Attempt)
+    {
+        const FVector Point = Island->FindRandomLandPoint(Stream, 115.f) + FVector(0.f, 0.f, 180.f);
+        if (FVector::Dist2D(Point, TreasureLocation) < TreasureRules::MinimumHunterSpawnDistance) continue;
+        bool bTooClose = false;
+        for (const FVector& Used : UsedSpawns) bTooClose |= FVector::Dist2D(Point, Used) < 180.f;
+        Best = Point;
+        if (!bTooClose) break;
+    }
+    UsedSpawns.Add(Best);
+    return Best;
 }
 
 void ATreasureSketchGameMode::ResetSurfacePaint()
@@ -189,6 +212,7 @@ void ATreasureSketchGameMode::BuildRound()
         GS->IslandSeed = IslandSeed;
         ++GS->RoundSerial;
         GS->Phase = ETreasureRoundPhase::ScoutDrawing;
+        GS->ResultServerTime = 0.f;
         GS->bReviewingRound = false;
         GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + GS->DrawingDurationSeconds;
         GS->bGameStarted = false;
@@ -301,7 +325,7 @@ void ATreasureSketchGameMode::PlaceRoundPlayers()
                 const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
                 const bool bScout = PS && PS->PlayerRole == ETreasurePlayerRole::Scout;
                 const FVector Spawn = Island && bScout && !bFirstScoutPlaced
-                    ? Island->FindSpawnPoint() : FindPlayerSpawn(UsedSpawns);
+                    ? Island->FindSpawnPoint() : bScout ? FindPlayerSpawn(UsedSpawns) : FindHunterSpawn(UsedSpawns);
                 if (bScout) { bFirstScoutPlaced = true; MapmakerLandingSpawns.Add(Spawn); }
                 Pawn->SetActorLocation(Spawn, false, nullptr, ETeleportType::ResetPhysics);
                 if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(Pawn))
@@ -346,6 +370,12 @@ void ATreasureSketchGameMode::AdjustRoomSetting(FName Setting, int32 Direction)
     {
         GS->bSpreadPlayerSpawns = !GS->bSpreadPlayerSpawns;
     }
+    else if (Setting == TEXT("SketchSceneLock")) GS->bSketchSceneLock = !GS->bSketchSceneLock;
+    else if (Setting == TEXT("PreprintedIsland")) GS->bPreprintedIsland = !GS->bPreprintedIsland;
+    else if (Setting == TEXT("LimitedInk")) GS->bLimitedInk = !GS->bLimitedInk;
+    else if (Setting == TEXT("InkLimit"))
+        GS->InkLimit = FMath::Clamp(GS->InkLimit + Direction * ATreasureSketchGameState::InkLimitStep,
+            ATreasureSketchGameState::MinInkLimit, ATreasureSketchGameState::MaxInkLimit);
     else if (Setting == TEXT("DigCooldown"))
     {
         GS->DigCooldownSeconds = FMath::Clamp(GS->DigCooldownSeconds + Direction * ATreasureSketchGameState::DigCooldownStepSeconds,
@@ -415,6 +445,9 @@ void ATreasureSketchGameMode::StartHostedRound()
                 {
                     Member->RacePoints = 0;
                     Member->RaceFinds = 0;
+                    Member->RaceLastRoundPoints = 0;
+                    Member->RaceBestMissDistance = TNumericLimits<float>::Max();
+                    Member->RaceFarMisses = 0;
                     Member->NextShoveServerTime = 0.f;
                     Member->ShoveProtectedUntilServerTime = 0.f;
                     Member->ForceNetUpdate();
@@ -490,6 +523,7 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
         GS->IslandSeed = IslandSeed;
         ++GS->RoundSerial;
         GS->Phase = bFullFlowTest ? ETreasureRoundPhase::ScoutDrawing : ETreasureRoundPhase::HunterSearching;
+        GS->ResultServerTime = 0.f;
         GS->bReviewingRound = false;
         GS->bGameStarted = true;
         GS->ForceNetUpdate();
@@ -506,7 +540,9 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
         {
             if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(PC->GetPawn()))
                 Character->SetSpectatorHidden(false);
-            PC->GetPawn()->SetActorLocation(Island->FindSpawnPoint(), false, nullptr, ETeleportType::ResetPhysics);
+            TArray<FVector> UsedSpawns;
+            PC->GetPawn()->SetActorLocation(bFullFlowTest ? Island->FindSpawnPoint() : FindHunterSpawn(UsedSpawns),
+                false, nullptr, ETeleportType::ResetPhysics);
         }
         // Solo map testing deliberately shows the exact marker and its debug cylinder.
         // It must use the newly generated treasure location, not the menu preview location.
@@ -681,7 +717,27 @@ void ATreasureSketchGameMode::SubmitPlayerSketch(ATreasureSketchPlayerState* Sco
     FSketchPage Page;
     Page.MapmakerId = Scout->GetPlayerId();
     Page.MapmakerName = Scout->GetPlayerName();
-    Page.Strokes = SubmittedStrokes;
+    int32 InkUsed = 0, EraserUsed = 0;
+    for (const FSketchStroke& Stroke : SubmittedStrokes)
+    {
+        if (Stroke.ColorIndex > 5 || Stroke.Points.Num() > 10000) continue;
+        const bool bEraser = Stroke.ColorIndex == 5;
+        const int32 Remaining = bEraser ? 5000 - EraserUsed
+            : (GS->bLimitedInk ? GS->InkLimit : 10000) - InkUsed;
+        if (Remaining <= 0) continue;
+        FSketchStroke SafeStroke;
+        SafeStroke.ColorIndex = Stroke.ColorIndex;
+        for (const FVector2D& Point : Stroke.Points)
+        {
+            if (SafeStroke.Points.Num() >= Remaining) break;
+            if (FMath::IsFinite(Point.X) && FMath::IsFinite(Point.Y)
+                && Point.X >= 0.f && Point.X <= 1.f && Point.Y >= 0.f && Point.Y <= 1.f)
+                SafeStroke.Points.Add(Point);
+        }
+        if (bEraser) EraserUsed += SafeStroke.Points.Num();
+        else InkUsed += SafeStroke.Points.Num();
+        if (!SafeStroke.Points.IsEmpty()) Page.Strokes.Add(MoveTemp(SafeStroke));
+    }
     SubmittedSketches.Add(Scout->GetPlayerId(), MoveTemp(Page));
     Scout->bSketchSubmitted = true;
     Scout->ForceNetUpdate();
@@ -697,7 +753,7 @@ void ATreasureSketchGameMode::SubmitPlayerSketch(ATreasureSketchPlayerState* Sco
     BeginHunterSearching(CollectSketchPages());
 }
 
-void ATreasureSketchGameMode::BroadcastSketchDelta(ATreasureSketchPlayerState* Scout, int32 StrokeIndex, const TArray<FVector2D>& Points)
+void ATreasureSketchGameMode::BroadcastSketchDelta(ATreasureSketchPlayerState* Scout, int32 StrokeIndex, uint8 ColorIndex, const TArray<FVector2D>& Points)
 {
     const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing || !Scout
@@ -706,7 +762,7 @@ void ATreasureSketchGameMode::BroadcastSketchDelta(ATreasureSketchPlayerState* S
         if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
             if (const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
                 PS && PS->PlayerRole == ETreasurePlayerRole::Hunter)
-                PC->ClientAppendLiveSketch(GS->RoundSerial, Scout->GetPlayerId(), StrokeIndex, Points);
+                PC->ClientAppendLiveSketch(GS->RoundSerial, Scout->GetPlayerId(), StrokeIndex, ColorIndex, Points);
 }
 
 void ATreasureSketchGameMode::BroadcastSketchClear(ATreasureSketchPlayerState* Scout)
@@ -762,7 +818,7 @@ void ATreasureSketchGameMode::BeginHunterSearching(const TArray<FSketchPage>& Pa
             PC->ClientReceiveSketchPages(GS->RoundSerial, Pages);
             if (APawn* Pawn = PC->GetPawn())
             {
-                const FVector SpawnLocation = FindPlayerSpawn(HunterSpawns);
+                const FVector SpawnLocation = FindHunterSpawn(HunterSpawns);
                 Pawn->SetActorLocation(SpawnLocation, false, nullptr, ETeleportType::ResetPhysics);
             }
         }
@@ -790,26 +846,48 @@ bool ATreasureSketchGameMode::TryDig(ATreasureSketchPlayerState* Hunter, const F
     if (OutDistance <= TreasureRules::DigHorizontalRadius
         && VerticalDistance <= TreasureRules::DigVerticalHalfHeight)
     {
-        if (GS->RoomMode == ETreasureRoomMode::ExplorerRace)
-        {
-            GS->RaceRoundWinner = Hunter->GetPlayerName();
-            Hunter->RacePoints += 2;
-            ++Hunter->RaceFinds;
-            Hunter->ForceNetUpdate();
-            for (APlayerState* State : GS->PlayerArray)
-                if (ATreasureSketchPlayerState* Member = Cast<ATreasureSketchPlayerState>(State);
-                    Member && Member->PlayerRole == ETreasurePlayerRole::Scout)
-                {
-                    ++Member->RacePoints;
-                    Member->ForceNetUpdate();
-                }
-        }
+        GS->ResultServerTime = ServerTime;
+        if (GS->RoomMode == ETreasureRoomMode::ExplorerRace) ScoreRaceRound(Hunter);
         GS->Phase = ETreasureRoundPhase::Won;
         GS->ForceNetUpdate();
         UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_FOUND Distance=%.1f"), OutDistance);
         return true;
     }
+    if (GS->RoomMode == ETreasureRoomMode::ExplorerRace)
+    {
+        Hunter->RaceBestMissDistance = FMath::Min(Hunter->RaceBestMissDistance, OutDistance);
+        if (TreasureRules::DigFeedbackBand(OutDistance, GS->RoomMapScale) == 4)
+            Hunter->RaceFarMisses = FMath::Min(2, Hunter->RaceFarMisses + 1);
+    }
     return false;
+}
+
+void ATreasureSketchGameMode::ScoreRaceRound(ATreasureSketchPlayerState* Finder)
+{
+    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!GS || GS->RoomMode != ETreasureRoomMode::ExplorerRace) return;
+    GS->RaceRoundWinner = Finder ? Finder->GetPlayerName() : FString();
+    const float FractionRemaining = FMath::Clamp((GS->RoundEndServerTime - GS->GetServerWorldTimeSeconds())
+        / FMath::Max(1, GS->SearchingDurationSeconds), 0.f, 1.f);
+    for (APlayerState* State : GS->PlayerArray)
+        if (ATreasureSketchPlayerState* Member = Cast<ATreasureSketchPlayerState>(State))
+        {
+            int32 Delta = 0;
+            if (Member == Finder)
+            {
+                Delta = 8 + FMath::RoundToInt(8.f * FractionRemaining) - Member->RaceFarMisses;
+                ++Member->RaceFinds;
+            }
+            else if (Member->PlayerRole == ETreasurePlayerRole::Scout)
+                Delta = Finder ? 3 + FMath::RoundToInt(4.f * FractionRemaining) : 0;
+            else if (Member->PlayerRole == ETreasurePlayerRole::Hunter)
+                Delta = TreasureRules::RaceProximityPoints(Member->RaceBestMissDistance, GS->RoomMapScale)
+                    - Member->RaceFarMisses;
+            Member->RaceLastRoundPoints = Delta;
+            Member->RacePoints += Delta;
+            Member->ForceNetUpdate();
+        }
+    GS->ForceNetUpdate();
 }
 
 bool ATreasureSketchGameMode::TryShove(ATreasureSketchPlayerController* ShovingPlayer)
@@ -911,7 +989,7 @@ void ATreasureSketchGameMode::SetRoundReview(bool bReviewing)
         }
 }
 
-void ATreasureSketchGameMode::StartNewRound(bool bSwapRoles)
+void ATreasureSketchGameMode::StartNewRound(bool bSwapRoles, ATreasureSketchPlayerState* RoleRequester)
 {
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (!GS || GS->bReviewingRound) return;
@@ -938,6 +1016,7 @@ void ATreasureSketchGameMode::StartNewRound(bool bSwapRoles)
                 {
                     Member->RacePoints = 0;
                     Member->RaceFinds = 0;
+                    Member->RaceLastRoundPoints = 0;
                     Member->ForceNetUpdate();
                 }
         }
@@ -948,6 +1027,9 @@ void ATreasureSketchGameMode::StartNewRound(bool bSwapRoles)
             {
                 Member->NextShoveServerTime = 0.f;
                 Member->ShoveProtectedUntilServerTime = 0.f;
+                Member->RaceBestMissDistance = TNumericLimits<float>::Max();
+                Member->RaceFarMisses = 0;
+                Member->RaceLastRoundPoints = 0;
                 Member->ForceNetUpdate();
             }
         bSwapRoles = true;
@@ -963,9 +1045,14 @@ void ATreasureSketchGameMode::StartNewRound(bool bSwapRoles)
             { CurrentSingle = PS; break; }
         if (!CurrentSingle) return;
         const int32 CurrentIndex = GS->PlayerArray.IndexOfByKey(CurrentSingle);
-        for (int32 Offset = 1; Offset < GS->PlayerArray.Num(); ++Offset)
-            if (ATreasureSketchPlayerState* Next = Cast<ATreasureSketchPlayerState>(GS->PlayerArray[(CurrentIndex + Offset) % GS->PlayerArray.Num()]))
-            { NormalizeRoomRoles(nullptr, Next); break; }
+        ATreasureSketchPlayerState* Preferred = GS->RoomMode != ETreasureRoomMode::ExplorerRace
+            && RoleRequester && GS->PlayerArray.Contains(RoleRequester) && RoleRequester->PlayerRole != SingleRole
+            ? RoleRequester : nullptr;
+        if (!Preferred)
+            for (int32 Offset = 1; Offset < GS->PlayerArray.Num(); ++Offset)
+                if (ATreasureSketchPlayerState* Next = Cast<ATreasureSketchPlayerState>(GS->PlayerArray[(CurrentIndex + Offset) % GS->PlayerArray.Num()]))
+                { Preferred = Next; break; }
+        if (Preferred) NormalizeRoomRoles(nullptr, Preferred);
     }
 
     const bool bWasStarted = GS->bGameStarted;

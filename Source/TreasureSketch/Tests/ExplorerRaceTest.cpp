@@ -10,6 +10,7 @@
 #include "../TreasureSketchPlayerController.h"
 #include "../TreasureSketchPlayerState.h"
 #include "../TreasureSketchCharacter.h"
+#include "../TreasureRules.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FExplorerRaceFlowTest, "TreasureSketch.RoomSettings.ExplorerRace",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -53,6 +54,13 @@ bool FExplorerRaceFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Race has one round per player"), GS->RaceTotalRounds, 3);
     TestEqual(TEXT("First round index"), GS->RaceRoundIndex, 1);
     TestEqual(TEXT("First mapmaker"), Players[0]->PlayerRole, ETreasurePlayerRole::Scout);
+    {
+        TArray<FVector> ReservedSpawns;
+        for (int32 Index = 0; Index < 3; ++Index)
+            TestTrue(TEXT("Explorer spawn stays at least thirty meters from treasure"),
+                FVector::Dist2D(GM->FindHunterSpawn(ReservedSpawns), GM->GetTreasureLocation())
+                    >= TreasureRules::MinimumHunterSpawnDistance);
+    }
 
     auto FinishRound = [&](int32 FinderIndex)
     {
@@ -101,9 +109,18 @@ bool FExplorerRaceFlowTest::RunTest(const FString& Parameters)
             GM->ResolveShove(Controllers[1], ShovingPawn, GS->RoundSerial);
             TestTrue(TEXT("Empty shove also uses cooldown"), Players[1]->NextShoveServerTime > GS->GetServerWorldTimeSeconds());
             Controllers[1]->ClientDigResult_Implementation(false, 1, true);
-            TestFalse(TEXT("Race dig hint omits precise meters"), Controllers[1]->GetStatusMessage().Contains(TEXT("米")));
-            Controllers[1]->ClientDigResult_Implementation(false, 123, false);
-            TestTrue(TEXT("Cooperative dig still reports meters"), Controllers[1]->GetStatusMessage().Contains(TEXT("123 米")));
+            TestEqual(TEXT("Dig feedback uses a visual band"), Controllers[1]->GetDigFeedbackBand(), 1);
+            TestTrue(TEXT("Wrong dig no longer prints a distance message"), Controllers[1]->GetStatusMessage().IsEmpty());
+            TestEqual(TEXT("Six meters is the nearest band"), TreasureRules::DigFeedbackBand(600.f, 1.f), 0);
+            TestEqual(TEXT("Thresholds follow map length scale"), TreasureRules::DigFeedbackBand(1200.f, 4.f), 0);
+        }
+        if (GS->RaceRoundIndex == 1)
+        {
+            float MissDistance = 0.f;
+            bool bMissAttempted = false;
+            TestFalse(TEXT("Near miss does not end the race"), GM->TryDig(Players[2],
+                GM->GetTreasureLocation() + FVector(600.f, 0.f, 0.f), MissDistance, bMissAttempted));
+            TestTrue(TEXT("Near miss counts toward proximity score"), bMissAttempted);
         }
         float Distance = 0.f;
         bool bAttempted = false;
@@ -114,9 +131,10 @@ bool FExplorerRaceFlowTest::RunTest(const FString& Parameters)
     };
 
     FinishRound(1);
-    TestEqual(TEXT("Finder earns two points"), Players[1]->RacePoints, 2);
-    TestEqual(TEXT("Mapmaker earns one point"), Players[0]->RacePoints, 1);
-    TestEqual(TEXT("Other explorer earns no points"), Players[2]->RacePoints, 0);
+    TestTrue(TEXT("Fast finder gets a large speed bonus"), Players[1]->RaceLastRoundPoints >= 8);
+    TestTrue(TEXT("Fast map discovery rewards the mapmaker"), Players[0]->RaceLastRoundPoints >= 3);
+    TestEqual(TEXT("Near-miss explorer earns four points"), Players[2]->RaceLastRoundPoints, 4);
+    TestEqual(TEXT("Round score is added to total"), Players[2]->RacePoints, 4);
     GM->StartNewRound();
     TestEqual(TEXT("Second round index"), GS->RaceRoundIndex, 2);
     TestEqual(TEXT("Mapmaker rotates to second player"), Players[1]->PlayerRole, ETreasurePlayerRole::Scout);
@@ -127,9 +145,8 @@ bool FExplorerRaceFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Third round index"), GS->RaceRoundIndex, 3);
     TestEqual(TEXT("Mapmaker rotates to third player"), Players[2]->PlayerRole, ETreasurePlayerRole::Scout);
     FinishRound(0);
-    TestEqual(TEXT("Final score for first player"), Players[0]->RacePoints, 3);
-    TestEqual(TEXT("Final score for second player"), Players[1]->RacePoints, 3);
-    TestEqual(TEXT("Final score for third player"), Players[2]->RacePoints, 3);
+    for (const ATreasureSketchPlayerState* PS : Players)
+        TestTrue(TEXT("Each player earned race points across three roles"), PS->RacePoints > 0);
     TestEqual(TEXT("Each player found treasure once"), Players[0]->RaceFinds + Players[1]->RaceFinds + Players[2]->RaceFinds, 3);
 
     GM->StartNewRound();
@@ -137,6 +154,16 @@ bool FExplorerRaceFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Mapmaker rotates back to first player"), Players[0]->PlayerRole, ETreasurePlayerRole::Scout);
     for (const ATreasureSketchPlayerState* PS : Players)
         TestEqual(TEXT("New series clears scores"), PS->RacePoints, 0);
+
+    GM->SubmitPlayerSketch(Players[0], {});
+    float MissDistance = 0.f;
+    bool bMissAttempted = false;
+    TestFalse(TEXT("Far miss is valid in a new series"), GM->TryDig(Players[1],
+        GM->GetTreasureLocation() + FVector(12000.f, 0.f, 0.f), MissDistance, bMissAttempted));
+    GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() - 1.f;
+    GM->FinishIfTimeExpired();
+    TestEqual(TEXT("Far misses lose one point on timeout"), Players[1]->RaceLastRoundPoints, -1);
+    TestTrue(TEXT("Timeout has no race winner"), GS->RaceRoundWinner.IsEmpty());
 
     World->SetNetDriver(nullptr);
     Driver->SetWorld(nullptr);
