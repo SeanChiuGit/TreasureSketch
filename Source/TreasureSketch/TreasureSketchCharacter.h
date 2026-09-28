@@ -18,6 +18,8 @@ public:
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     void SetSpectatorHidden(bool bShouldHide);
     void SetMovementSpeedMultiplier(float Multiplier);
+    void SetShoveWindingUp(bool bWindingUp);
+    bool IsShoveWindingUp() const { return bShoveWindingUp; }
 
 protected:
     virtual void BeginPlay() override;
@@ -57,6 +59,12 @@ private:
 
     UFUNCTION()
     void OnRep_SpectatorHidden();
+
+    UPROPERTY(ReplicatedUsing=OnRep_ShoveWindingUp)
+    bool bShoveWindingUp = false;
+
+    UFUNCTION()
+    void OnRep_ShoveWindingUp();
 
     void MoveForward(float Value);
     void MoveRight(float Value);

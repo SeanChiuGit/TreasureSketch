@@ -540,6 +540,11 @@ void ATreasureSketchHUD::DrawHUD()
             DrawText(ShoveCooldown > 0 ? FString::Printf(TEXT("推人冷却：%d 秒"), ShoveCooldown)
                 : TEXT("推人就绪：靠近并面向对手按 G"), FLinearColor(0.95f, 0.75f, 0.40f),
                 35.f, 109.f, GEngine->GetSmallFont(), 1.f);
+            const int32 ProtectionRemaining = FMath::CeilToInt(FMath::Max(0.f,
+                PS->ShoveProtectedUntilServerTime - GS->GetServerWorldTimeSeconds()));
+            if (ProtectionRemaining > 0)
+                DrawText(FString::Printf(TEXT("防连续推：%d 秒"), ProtectionRemaining),
+                    FLinearColor(0.55f, 0.9f, 1.f), 35.f, 132.f, GEngine->GetSmallFont(), 1.f);
         }
     }
 

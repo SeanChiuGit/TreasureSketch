@@ -17,4 +17,5 @@ void ATreasureSketchPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProp
     DOREPLIFETIME(ATreasureSketchPlayerState, RacePoints);
     DOREPLIFETIME(ATreasureSketchPlayerState, RaceFinds);
     DOREPLIFETIME(ATreasureSketchPlayerState, NextShoveServerTime);
+    DOREPLIFETIME(ATreasureSketchPlayerState, ShoveProtectedUntilServerTime);
 }

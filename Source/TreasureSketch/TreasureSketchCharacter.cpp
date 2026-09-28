@@ -87,6 +87,25 @@ void ATreasureSketchCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProper
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
     DOREPLIFETIME(ATreasureSketchCharacter, bSpectatorHidden);
+    DOREPLIFETIME(ATreasureSketchCharacter, bShoveWindingUp);
+}
+
+void ATreasureSketchCharacter::SetShoveWindingUp(bool bWindingUp)
+{
+    if (!HasAuthority() || bShoveWindingUp == bWindingUp) return;
+    bShoveWindingUp = bWindingUp;
+    OnRep_ShoveWindingUp();
+    ForceNetUpdate();
+}
+
+void ATreasureSketchCharacter::OnRep_ShoveWindingUp()
+{
+    // The raised, orange arm is visible to nearby players during the windup.
+    RightArmMesh->SetRelativeLocation(bShoveWindingUp ? FVector(30.f, 28.f, 3.f) : FVector(0.f, 28.f, -14.f));
+    RightArmMesh->SetRelativeRotation(bShoveWindingUp ? FRotator(-65.f, 0.f, 0.f) : FRotator::ZeroRotator);
+    if (UMaterialInstanceDynamic* Material = Cast<UMaterialInstanceDynamic>(RightArmMesh->GetMaterial(0)))
+        Material->SetVectorParameterValue(TEXT("Color"), bShoveWindingUp
+            ? FLinearColor(1.f, 0.33f, 0.04f) : FLinearColor(0.08f, 0.55f, 0.68f));
 }
 
 void ATreasureSketchCharacter::SetMovementSpeedMultiplier(float Multiplier)

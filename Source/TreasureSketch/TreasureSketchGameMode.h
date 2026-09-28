@@ -49,6 +49,9 @@ public:
 
 private:
     friend class FMultiMapmakerFlowTest;
+    friend class FExplorerRaceFlowTest;
+    void ResolveShove(ATreasureSketchPlayerController* ShovingPlayer,
+        class ATreasureSketchCharacter* ShovingCharacter, int32 RoundSerial);
     UPROPERTY()
     TObjectPtr<AProceduralIsland> Island;
 

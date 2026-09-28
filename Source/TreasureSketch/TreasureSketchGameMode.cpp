@@ -11,6 +11,7 @@
 #include "Engine/World.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "TimerManager.h"
 
 namespace
 {
@@ -284,7 +285,11 @@ void ATreasureSketchGameMode::PlaceRoundPlayers()
                     ? Island->FindSpawnPoint() : FindPlayerSpawn(UsedSpawns);
                 if (bScout) { bFirstScoutPlaced = true; MapmakerLandingSpawns.Add(Spawn); }
                 Pawn->SetActorLocation(Spawn, false, nullptr, ETeleportType::ResetPhysics);
-                if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(Pawn)) Character->SetSpectatorHidden(false);
+                if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(Pawn))
+                {
+                    Character->SetSpectatorHidden(false);
+                    Character->SetShoveWindingUp(false);
+                }
             }
 }
 
@@ -353,7 +358,10 @@ void ATreasureSketchGameMode::ReturnToSetup()
         if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
         {
             if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(PC->GetPawn()))
+            {
                 Character->SetSpectatorHidden(false);
+                Character->SetShoveWindingUp(false);
+            }
             PC->ClientStartNewRound(GS->RoundSerial);
             PC->ClientReturnToLobby();
         }
@@ -389,6 +397,7 @@ void ATreasureSketchGameMode::StartHostedRound()
                     Member->RacePoints = 0;
                     Member->RaceFinds = 0;
                     Member->NextShoveServerTime = 0.f;
+                    Member->ShoveProtectedUntilServerTime = 0.f;
                     Member->ForceNetUpdate();
                 }
         }
@@ -796,12 +805,43 @@ bool ATreasureSketchGameMode::TryShove(ATreasureSketchPlayerController* ShovingP
     if (!ShovingState || ShovingState->PlayerRole != ETreasurePlayerRole::Hunter
         || !ShovingCharacter || ShovingState->NextShoveServerTime > Now) return false;
 
+    ShovingState->NextShoveServerTime = Now + 5.f;
+    ShovingState->ForceNetUpdate();
+    ShovingCharacter->SetShoveWindingUp(true);
+    ShovingPlayer->ClientShoveFeedback(0); // Windup.
+    const int32 RoundSerial = GS->RoundSerial;
+    TWeakObjectPtr<ATreasureSketchPlayerController> WeakController(ShovingPlayer);
+    TWeakObjectPtr<ATreasureSketchCharacter> WeakCharacter(ShovingCharacter);
+    FTimerHandle ShoveHandle;
+    GetWorld()->GetTimerManager().SetTimer(ShoveHandle, FTimerDelegate::CreateWeakLambda(this,
+        [this, WeakController, WeakCharacter, RoundSerial]()
+        {
+            if (WeakController.IsValid() && WeakCharacter.IsValid())
+                ResolveShove(WeakController.Get(), WeakCharacter.Get(), RoundSerial);
+        }), 0.35f, false);
+    return true;
+}
+
+void ATreasureSketchGameMode::ResolveShove(ATreasureSketchPlayerController* ShovingPlayer,
+    ATreasureSketchCharacter* ShovingCharacter, int32 RoundSerial)
+{
+    if (!ShovingCharacter) return;
+    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!GS || GS->RoundSerial != RoundSerial) return;
+    ShovingCharacter->SetShoveWindingUp(false);
+    if (GS->RoomMode != ETreasureRoomMode::ExplorerRace
+        || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::HunterSearching
+        || !ShovingPlayer || ShovingPlayer->GetPawn() != ShovingCharacter) return;
+    const ATreasureSketchPlayerState* ShovingState = ShovingPlayer->GetPlayerState<ATreasureSketchPlayerState>();
+    if (!ShovingState || ShovingState->PlayerRole != ETreasurePlayerRole::Hunter) return;
+
     ATreasureSketchCharacter* Target = nullptr;
+    ATreasureSketchPlayerState* TargetState = nullptr;
     float BestDistanceSquared = FMath::Square(260.f);
     const FVector Origin = ShovingCharacter->GetActorLocation();
     const FVector Facing = ShovingPlayer->GetControlRotation().Vector().GetSafeNormal2D();
     for (APlayerState* State : GS->PlayerArray)
-        if (const ATreasureSketchPlayerState* OtherState = Cast<ATreasureSketchPlayerState>(State);
+        if (ATreasureSketchPlayerState* OtherState = Cast<ATreasureSketchPlayerState>(State);
             OtherState && OtherState != ShovingState && OtherState->PlayerRole == ETreasurePlayerRole::Hunter)
             if (const ATreasureSketchPlayerController* Other = Cast<ATreasureSketchPlayerController>(OtherState->GetOwner()))
                 if (ATreasureSketchCharacter* OtherCharacter = Cast<ATreasureSketchCharacter>(Other->GetPawn()))
@@ -810,19 +850,25 @@ bool ATreasureSketchGameMode::TryShove(ATreasureSketchPlayerController* ShovingP
                     const float DistanceSquared = Delta.SizeSquared2D();
                     if (FMath::Abs(Delta.Z) <= 140.f && DistanceSquared < BestDistanceSquared
                         && FVector::DotProduct(Facing, Delta.GetSafeNormal2D()) > 0.35f)
-                    { Target = OtherCharacter; BestDistanceSquared = DistanceSquared; }
+                    { Target = OtherCharacter; TargetState = OtherState; BestDistanceSquared = DistanceSquared; }
                 }
-    if (!Target) return false;
+    if (!Target || !TargetState)
+    { ShovingPlayer->ClientShoveFeedback(2); return; }
+    if (TargetState->ShoveProtectedUntilServerTime > GS->GetServerWorldTimeSeconds())
+    { ShovingPlayer->ClientShoveFeedback(4); return; }
     FCollisionQueryParams ObstacleQuery(SCENE_QUERY_STAT(ExplorerRaceShove), false);
     ObstacleQuery.AddIgnoredActor(ShovingCharacter);
     ObstacleQuery.AddIgnoredActor(Target);
     if (GetWorld()->LineTraceTestByChannel(Origin + FVector(0.f, 0.f, 65.f),
-        Target->GetActorLocation() + FVector(0.f, 0.f, 65.f), ECC_Visibility, ObstacleQuery)) return false;
+        Target->GetActorLocation() + FVector(0.f, 0.f, 65.f), ECC_Visibility, ObstacleQuery))
+    { ShovingPlayer->ClientShoveFeedback(2); return; }
     const FVector Direction = (Target->GetActorLocation() - Origin).GetSafeNormal2D();
     Target->LaunchCharacter(Direction * 850.f + FVector(0.f, 0.f, 170.f), true, true);
-    ShovingState->NextShoveServerTime = Now + 5.f;
-    ShovingState->ForceNetUpdate();
-    return true;
+    TargetState->ShoveProtectedUntilServerTime = GS->GetServerWorldTimeSeconds() + 1.5f;
+    TargetState->ForceNetUpdate();
+    ShovingPlayer->ClientShoveFeedback(1);
+    if (ATreasureSketchPlayerController* TargetController = Cast<ATreasureSketchPlayerController>(TargetState->GetOwner()))
+        TargetController->ClientShoveFeedback(3);
 }
 
 void ATreasureSketchGameMode::SetRoundReview(bool bReviewing)
@@ -882,6 +928,7 @@ void ATreasureSketchGameMode::StartNewRound(bool bSwapRoles)
             if (ATreasureSketchPlayerState* Member = Cast<ATreasureSketchPlayerState>(State))
             {
                 Member->NextShoveServerTime = 0.f;
+                Member->ShoveProtectedUntilServerTime = 0.f;
                 Member->ForceNetUpdate();
             }
         bSwapRoles = true;

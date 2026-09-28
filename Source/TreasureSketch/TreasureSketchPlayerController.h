@@ -92,7 +92,10 @@ public:
     void ClientReplaceLiveSketch(int32 RoundSerial, const FSketchPage& Page);
 
     UFUNCTION(Client, Reliable)
-    void ClientDigResult(bool bFound, float Distance);
+    void ClientDigResult(bool bFound, int32 FeedbackValue, bool bRace);
+
+    UFUNCTION(Client, Reliable)
+    void ClientShoveFeedback(uint8 Result);
 
     UFUNCTION(Client, Reliable)
     void ClientStartNewRound(int32 NewRoundSerial);

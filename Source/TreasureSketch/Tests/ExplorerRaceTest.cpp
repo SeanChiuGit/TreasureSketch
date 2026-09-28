@@ -67,8 +67,29 @@ bool FExplorerRaceFlowTest::RunTest(const FString& Parameters)
             TargetPawn->SetActorLocation(FVector(150.f, 0.f, 5000.f));
             Controllers[1]->SetControlRotation(FRotator::ZeroRotator);
             TestTrue(TEXT("Nearby explorer can shove the opponent"), GM->TryShove(Controllers[1]));
+            TestTrue(TEXT("Shove visibly winds up"), ShovingPawn->IsShoveWindingUp());
             TestFalse(TEXT("Shove cooldown blocks repeat use"), GM->TryShove(Controllers[1]));
-            TestTrue(TEXT("Successful shove starts cooldown"), Players[1]->NextShoveServerTime > GS->GetServerWorldTimeSeconds());
+            TestTrue(TEXT("Shove attempt starts cooldown"), Players[1]->NextShoveServerTime > GS->GetServerWorldTimeSeconds());
+            GM->ResolveShove(Controllers[1], ShovingPawn, GS->RoundSerial);
+            TestFalse(TEXT("Windup ends after shove"), ShovingPawn->IsShoveWindingUp());
+            const float ProtectedUntil = Players[2]->ShoveProtectedUntilServerTime;
+            TestTrue(TEXT("Hit grants brief protection"), ProtectedUntil > GS->GetServerWorldTimeSeconds());
+
+            Players[1]->NextShoveServerTime = 0.f;
+            TestTrue(TEXT("Protected opponent still consumes an attempted shove"), GM->TryShove(Controllers[1]));
+            GM->ResolveShove(Controllers[1], ShovingPawn, GS->RoundSerial);
+            TestEqual(TEXT("Protected opponent cannot be pushed again"), Players[2]->ShoveProtectedUntilServerTime, ProtectedUntil);
+            TestTrue(TEXT("Blocked shove keeps its cooldown"), Players[1]->NextShoveServerTime > GS->GetServerWorldTimeSeconds());
+
+            TargetPawn->SetActorLocation(FVector(1000.f, 0.f, 5000.f));
+            Players[1]->NextShoveServerTime = 0.f;
+            TestTrue(TEXT("Empty shove is accepted"), GM->TryShove(Controllers[1]));
+            GM->ResolveShove(Controllers[1], ShovingPawn, GS->RoundSerial);
+            TestTrue(TEXT("Empty shove also uses cooldown"), Players[1]->NextShoveServerTime > GS->GetServerWorldTimeSeconds());
+            Controllers[1]->ClientDigResult_Implementation(false, 1, true);
+            TestFalse(TEXT("Race dig hint omits precise meters"), Controllers[1]->GetStatusMessage().Contains(TEXT("米")));
+            Controllers[1]->ClientDigResult_Implementation(false, 123, false);
+            TestTrue(TEXT("Cooperative dig still reports meters"), Controllers[1]->GetStatusMessage().Contains(TEXT("123 米")));
         }
         float Distance = 0.f;
         bool bAttempted = false;

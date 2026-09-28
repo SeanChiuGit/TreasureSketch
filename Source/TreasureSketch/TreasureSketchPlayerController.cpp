@@ -999,16 +999,35 @@ void ATreasureSketchPlayerController::ServerTryDig_Implementation()
     bool bFound = false;
     if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
         bFound = GM->TryDig(PS, GetPawn()->GetActorLocation(), Distance, bAttempted);
-    if (bAttempted) ClientDigResult(bFound, Distance);
+    if (bAttempted)
+    {
+        const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+        const bool bRace = GS && GS->RoomMode == ETreasureRoomMode::ExplorerRace;
+        const int32 FeedbackValue = bRace ? (Distance <= 1500.f ? 2 : Distance <= 4000.f ? 1 : 0)
+            : FMath::RoundToInt(Distance / 100.f);
+        ClientDigResult(bFound, FeedbackValue, bRace);
+    }
 }
 
-void ATreasureSketchPlayerController::ClientDigResult_Implementation(bool bFound, float Distance)
+void ATreasureSketchPlayerController::ClientDigResult_Implementation(bool bFound, int32 FeedbackValue, bool bRace)
 {
-    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
-    StatusMessage = bFound ? (GS && GS->RoomMode == ETreasureRoomMode::ExplorerRace
+    StatusMessage = bFound ? (bRace
         ? TEXT("你率先找到宝箱！本局获胜，获得 2 分！") : TEXT("找到宝箱！合作成功！"))
-        : FString::Printf(TEXT("这里没有宝箱（误差 %.0f 米）。继续参照地图寻找。"), Distance / 100.f);
+        : bRace ? (FeedbackValue >= 2 ? TEXT("这里没有宝箱，但已经非常接近！")
+            : FeedbackValue == 1 ? TEXT("这里没有宝箱，但离目标不远了。")
+            : TEXT("这里没有宝箱，离目标还很远。"))
+        : FString::Printf(TEXT("这里没有宝箱（误差 %d 米）。继续参照地图寻找。"), FeedbackValue);
     StatusUntil = GetWorld()->GetTimeSeconds() + 6.f;
+}
+
+void ATreasureSketchPlayerController::ClientShoveFeedback_Implementation(uint8 Result)
+{
+    StatusMessage = Result == 0 ? TEXT("正在出手推人……")
+        : Result == 1 ? TEXT("推中了！对手短时间内不会被连续推开。")
+        : Result == 3 ? TEXT("你被推开了！短时间内不会再次被推。")
+        : Result == 4 ? TEXT("对手刚被推过，暂时推不动；本次出手已冷却。")
+        : TEXT("推空了，等待冷却后再试。");
+    StatusUntil = GetWorld()->GetTimeSeconds() + (Result == 0 ? 0.5f : 2.5f);
 }
 
 void ATreasureSketchPlayerController::ClientStartNewRound_Implementation(int32 NewRoundSerial)
