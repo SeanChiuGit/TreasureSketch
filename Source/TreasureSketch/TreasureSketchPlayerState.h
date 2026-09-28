@@ -40,6 +40,13 @@ public:
     int32 RaceFinds = 0;
 
     UPROPERTY(Replicated, BlueprintReadOnly)
+    int32 RaceLastRoundPoints = 0;
+
+    // Server-only progress for the current race round.
+    float RaceBestMissDistance = TNumericLimits<float>::Max();
+    int32 RaceFarMisses = 0;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
     float NextShoveServerTime = 0.f;
 
     UPROPERTY(Replicated, BlueprintReadOnly)

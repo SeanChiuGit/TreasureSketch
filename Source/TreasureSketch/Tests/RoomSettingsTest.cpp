@@ -45,6 +45,14 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
         EIslandTheme::MistForest);
     GM->AdjustRoomSetting(TEXT("TreasureRange"), 1);
     GM->AdjustRoomSetting(TEXT("SpreadPlayerSpawns"), 1);
+    GM->AdjustRoomSetting(TEXT("SketchSceneLock"), 1);
+    GM->AdjustRoomSetting(TEXT("PreprintedIsland"), 1);
+    GM->AdjustRoomSetting(TEXT("LimitedInk"), 1);
+    GM->AdjustRoomSetting(TEXT("InkLimit"), -1);
+    TestTrue(TEXT("Room can lock drawing to the board"), GS->bSketchSceneLock);
+    TestTrue(TEXT("Room can preprint island outline"), GS->bPreprintedIsland);
+    TestTrue(TEXT("Room can limit ink"), GS->bLimitedInk);
+    TestEqual(TEXT("Ink limit adjusts by one hundred"), GS->InkLimit, 500);
     TestFalse(TEXT("Can hide treasure range without hiding marker"), GS->bTreasureRangeVisible);
     TestTrue(TEXT("Can choose spread out spawns"), GS->bSpreadPlayerSpawns);
     TestEqual(TEXT("Dig cooldown defaults to ten seconds"), GS->DigCooldownSeconds, 10);
@@ -72,9 +80,13 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     GM->AdjustRoomSetting(TEXT("TreasureRange"), 1);
     GM->AdjustRoomSetting(TEXT("SpreadPlayerSpawns"), 1);
     GM->AdjustRoomSetting(TEXT("DigCooldown"), 1);
+    GM->AdjustRoomSetting(TEXT("InkLimit"), 1);
+    GM->AdjustRoomSetting(TEXT("SketchSceneLock"), 1);
     TestFalse(TEXT("Range setting locked during round"), GS->bTreasureRangeVisible);
     TestTrue(TEXT("Spawn setting locked during round"), GS->bSpreadPlayerSpawns);
     TestEqual(TEXT("Dig cooldown is locked during round"), GS->DigCooldownSeconds, 10);
+    TestEqual(TEXT("Ink limit is locked during round"), GS->InkLimit, 500);
+    TestTrue(TEXT("Scene lock is locked during round"), GS->bSketchSceneLock);
     GS->RoundEndServerTime = -1.f;
     GM->Tick(0.f);
     TestEqual(TEXT("Drawing timeout automatically starts searching"), GS->Phase, ETreasureRoundPhase::HunterSearching);
@@ -92,6 +104,8 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Replay returns to configured drawing time"), GS->GetSecondsRemaining(), 90);
     TestEqual(TEXT("Replay keeps searching setting"), GS->SearchingDurationSeconds, 150);
     TestEqual(TEXT("Replay keeps dig cooldown setting"), GS->DigCooldownSeconds, 10);
+    TestEqual(TEXT("Replay keeps ink limit"), GS->InkLimit, 500);
+    TestTrue(TEXT("Replay keeps preprinted island setting"), GS->bPreprintedIsland);
     GS->Phase = ETreasureRoundPhase::Won;
     GM->ReturnToSetup();
     TestFalse(TEXT("Lobby return retains beach exclusion"), GS->bBeachInMapPool);

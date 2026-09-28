@@ -23,4 +23,8 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<UFont> BodyFont;
+
+    TWeakObjectPtr<class AProceduralIsland> CachedTemplateIsland;
+    int32 CachedTemplateSeed = 0;
+    TArray<uint8> IslandTemplateMask;
 };

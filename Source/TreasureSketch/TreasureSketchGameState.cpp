@@ -19,6 +19,10 @@ void ATreasureSketchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProper
     DOREPLIFETIME(ATreasureSketchGameState, SurfacePaintStampsUsed);
     DOREPLIFETIME(ATreasureSketchGameState, bTreasureRangeVisible);
     DOREPLIFETIME(ATreasureSketchGameState, bSpreadPlayerSpawns);
+    DOREPLIFETIME(ATreasureSketchGameState, bSketchSceneLock);
+    DOREPLIFETIME(ATreasureSketchGameState, bPreprintedIsland);
+    DOREPLIFETIME(ATreasureSketchGameState, bLimitedInk);
+    DOREPLIFETIME(ATreasureSketchGameState, InkLimit);
     DOREPLIFETIME(ATreasureSketchGameState, RoomMapScale);
     DOREPLIFETIME(ATreasureSketchGameState, MovementSpeedMultiplier);
     DOREPLIFETIME(ATreasureSketchGameState, DrawingDurationSeconds);
@@ -29,6 +33,7 @@ void ATreasureSketchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProper
     DOREPLIFETIME(ATreasureSketchGameState, RaceRoundIndex);
     DOREPLIFETIME(ATreasureSketchGameState, RaceTotalRounds);
     DOREPLIFETIME(ATreasureSketchGameState, RaceRoundWinner);
+    DOREPLIFETIME(ATreasureSketchGameState, ResultServerTime);
     DOREPLIFETIME(ATreasureSketchGameState, Phase);
     DOREPLIFETIME(ATreasureSketchGameState, RoundEndServerTime);
     DOREPLIFETIME(ATreasureSketchGameState, bGameStarted);
