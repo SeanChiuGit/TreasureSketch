@@ -454,14 +454,17 @@ void ATreasureSketchHUD::DrawHUD()
         bScout ? TEXT("侦察者") : TEXT("寻宝者"),
         GetNetMode() == NM_ListenServer ? TEXT("主机") : TEXT("已连接客户端"));
     const FString Help = GS->bReviewingRound ? TEXT("复盘中：WASD 逛岛 | M 看图及操作按钮 | T 切换宝箱标记 | Esc 返回结算")
+        : bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing && PC->IsDrawingOverheadView()
+        ? (PC->HasSubmittedSketch() ? TEXT("俯视等待：WASD 飞行 | Space 上升 | Ctrl 下降 | Tab 返回地面")
+            : TEXT("俯视侦察：WASD 飞行 | Space 上升 | Ctrl 下降 | Shift 加速 | Tab 返回地面 | M 画图"))
         : PC->IsScoutSpectating()
         ? TEXT("观战：WASD 飞行 | Space 上升 | Ctrl 下降 | Shift 加速 | M 查看地图")
         : bScout && PC->HasSubmittedSketch() ? TEXT("已交图，等待其他地图师完成；到时自动收齐")
-        : bScout ? TEXT("WASD 移动 | M 打开白纸画图 | C 清空 | Enter 交图")
+        : bScout ? TEXT("WASD 移动 | Tab 俯视侦察 | M 打开白纸画图 | C 清空 | Enter 交图")
         : TEXT("等待交图；收到后 M 查看地图 | E 挖掘");
     DrawText(FString::Printf(TEXT("%s  |  岛屿种子 %d"), *RoleLabel, GS->IslandSeed), FLinearColor::White, 35.f, 28.f, GEngine->GetLargeFont(), 1.f);
     DrawText(Help, FLinearColor(0.9f,0.9f,0.9f), 35.f, 62.f, GEngine->GetSmallFont(), 1.f);
-    if (PC->IsScoutSpectating())
+    if (PC->IsScoutSpectating() && GS->Phase == ETreasureRoundPhase::HunterSearching)
     {
         DrawText(TEXT("鼠标转向 | Tab 切换视角 | Q 切换探索者 | T 宝藏"),
             FLinearColor(0.9f, 0.9f, 0.9f), 35.f, 86.f, GEngine->GetSmallFont(), 1.f);
@@ -471,12 +474,19 @@ void ATreasureSketchHUD::DrawHUD()
             FLinearColor(0.45f, 0.9f, 0.85f), 35.f, 110.f, GEngine->GetSmallFont(), 1.f);
     }
 
-    if (GS->bSurfacePaintEnabled && bScout && !PC->HasSubmittedSketch() && GS->Phase == ETreasureRoundPhase::ScoutDrawing && !PC->IsMapOpen())
+    if (GS->bSurfacePaintEnabled && bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing && !PC->IsMapOpen())
     {
-        DrawLine(Canvas->SizeX * 0.5f - 7.f, Canvas->SizeY * 0.5f, Canvas->SizeX * 0.5f + 7.f, Canvas->SizeY * 0.5f, FLinearColor(0.1f, 0.6f, 1.f), 2.f);
-        DrawLine(Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f - 7.f, Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f + 7.f, FLinearColor(0.1f, 0.6f, 1.f), 2.f);
-        DrawText(FString::Printf(TEXT("实验喷漆：按住右键喷漆 | M画图 | 每局最多%d个色点"), ATreasureSurfacePaint::MaxStamps),
-            FLinearColor(0.1f, 0.6f, 1.f), 35.f, 86.f, GEngine->GetSmallFont(), 0.9f);
+        if (!PC->HasSubmittedSketch() && !PC->IsDrawingOverheadView())
+        {
+            DrawLine(Canvas->SizeX * 0.5f - 7.f, Canvas->SizeY * 0.5f, Canvas->SizeX * 0.5f + 7.f, Canvas->SizeY * 0.5f, FLinearColor(0.1f, 0.6f, 1.f), 2.f);
+            DrawLine(Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f - 7.f, Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f + 7.f, FLinearColor(0.1f, 0.6f, 1.f), 2.f);
+        }
+        DrawText(FString::Printf(TEXT("喷漆剩余：%d / %d%s"),
+            FMath::Clamp(ATreasureSurfacePaint::MaxStamps - GS->SurfacePaintStampsUsed, 0, ATreasureSurfacePaint::MaxStamps),
+            ATreasureSurfacePaint::MaxStamps, PC->HasSubmittedSketch() ? TEXT("（已交图）")
+                : PC->IsDrawingOverheadView() ? TEXT("（返回地面后右键使用）") : TEXT("（按住右键使用）")),
+            FLinearColor(0.1f, 0.6f, 1.f), 35.f, 86.f,
+            GEngine->GetSmallFont(), 0.9f);
     }
     const int32 SecondsRemaining = GS->GetSecondsRemaining();
     const FString TimerText = FString::Printf(TEXT("%02d:%02d"), SecondsRemaining / 60, SecondsRemaining % 60);
@@ -519,9 +529,14 @@ void ATreasureSketchHUD::DrawHUD()
     const FVector2D Min = PC->GetPaperMin();
     const FVector2D Size = PC->GetPaperSize();
     DrawRect(FLinearColor(0.96f, 0.94f, 0.86f, 0.98f), Min.X, Min.Y, Size.X, Size.Y);
-    DrawText(GS->bReviewingRound ? TEXT("复盘地图 · 可对照宝藏位置")
+    const FString PaperTitle = GS->bReviewingRound ? TEXT("复盘地图 · 可对照宝藏位置")
         : bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing ? TEXT("空白纸：请画岛屿轮廓、地形地标和藏宝点")
-        : bWatchingLiveSketch ? TEXT("地图师的实时画纸 · 只能观看") : TEXT("地图师留下的手绘地图"),
+        : bWatchingLiveSketch ? TEXT("地图师的实时画纸 · 只能观看") : TEXT("地图师留下的手绘地图");
+    const FString PaintCounter = GS->bSurfacePaintEnabled && bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing
+        ? FString::Printf(TEXT("  |  喷漆剩余 %d / %d"),
+            FMath::Clamp(ATreasureSurfacePaint::MaxStamps - GS->SurfacePaintStampsUsed, 0, ATreasureSurfacePaint::MaxStamps),
+            ATreasureSurfacePaint::MaxStamps) : FString();
+    DrawText(PaperTitle + PaintCounter,
         FLinearColor::Black, Min.X + 18.f, Min.Y + 14.f, GEngine->GetSmallFont(), 1.f);
     if (bWatchingLiveSketch && PC->GetSketchPageCount() == 0)
         DrawText(TEXT("正在接收地图师画纸……"), FLinearColor(0.30f, 0.33f, 0.35f),

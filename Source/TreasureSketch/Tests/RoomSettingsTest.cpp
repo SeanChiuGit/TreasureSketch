@@ -49,8 +49,16 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Can choose spread out spawns"), GS->bSpreadPlayerSpawns);
     GM->AdjustRoomSetting(TEXT("DrawingTime"), -1);
     GM->AdjustRoomSetting(TEXT("SearchingTime"), 1);
+    GM->ToggleSurfacePaint();
     GM->StartHostedRound();
     TestTrue(TEXT("Two-player round starts"), GS->bGameStarted);
+    FHitResult PaintHit;
+    PaintHit.ImpactPoint = FVector(100.f, 200.f, 300.f);
+    PaintHit.ImpactNormal = FVector::UpVector;
+    GM->SpraySurface(PaintHit);
+    TestEqual(TEXT("Accepted spray stamp updates shared remaining amount"), GS->SurfacePaintStampsUsed, 1);
+    GM->SpraySurface(PaintHit);
+    TestEqual(TEXT("Duplicate spray stamp does not consume paint"), GS->SurfacePaintStampsUsed, 1);
     for (TActorIterator<AProceduralIsland> It(World); It; ++It)
         if (!It->IsActorBeingDestroyed()) TestEqual(TEXT("Forest-only room generates forest"), It->Theme, EIslandTheme::MistForest);
     TestFalse(TEXT("Map pool is locked after start"), GM->ToggleRoomMapPool(EIslandTheme::PirateBeach));
@@ -72,6 +80,7 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     GM->Tick(0.f);
     TestEqual(TEXT("Searching timeout still finishes round"), GS->Phase, ETreasureRoundPhase::HunterTimedOut);
     GM->StartNewRound();
+    TestEqual(TEXT("New round restores all paint"), GS->SurfacePaintStampsUsed, 0);
     TestFalse(TEXT("Replay retains beach exclusion"), GS->bBeachInMapPool);
     TestTrue(TEXT("Replay retains forest selection"), GS->bForestInMapPool);
     TestEqual(TEXT("Replay returns to configured drawing time"), GS->GetSecondsRemaining(), 90);

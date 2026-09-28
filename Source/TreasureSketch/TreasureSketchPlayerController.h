@@ -64,6 +64,7 @@ public:
     bool IsLocalScout() const;
     bool IsHunterWaiting() const;
     bool IsScoutSpectating() const { return SpectatorCamera != nullptr; }
+    bool IsDrawingOverheadView() const { return bDrawingOverheadView; }
     bool IsHunterFirstPersonView() const { return SpectatorView == EScoutSpectatorView::HunterFirstPerson; }
     bool IsSpectatorTreasureVisible() const { return bTreasureMarkerVisible; }
     bool IsPauseMenuOpen() const { return bPauseMenuOpen; }
@@ -169,6 +170,7 @@ private:
     bool bHasScoutTreasureLocation = false;
     bool bTreasureMarkerVisible = false;
     bool bHasHunterView = false;
+    bool bDrawingOverheadView = false;
     int32 PendingSpectatorRoundSerial = 0;
 
     bool bMapOpen = false;
@@ -200,8 +202,8 @@ private:
     void ApplyKeyboardMovementFallback();
     void UpdateReplayInput();
     void UpdateSpectatorCamera(float DeltaTime);
-    void StartSpectating();
-    void StopSpectating();
+    void StartSpectating(bool bDrawingView = false);
+    void StopSpectating(bool bHideTreasure = true);
     void SetLocalTreasureMarkerVisible(bool bVisible);
     void UpdateFrontEnd();
     void SetPauseMenuOpen(bool bOpen);

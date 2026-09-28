@@ -106,6 +106,11 @@ void ATreasureSketchGameMode::ResetSurfacePaint()
 {
     if (SurfacePaint) SurfacePaint->Destroy();
     SurfacePaint = nullptr;
+    if (ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>())
+    {
+        GS->SurfacePaintStampsUsed = 0;
+        GS->ForceNetUpdate();
+    }
 }
 
 void ATreasureSketchGameMode::ToggleSurfacePaint()
@@ -118,11 +123,15 @@ void ATreasureSketchGameMode::ToggleSurfacePaint()
 
 void ATreasureSketchGameMode::SpraySurface(const FHitResult& Hit)
 {
-    const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (FinishIfTimeExpired() || !GS || !GS->bGameStarted || !GS->bSurfacePaintEnabled
         || GS->Phase != ETreasureRoundPhase::ScoutDrawing) return;
     if (!SurfacePaint) SurfacePaint = GetWorld()->SpawnActor<ATreasureSurfacePaint>();
-    if (SurfacePaint) SurfacePaint->AddStamp(Hit);
+    if (SurfacePaint && SurfacePaint->AddStamp(Hit))
+    {
+        ++GS->SurfacePaintStampsUsed;
+        GS->ForceNetUpdate();
+    }
 }
 
 void ATreasureSketchGameMode::BuildRound()

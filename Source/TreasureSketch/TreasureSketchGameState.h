@@ -65,6 +65,9 @@ public:
     bool bSurfacePaintEnabled = false;
 
     UPROPERTY(Replicated, BlueprintReadOnly)
+    int32 SurfacePaintStampsUsed = 0;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
     bool bTreasureRangeVisible = true;
 
     // Nearby uses the same landing area; spread out uses different safe land samples.

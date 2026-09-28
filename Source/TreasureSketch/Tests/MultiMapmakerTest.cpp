@@ -57,6 +57,15 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("A mapmaker can open the in-round menu"), Controllers[1]->IsPauseMenuOpen());
     Controllers[1]->HandleFrontEndAction(TEXT("PauseResume"));
     TestFalse(TEXT("Resume closes the in-round menu"), Controllers[1]->IsPauseMenuOpen());
+    Controllers[1]->ClientRevealTreasure_Implementation(GM->GetTreasureLocation());
+    Controllers[1]->ToggleSpectatorView();
+    Controllers[1]->UpdateSpectatorCamera(0.f);
+    TestTrue(TEXT("Mapmaker can fly above the island while drawing"), Controllers[1]->IsDrawingOverheadView() && Controllers[1]->IsScoutSpectating());
+    Controllers[1]->ToggleMap();
+    TestTrue(TEXT("Drawing remains available from the overhead view"), Controllers[1]->IsMapOpen());
+    Controllers[1]->ToggleSpectatorView();
+    TestFalse(TEXT("Tab closes the drawing board and returns to the ground"), Controllers[1]->IsDrawingOverheadView() || Controllers[1]->IsMapOpen());
+    TestTrue(TEXT("Returning from overhead keeps the treasure marker"), Controllers[1]->bTreasureMarkerVisible);
     World->SetNetDriver(Driver);
 
     FSketchStroke FirstStroke;

@@ -183,7 +183,8 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
     }
     const ATreasureSketchGameState* CursorGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     const bool bCanSpray = CursorGS && CursorGS->bGameStarted && CursorGS->bSurfacePaintEnabled
-        && IsLocalScout() && !HasSubmittedSketch() && CursorGS->Phase == ETreasureRoundPhase::ScoutDrawing && !bMapOpen;
+        && IsLocalScout() && !HasSubmittedSketch() && CursorGS->Phase == ETreasureRoundPhase::ScoutDrawing
+        && !bMapOpen && !bDrawingOverheadView;
     SetSprayCursorMode(bCanSpray);
     UpdateWaitingSketchInput();
     if (IsScoutSpectating() && !bMapOpen && WasInputKeyJustPressed(EKeys::Q)) ServerCycleSpectatedHunter();
@@ -200,7 +201,7 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
         StatusMessage.Empty();
     const ATreasureSketchGameState* PaintGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (PaintGS && PaintGS->bGameStarted && PaintGS->bSurfacePaintEnabled && IsLocalScout()
-        && !HasSubmittedSketch() && PaintGS->Phase == ETreasureRoundPhase::ScoutDrawing && !bMapOpen
+        && !HasSubmittedSketch() && PaintGS->Phase == ETreasureRoundPhase::ScoutDrawing && !bMapOpen && !bDrawingOverheadView
         && IsInputKeyDown(EKeys::RightMouseButton) && GetWorld()->GetTimeSeconds() >= NextSpraySampleTime)
     {
         NextSpraySampleTime = GetWorld()->GetTimeSeconds() + 0.06f;
@@ -355,7 +356,7 @@ void ATreasureSketchPlayerController::ApplyKeyboardMovementFallback()
     // after switching from a GameAndUI menu back to gameplay. Polling the four movement
     // keys here keeps the prototype and packaged builds controllable without an IMC asset.
     APawn* ControlledPawn = GetPawn();
-    if (!ControlledPawn || IsMoveInputIgnored() || bMapOpen) return;
+    if (!ControlledPawn || IsMoveInputIgnored() || bMapOpen || SpectatorCamera) return;
 
     const float Forward = (IsInputKeyDown(EKeys::W) ? 1.f : 0.f)
         - (IsInputKeyDown(EKeys::S) ? 1.f : 0.f);
@@ -566,7 +567,8 @@ void ATreasureSketchPlayerController::ApplyPhaseInputRules()
     const bool bShouldWait = !bReviewing && ((PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->Phase == ETreasureRoundPhase::ScoutDrawing)
         || (PS->PlayerRole == ETreasurePlayerRole::Scout && GS->Phase != ETreasureRoundPhase::ScoutDrawing)
         || GS->IsRoundOver());
-    const bool bShouldLock = bPauseMenuOpen || bMapOpen || bShouldWait || (!bReviewing && IsLocalScout() && HasSubmittedSketch());
+    const bool bShouldLock = bPauseMenuOpen || bMapOpen || bDrawingOverheadView || bShouldWait
+        || (!bReviewing && IsLocalScout() && HasSubmittedSketch());
     if (bInputLocked != bShouldLock)
     {
         SetIgnoreMoveInput(bShouldLock);
@@ -620,15 +622,18 @@ ATreasureSketchCharacter* ATreasureSketchPlayerController::FindHunterCharacter()
     return nullptr;
 }
 
-void ATreasureSketchPlayerController::StartSpectating()
+void ATreasureSketchPlayerController::StartSpectating(bool bDrawingView)
 {
-    FVector StartLocation = GetPawn() ? GetPawn()->GetActorLocation() + FVector(0.f, 0.f, 300.f)
+    FVector StartLocation = GetPawn() ? GetPawn()->GetActorLocation() + FVector(0.f, 0.f, bDrawingView ? 1200.f : 300.f)
         : FVector(0.f, 0.f, 500.f);
-    FRotator StartRotation = GetControlRotation();
-    if (ATreasureSketchCharacter* Hunter = FindHunterCharacter())
+    FRotator StartRotation = bDrawingView ? FRotator(-70.f, GetControlRotation().Yaw, 0.f) : GetControlRotation();
+    if (!bDrawingView)
     {
-        StartLocation = Hunter->GetActorLocation() + FVector(-400.f, 0.f, 350.f);
-        StartRotation = (Hunter->GetActorLocation() - StartLocation).Rotation();
+        if (ATreasureSketchCharacter* Hunter = FindHunterCharacter())
+        {
+            StartLocation = Hunter->GetActorLocation() + FVector(-400.f, 0.f, 350.f);
+            StartRotation = (Hunter->GetActorLocation() - StartLocation).Rotation();
+        }
     }
     SpectatorCamera = GetWorld()->SpawnActor<ACameraActor>(
         ACameraActor::StaticClass(), StartLocation, StartRotation);
@@ -642,14 +647,14 @@ void ATreasureSketchPlayerController::StartSpectating()
     SetViewTargetWithBlend(SpectatorCamera.Get(), 0.2f);
 }
 
-void ATreasureSketchPlayerController::StopSpectating()
+void ATreasureSketchPlayerController::StopSpectating(bool bHideTreasure)
 {
     if (!SpectatorCamera) return;
     if (GetPawn()) SetViewTarget(GetPawn());
     SpectatorCamera->Destroy();
     SpectatorCamera = nullptr;
     bHasHunterView = false;
-    SetLocalTreasureMarkerVisible(false);
+    if (bHideTreasure) SetLocalTreasureMarkerVisible(false);
 }
 
 void ATreasureSketchPlayerController::UpdateSpectatorCamera(float DeltaTime)
@@ -658,14 +663,16 @@ void ATreasureSketchPlayerController::UpdateSpectatorCamera(float DeltaTime)
     const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
     if (GS && PendingSpectatorRoundSerial > 0 && GS->RoundSerial >= PendingSpectatorRoundSerial)
         PendingSpectatorRoundSerial = 0;
+    if (GS && GS->Phase != ETreasureRoundPhase::ScoutDrawing) bDrawingOverheadView = false;
+    const bool bDrawingView = GS && GS->Phase == ETreasureRoundPhase::ScoutDrawing && bDrawingOverheadView;
     const bool bShouldSpectate = GS && GS->bGameStarted && PendingSpectatorRoundSerial == 0
-        && GS->Phase == ETreasureRoundPhase::HunterSearching && IsLocalScout();
+        && IsLocalScout() && (GS->Phase == ETreasureRoundPhase::HunterSearching || bDrawingView);
     if (!bShouldSpectate)
     {
         StopSpectating();
         return;
     }
-    if (!SpectatorCamera) StartSpectating();
+    if (!SpectatorCamera) StartSpectating(bDrawingView);
     if (!SpectatorCamera || bMapOpen) return;
 
     if (SpectatorView == EScoutSpectatorView::HunterFirstPerson)
@@ -707,7 +714,18 @@ void ATreasureSketchPlayerController::UpdateSpectatorCamera(float DeltaTime)
 
 void ATreasureSketchPlayerController::ToggleSpectatorView()
 {
-    if (!SpectatorCamera || bMapOpen) return;
+    const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
+    if (!GS || !GS->bGameStarted || !IsLocalScout() || bPauseMenuOpen) return;
+    if (GS->Phase == ETreasureRoundPhase::ScoutDrawing)
+    {
+        if (bMapOpen) ToggleMap();
+        bDrawingOverheadView = !bDrawingOverheadView;
+        if (!bDrawingOverheadView) StopSpectating(false);
+        else SetSprayCursorMode(false);
+        ApplyPhaseInputRules();
+        return;
+    }
+    if (GS->Phase != ETreasureRoundPhase::HunterSearching || !SpectatorCamera || bMapOpen) return;
     SpectatorView = SpectatorView == EScoutSpectatorView::FreeFlight
         ? EScoutSpectatorView::HunterFirstPerson : EScoutSpectatorView::FreeFlight;
     if (SpectatorView == EScoutSpectatorView::HunterFirstPerson && bHasHunterView)
@@ -961,6 +979,7 @@ void ATreasureSketchPlayerController::ClientDigResult_Implementation(bool bFound
 void ATreasureSketchPlayerController::ClientStartNewRound_Implementation(int32 NewRoundSerial)
 {
     bPauseMenuOpen = false;
+    bDrawingOverheadView = false;
     SetSprayCursorMode(false);
     StopSpectating();
     SpectatedHunterIndex = 0;
@@ -1009,6 +1028,7 @@ void ATreasureSketchPlayerController::ClientBeginReview_Implementation(
         SketchPages = Pages;
         ActiveSketchPage = FMath::Clamp(ActiveSketchPage, 0, SketchPages.Num() - 1);
     }
+    bDrawingOverheadView = false;
     StopSpectating();
     ScoutTreasureLocation = TreasureLocation;
     bHasScoutTreasureLocation = true;

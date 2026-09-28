@@ -133,3 +133,10 @@
 - 两种合作模式仍各有一个唯一身份。大厅中玩家点击自己列表行的按钮可领取这个身份，服务端自动把原持有者换为另一身份，并更新宝藏标记。开局时服务端继续验证至少两人且地图师、探索者人数符合所选模式。游戏中不可换身份。
 - 用户负责游戏窗口与多人交互测试；本轮无窗口测试覆盖两种模式的身份互换、开局后拒绝换身份、菜单开关和进行中返回大厅。Esc 按键及鼠标点击需交互测试。
 - UE 5.6 TreasureSketchEditor Win64 Development 编译成功；`TreasureSketch.RoomSettings.MultiMapmaker` 和 `TreasureSketch.RoomSettings.RoundFlow` 无窗口测试通过，日志位于 `Saved/CodexRelease/pause-role-build.log` 与 `Saved/CodexRelease/pause-role-tests.log`。尚未打入现有 v0.9.0 Release。
+
+## 绘图俯视与喷漆剩余量
+
+- 实验喷漆仍全队每局最多 15 个色点。服务端只对成功添加的喷点增加 `SurfacePaintStampsUsed`，通过 GameState 同步，HUD 与绘图纸标题显示 `15 - 已用`；重复或超限喷点不扣量。新局及返回大厅重置。
+- 地图师在绘图阶段按 Tab 切换地面与自由飞行俯视镜头；即使画纸打开也可按 Tab 切换，M 仍可随时画图。俯视期间锁住角色本体移动与喷漆输入，切回地面保留宝藏标记。进入寻宝阶段后，Tab 仍按原逻辑切换观战自由飞行与探索者第一视角。
+- 用户负责实际镜头、鼠标与多人交互测试。此改动尚未包含在 v0.9.0 Release。
+- UE 5.6 TreasureSketchEditor Win64 Development 编译成功；`TreasureSketch.RoomSettings.MultiMapmaker` 与 `TreasureSketch.RoomSettings.RoundFlow` 无窗口测试通过，日志位于 `Saved/CodexRelease/spray-overhead-build.log` 和 `Saved/CodexRelease/spray-overhead-tests.log`。测试涵盖俯视与画纸切换、宝藏标记保留、喷点接受/重复扣量和新局重置。
