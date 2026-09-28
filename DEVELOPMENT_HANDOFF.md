@@ -147,3 +147,12 @@
 - 冷却按探索者独立计算；服务端仅在寻宝阶段的有效尝试后启动，冷却中重复请求不再次判定也不延长倒计时。PlayerState 同步下一次可挖的服务端时间和回合编号，HUD 显示就绪或剩余秒数；新回合编号使旧冷却失效。服务端使用角色实际位置判定挖掘。
 - 用户负责窗口与联机交互测试。此改动未进入现有 v0.9.0 Release。
 - UE 5.6 TreasureSketchEditor Win64 Development 编译成功；`TreasureSketch.RoomSettings.MultiMapmaker` 与 `TreasureSketch.RoomSettings.RoundFlow` 无窗口测试通过，日志位于 `Saved/CodexRelease/dig-cooldown-build.log` 和 `Saved/CodexRelease/dig-cooldown-tests.log`。测试覆盖设置锁定与保留、独立冷却、重复挖掘、0 秒冷却及新回合清除旧冷却。
+
+## 最新 Windows 测试 Release：v0.10.0
+
+- 已发布预发布版 `v0.10.0-lobby-overhead-cooldown-rc1`：https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.10.0-lobby-overhead-cooldown-rc1
+- 源码提交 `23f11cf68ea17594abfb0f1eb0d8609c445e0f61`，包含 v0.9.0 后的房间地图池、复盘控制、观战看图、游戏中 Esc 菜单与全队回大厅、大厅身份互换、绘图俯视、喷漆剩余量及挖掘冷却。
+- 附件 `TreasureSketch-v0.10.0-lobby-overhead-cooldown-rc1-23f11cf-Windows.zip`，387168358 字节；SHA-256：`9506f3c00efa1de2e33b2a7ed672944bc16bb637b94932934c99f9445c25688c`。远端附件大小与 digest 已核对。
+- UE 5.6 编辑器和 Win64 Development 游戏编译、Build/Cook/Stage/Pak/Archive 成功；两个 RoomSettings 无窗口自动化测试通过。ZIP 检查包含 EXE、Steam DLL、steam_appid、PAK 和包内说明。
+- 打包使用版本库配置，结束后本机 `Config/DefaultEngine.ini` 哈希与打包前一致，未提交也未分发本机令牌。未打开游戏窗口，真实多人交互测试由用户负责。
+- 本机归档和 ZIP 位于 `Builds/TreasureSketch-v0.10.0-lobby-overhead-cooldown-rc1-23f11cf*`；构建与发布日志在 `Saved/CodexRelease/package-v0.10.log` 和 `Saved/CodexRelease/publish-v0.10.log`。
