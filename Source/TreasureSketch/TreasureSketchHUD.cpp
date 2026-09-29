@@ -174,6 +174,7 @@ void ATreasureSketchHUD::DrawHUD()
                 const FString TimeText = Selected->LocalTimeText.IsEmpty()
                     ? Selected->UtcTimeIso.Left(16) : Selected->LocalTimeText;
                 const TCHAR* ThemeName = Selected->Theme == EIslandTheme::MistForest ? TEXT("雾森林")
+                    : Selected->Theme == EIslandTheme::Canyon ? TEXT("峡谷")
                     : Selected->Theme == EIslandTheme::JungleRuins ? TEXT("遗迹") : TEXT("海盗沙滩");
                 const TCHAR* ModeName = Selected->RoomMode == ETreasureRoomMode::ExplorerRace ? TEXT("探索者对抗")
                     : Selected->RoomMode == ETreasureRoomMode::OneExplorer ? TEXT("多地图师") : TEXT("合作寻宝");
@@ -280,19 +281,20 @@ void ATreasureSketchHUD::DrawHUD()
         {
             DrawText(TEXT("单人测试"), FLinearColor::White, PanelX + 48.f, PanelY + 150.f,
                 GEngine->GetLargeFont(), 1.25f);
-            DrawText(TEXT("地图测试显示宝藏；玩法测试可调大小和时间"),
+            DrawText(TEXT("地图测试显示宝藏；峡谷和玩法测试可指定种子"),
                 FLinearColor(0.75f, 0.84f, 0.82f), PanelX + 48.f, PanelY + 205.f,
                 GEngine->GetSmallFont(), 0.9f);
             DrawMenuButton(TEXT("SoloForest"), TEXT("测试雾森林"), PanelY + 225.f, true);
-            DrawMenuButton(TEXT("SoloBeach"), TEXT("测试海盗沙滩岛"), PanelY + 285.f);
-            DrawMenuButton(TEXT("SoloRandom"), TEXT("随机主题与新种子"), PanelY + 345.f);
-            DrawMenuButton(TEXT("SoloHunter"), TEXT("探索者玩法测试"), PanelY + 405.f, true);
-            DrawMenuButton(TEXT("SoloFullFlow"), TEXT("完整流程测试：自己画，自己找"), PanelY + 465.f, true);
+            DrawMenuButton(TEXT("SoloBeach"), TEXT("测试海盗沙滩岛"), PanelY + 275.f);
+            DrawMenuButton(TEXT("SoloCanyon"), TEXT("测试峡谷"), PanelY + 325.f, true);
+            DrawMenuButton(TEXT("SoloRandom"), TEXT("随机主题与新种子"), PanelY + 375.f);
+            DrawMenuButton(TEXT("SoloHunter"), TEXT("探索者玩法测试"), PanelY + 425.f, true);
+            DrawMenuButton(TEXT("SoloFullFlow"), TEXT("完整流程测试：自己画，自己找"), PanelY + 475.f, true);
             DrawMenuButton(TEXT("MenuBack"), TEXT("返回主页面"), PanelY + 525.f);
             const float SeedX = PanelX + PanelW + 28.f;
             const float SeedW = FMath::Max(180.f, FMath::Min(390.f, W - SeedX - 24.f));
             const float SeedY = PanelY + 150.f;
-            DrawText(TEXT("玩法测试种子（可留空）"), FLinearColor::White, SeedX, SeedY,
+            DrawText(TEXT("峡谷／玩法测试种子（可留空）"), FLinearColor::White, SeedX, SeedY,
                 GEngine->GetMediumFont(), 1.f);
             DrawRect(PC->IsTestSeedEditing() ? FLinearColor(0.15f, 0.30f, 0.30f) : FLinearColor(0.06f, 0.12f, 0.13f),
                 SeedX, SeedY + 35.f, SeedW, 44.f);

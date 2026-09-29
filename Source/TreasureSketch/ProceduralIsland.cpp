@@ -36,6 +36,7 @@ const FIslandThemeDefinition ThemeTable[] = {
     // Forest 1x has 75% of the former 125.4m side length; preserve original forest density.
     { EIslandTheme::MistForest, TEXT("MistForest"), 50, true, 3.60f, 3.80f, 1.00f, 39, 247.5f,
         (9405.f * 9405.f) / (24600.f * 24600.f) },
+    { EIslandTheme::Canyon, TEXT("Canyon"), 0, false, 0.f, 0.f, 1.f, 81, 150.f, 1.f },
 };
 
 const FIslandThemeDefinition& GetThemeDefinition(EIslandTheme Theme)
@@ -213,6 +214,29 @@ AProceduralIsland::AProceduralIsland()
         Component->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, ForestPaths[Index]));
         ForestInstances.Add(Component);
     }
+    for (int32 Index = 0; Index < 18; ++Index)
+    {
+        UHierarchicalInstancedStaticMeshComponent* Component = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(
+            *FString::Printf(TEXT("CanyonInstances_%d"), Index));
+        Component->SetupAttachment(RootComponent);
+        ConfigureInstances(Component);
+        // The continuous procedural ground owns collision at forks and along ramps.
+        Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        CanyonInstances.Add(Component);
+    }
+    CanyonLandmarkCubes = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("CanyonLandmarkCubes"));
+    CanyonLandmarkColumns = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("CanyonLandmarkColumns"));
+    CanyonLandmarkBoulders = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("CanyonLandmarkBoulders"));
+    for (UHierarchicalInstancedStaticMeshComponent* Component : {
+        CanyonLandmarkCubes.Get(), CanyonLandmarkColumns.Get(), CanyonLandmarkBoulders.Get() })
+    {
+        Component->SetupAttachment(RootComponent);
+        ConfigureInstances(Component);
+        Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    }
+    CanyonLandmarkCubes->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")));
+    CanyonLandmarkColumns->SetStaticMesh(CylinderMesh.Object);
+    CanyonLandmarkBoulders->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere")));
 }
 
 void AProceduralIsland::ConfigureThemeParameters()
@@ -372,6 +396,7 @@ void AProceduralIsland::OnConstruction(const FTransform& Transform)
 
 FString AProceduralIsland::GetShapeName() const
 {
+    if (Theme == EIslandTheme::Canyon) return FTreasureGameplayLayout::TopologyName(CanyonLayout.Topology);
     switch (ShapeFromSeed(Seed))
     {
     case EIslandShape::RoundBay: return TEXT("RoundBay");
@@ -385,6 +410,67 @@ FString AProceduralIsland::GetShapeName() const
     case EIslandShape::TwinIslands: return TEXT("TwinIslands");
     default: return TEXT("ThreeIslets");
     }
+}
+
+void AProceduralIsland::BuildCanyonTopology()
+{
+    const float Spacing = CellSize * (GridSize - 1) / 5.f;
+    CanyonLayout = FTreasureGameplayLayoutGenerator::GenerateCanyon(Seed, Spacing);
+    CanyonNodes.Reset();
+    CanyonEdges.Reset();
+    for (const FTreasureLayoutNode& Node : CanyonLayout.Nodes)
+        CanyonNodes.Add({ Node.Position, Node.FloorHeight });
+    for (const FTreasureLayoutEdge& Edge : CanyonLayout.Edges)
+        CanyonEdges.Add({ Edge.A, Edge.B, Edge.bPrimary });
+    CanyonGoalNode = CanyonLayout.TreasureNode;
+    FString Reason;
+    const bool bValid = CanyonLayout.ValidateGraph(&Reason);
+    UE_LOG(LogTemp, Display,
+        TEXT("TREASURE_CANYON_LAYOUT Seed=%d Topology=%s Relationship=%s Nodes=%d Edges=%d Landmarks=%d Routes=%d Valid=%s %s"),
+        Seed, FTreasureGameplayLayout::TopologyName(CanyonLayout.Topology),
+        FTreasureGameplayLayout::RelationshipName(CanyonLayout.TreasureRelationship),
+        CanyonNodes.Num(), CanyonEdges.Num(), CanyonLayout.GetLandmarkCount(), CanyonLayout.GetRouteCount(),
+        bValid ? TEXT("YES") : TEXT("NO"), *Reason);
+    if (!bValid) UE_LOG(LogTemp, Error, TEXT("TREASURE_CANYON_LAYOUT_INVALID Seed=%d Reason=%s"), Seed, *Reason);
+}
+
+bool AProceduralIsland::ValidateCanyonRoutes() const
+{
+    if (Theme != EIslandTheme::Canyon || !CanyonLayout.ValidateGraph()) return false;
+    // Terrain is the realization of the graph: sample every route, not just endpoints.
+    for (const FCanyonEdge& Edge : CanyonEdges)
+    {
+        const FCanyonNode& A = CanyonNodes[Edge.A];
+        const FCanyonNode& B = CanyonNodes[Edge.B];
+        for (int32 Step = 0; Step <= 8; ++Step)
+        {
+            const FVector2D Point = FMath::Lerp(A.Position, B.Position, Step / 8.f);
+            if (SlopeAt(Point.X, Point.Y) > 0.45f)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("TREASURE_CANYON_VALIDATION Seed=%d Failed=Slope Edge=%d-%d Point=%s"),
+                    Seed, Edge.A, Edge.B, *Point.ToString());
+                return false;
+            }
+        }
+    }
+    const FVector2D Start = CanyonLayout.Nodes[CanyonLayout.SpawnNode].Position;
+    const FVector2D Target = CanyonLayout.TreasurePosition;
+    const float StartEye = HeightAt(Start.X, Start.Y) + 180.f;
+    const float TargetEye = HeightAt(Target.X, Target.Y) + 180.f;
+    for (int32 Step = 2; Step <= 30; ++Step)
+    {
+        const float T = Step / 32.f;
+        const FVector2D Point = FMath::Lerp(Start, Target, T);
+        if (HeightAt(Point.X, Point.Y) > FMath::Lerp(StartEye, TargetEye, T) + 100.f) return true;
+    }
+    UE_LOG(LogTemp, Warning, TEXT("TREASURE_CANYON_VALIDATION Seed=%d Failed=Sightline Topology=%s Treasure=%s"),
+        Seed, FTreasureGameplayLayout::TopologyName(CanyonLayout.Topology), *Target.ToString());
+    return false;
+}
+
+uint32 AProceduralIsland::GetCanyonLayoutHash() const
+{
+    return CanyonLayout.GetSignature();
 }
 
 float AProceduralIsland::NormalizedIslandDistance(float X, float Y) const
@@ -502,6 +588,30 @@ float AProceduralIsland::NormalizedIslandDistance(float X, float Y) const
 
 float AProceduralIsland::HeightAt(float X, float Y) const
 {
+    if (Theme == EIslandTheme::Canyon)
+    {
+        float BestDistanceSquared = TNumericLimits<float>::Max();
+        float FloorHeight = 480.f;
+        const FVector2D Point(X, Y);
+        for (const FCanyonEdge& Edge : CanyonEdges)
+        {
+            const FCanyonNode& A = CanyonNodes[Edge.A];
+            const FCanyonNode& B = CanyonNodes[Edge.B];
+            const FVector2D Delta = B.Position - A.Position;
+            const float T = FMath::Clamp(FVector2D::DotProduct(Point - A.Position, Delta) / Delta.SizeSquared(), 0.f, 1.f);
+            const float DistanceSquared = FVector2D::DistSquared(Point, A.Position + T * Delta);
+            if (DistanceSquared < BestDistanceSquared)
+            {
+                BestDistanceSquared = DistanceSquared;
+                FloorHeight = FMath::Lerp(A.Height, B.Height, T);
+            }
+        }
+        const float Distance = FMath::Sqrt(BestDistanceSquared);
+        // The 19.4 m floor matches the module sockets; the rim rises beyond it.
+        const float Wall = FMath::SmoothStep(970.f, 1600.f, Distance);
+        return FloorHeight + 6500.f * Wall
+            + 650.f * Wall * SeedNoise(X, Y, Seed + 809);
+    }
     const float Edge = NormalizedIslandDistance(X, Y);
     if (Edge >= 1.f)
     {
@@ -617,6 +727,11 @@ void AProceduralIsland::RecordDecoration(float X, float Y)
 
 FVector AProceduralIsland::FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight) const
 {
+    if (Theme == EIslandTheme::Canyon && CanyonNodes.IsValidIndex(CanyonGoalNode))
+    {
+        const FVector2D Point = CanyonLayout.TreasurePosition;
+        return GetActorLocation() + FVector(Point, HeightAt(Point.X, Point.Y));
+    }
     const float Extent = CellSize * (GridSize - 1) * 0.42f;
     const float Radius = CellSize * (GridSize - 1) * 0.46f;
     for (int32 Attempt = 0; Attempt < 500; ++Attempt)
@@ -635,6 +750,11 @@ FVector AProceduralIsland::FindRandomLandPoint(FRandomStream& Stream, float Mini
 
 FVector AProceduralIsland::FindSpawnPoint(float LateralOffset) const
 {
+    if (Theme == EIslandTheme::Canyon && CanyonNodes.IsValidIndex(CanyonLayout.SpawnNode))
+    {
+        const FCanyonNode& Start = CanyonNodes[CanyonLayout.SpawnNode];
+        return GetActorLocation() + FVector(Start.Position.X, Start.Position.Y + FMath::Clamp(LateralOffset, -300.f, 300.f), Start.Height + 180.f);
+    }
     const float Radius = CellSize * (GridSize - 1) * 0.46f;
     const FVector2D Desired(-Radius * 0.68f, LateralOffset);
     FVector Best(0.f, 0.f, HeightAt(0.f, 0.f));
@@ -662,13 +782,14 @@ FVector AProceduralIsland::FindSpawnPoint(float LateralOffset) const
 
 void AProceduralIsland::BuildIsland()
 {
+    if (Theme == EIslandTheme::Canyon) BuildCanyonTopology();
     IslandMesh->ClearAllMeshSections();
     TArray<FVector> Vertices;
     TArray<FVector> Normals;
     TArray<FVector2D> UVs;
     TArray<FProcMeshTangent> Tangents;
     TArray<FLinearColor> Colors;
-    TArray<int32> SectionTriangles[4];
+    TArray<int32> SectionTriangles[6];
     const float Half = (GridSize - 1) * CellSize * 0.5f;
 
     for (int32 Y = 0; Y < GridSize; ++Y)
@@ -699,7 +820,30 @@ void AProceduralIsland::BuildIsland()
             const float Slope = SlopeAt(WX, WY);
             const float Moisture = SeedNoise(WX + 1700.f, WY - 900.f, Seed + 73);
             int32 Section = 1;
-            if (Theme == EIslandTheme::MistForest)
+            if (Theme == EIslandTheme::Canyon)
+            {
+                float DistanceSquared = TNumericLimits<float>::Max();
+                ETreasureRegion ClosestRegion = ETreasureRegion::CanyonFloor;
+                const FVector2D Point(WX, WY);
+                for (const FCanyonEdge& Edge : CanyonEdges)
+                {
+                    const FVector2D A = CanyonNodes[Edge.A].Position;
+                    const FVector2D Delta = CanyonNodes[Edge.B].Position - A;
+                    const float T = FMath::Clamp(FVector2D::DotProduct(Point - A, Delta) / Delta.SizeSquared(), 0.f, 1.f);
+                    const float Candidate = FVector2D::DistSquared(Point, A + T * Delta);
+                    if (Candidate < DistanceSquared)
+                    {
+                        DistanceSquared = Candidate;
+                        ClosestRegion = CanyonLayout.Nodes[T < 0.5f ? Edge.A : Edge.B].Region;
+                    }
+                }
+                const float Band = Z + SeedNoise(WX, WY, Seed + 317) * 360.f;
+                Section = DistanceSquared < FMath::Square(970.f)
+                    ? ClosestRegion == ETreasureRegion::Mesa ? 4
+                        : ClosestRegion == ETreasureRegion::RockField ? 5 : 0
+                    : Band < 2600.f ? 1 : Band < 4900.f ? 2 : 3;
+            }
+            else if (Theme == EIslandTheme::MistForest)
             {
                 const float Edge = NormalizedIslandDistance(WX, WY);
                 if (Edge > 0.94f) Section = 3;
@@ -731,22 +875,198 @@ void AProceduralIsland::BuildIsland()
     const FLinearColor RockColors[] = { FLinearColor(0.27f, 0.25f, 0.21f), FLinearColor(0.34f, 0.32f, 0.28f), FLinearColor(0.29f, 0.25f, 0.20f) };
     const FLinearColor JungleColors[] = { FLinearColor(0.62f,0.48f,0.25f), FLinearColor(0.12f,0.34f,0.07f), FLinearColor(0.035f,0.20f,0.045f), FLinearColor(0.19f,0.27f,0.15f) };
     const FLinearColor ForestColors[] = { FLinearColor(0.08f,0.17f,0.045f), FLinearColor(0.07f,0.22f,0.055f), FLinearColor(0.025f,0.13f,0.035f), FLinearColor(0.13f,0.18f,0.12f) };
+    const FLinearColor CanyonColors[] = {
+        FLinearColor(0.57f,0.27f,0.12f), FLinearColor(0.38f,0.19f,0.11f),
+        FLinearColor(0.61f,0.35f,0.19f), FLinearColor(0.35f,0.21f,0.15f),
+        FLinearColor(0.72f,0.49f,0.28f), FLinearColor(0.40f,0.31f,0.25f) };
     const FLinearColor BeachColors[] = { SandColors[Palette], GrassColors[Palette], DarkGrassColors[Palette], RockColors[Palette] };
-    const FLinearColor* SurfaceColors = Theme == EIslandTheme::MistForest ? ForestColors
+    const FLinearColor* SurfaceColors = Theme == EIslandTheme::Canyon ? CanyonColors
+        : Theme == EIslandTheme::MistForest ? ForestColors
         : Theme == EIslandTheme::JungleRuins ? JungleColors : BeachColors;
 
     UMaterialInterface* BaseMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
-    for (int32 Section = 0; Section < 4; ++Section)
+    for (int32 Section = 0; Section < 6; ++Section)
     {
         IslandMesh->CreateMeshSection_LinearColor(Section, Vertices, SectionTriangles[Section], Normals, UVs, Colors, Tangents, true);
         if (BaseMaterial)
         {
             UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(BaseMaterial, this);
-            Material->SetVectorParameterValue(TEXT("Color"), SurfaceColors[Section]);
+            Material->SetVectorParameterValue(TEXT("Color"), SurfaceColors[Theme == EIslandTheme::Canyon ? Section : FMath::Min(Section, 3)]);
             IslandMesh->SetMaterial(Section, Material);
         }
     }
     IslandMesh->ContainsPhysicsTriMeshData(true);
+}
+
+void AProceduralIsland::BuildCanyonDecorations()
+{
+    const TCHAR* Variants[] = {
+        TEXT("Straight_A"), TEXT("Straight_B_Wide"), TEXT("Straight_C_Narrow"),
+        TEXT("Rise_3m"), TEXT("Fall_3m")
+    };
+    for (int32 Variant = 0; Variant < 5; ++Variant)
+    {
+        const FString Suffix(Variants[Variant]);
+        const FString Names[] = {
+            TEXT("SM_CanyonFloor_") + Suffix,
+            TEXT("SM_CanyonWall_L_") + Suffix,
+            TEXT("SM_CanyonWall_R_") + Suffix
+        };
+        for (int32 Part = 0; Part < 3; ++Part)
+        {
+            UHierarchicalInstancedStaticMeshComponent* Component = CanyonInstances[Variant * 3 + Part];
+            if (!Component->GetStaticMesh())
+            {
+                const FString Path = FString::Printf(TEXT("/Game/IslandAssets/CanyonModules/%s/StaticMeshes/%s.%s"),
+                    *Names[Part], *Names[Part], *Names[Part]);
+                Component->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, *Path));
+                if (!Component->GetStaticMesh()) UE_LOG(LogTemp, Error, TEXT("TREASURE_CANYON_ASSET_MISSING %s"), *Path);
+            }
+        }
+    }
+    for (int32 Rock = 0; Rock < 3; ++Rock)
+    {
+        UHierarchicalInstancedStaticMeshComponent* Component = CanyonInstances[15 + Rock];
+        if (!Component->GetStaticMesh())
+        {
+            const FString Name = FString::Printf(TEXT("SM_CanyonTalus_%02d"), Rock + 1);
+            const FString Path = FString::Printf(TEXT("/Game/IslandAssets/CanyonModules/%s/StaticMeshes/%s.%s"), *Name, *Name, *Name);
+            Component->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, *Path));
+        }
+    }
+    if (UStaticMesh* FloorMesh = CanyonInstances[0]->GetStaticMesh())
+    {
+        const FBoxSphereBounds Bounds = FloorMesh->GetBounds();
+        UE_LOG(LogTemp, Display, TEXT("TREASURE_CANYON_ASSET_BOUNDS FloorLength=%.0f FloorWidth=%.0f"),
+            Bounds.BoxExtent.X * 2.f, Bounds.BoxExtent.Y * 2.f);
+    }
+
+    auto HasSideExit = [&](int32 Node, int32 Other, const FVector2D& Direction, bool bLeft)
+    {
+        for (const FCanyonEdge& Incident : CanyonEdges)
+        {
+            const int32 Neighbor = Incident.A == Node ? Incident.B : Incident.B == Node ? Incident.A : INDEX_NONE;
+            if (Neighbor != INDEX_NONE && Neighbor != Other)
+            {
+                const FVector2D Turn = CanyonNodes[Neighbor].Position - CanyonNodes[Node].Position;
+                const float Cross = Direction.X * Turn.Y - Direction.Y * Turn.X;
+                if (bLeft ? Cross > 0.f : Cross < 0.f) return true;
+            }
+        }
+        return false;
+    };
+
+    FRandomStream Stream(Seed ^ 0x6C2852);
+    int32 WallPieces = 0;
+    for (const FCanyonEdge& Edge : CanyonEdges)
+    {
+        const FCanyonNode& A = CanyonNodes[Edge.A];
+        const FCanyonNode& B = CanyonNodes[Edge.B];
+        const float Rise = B.Height - A.Height;
+        const int32 Variant = Rise > 150.f ? 3 : Rise < -150.f ? 4 : Stream.RandRange(0, 2);
+        const FVector2D Delta = B.Position - A.Position;
+        const FRotator Rotation(0.f, FMath::RadiansToDegrees(FMath::Atan2(Delta.Y, Delta.X)), 0.f);
+        const FTransform Transform(Rotation, FVector(A.Position.X, A.Position.Y, A.Height + 8.f));
+        CanyonInstances[Variant * 3]->AddInstance(Transform);
+        // Only omit the wall on the side where another route enters a junction.
+        const FVector2D Direction = Delta.GetSafeNormal();
+        if (!HasSideExit(Edge.A, Edge.B, Direction, true) && !HasSideExit(Edge.B, Edge.A, Direction, true))
+        {
+            CanyonInstances[Variant * 3 + 1]->AddInstance(Transform);
+            ++WallPieces;
+        }
+        if (!HasSideExit(Edge.A, Edge.B, Direction, false) && !HasSideExit(Edge.B, Edge.A, Direction, false))
+        {
+            CanyonInstances[Variant * 3 + 2]->AddInstance(Transform);
+            ++WallPieces;
+        }
+    }
+    if (UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial")))
+    {
+        UHierarchicalInstancedStaticMeshComponent* Components[] = {
+            CanyonLandmarkCubes.Get(), CanyonLandmarkColumns.Get(), CanyonLandmarkBoulders.Get() };
+        const FLinearColor Colors[] = {
+            FLinearColor(0.48f, 0.21f, 0.11f), FLinearColor(0.70f, 0.41f, 0.24f), FLinearColor(0.31f, 0.19f, 0.14f) };
+        for (int32 Index = 0; Index < 3; ++Index)
+        {
+            UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(Base, this);
+            Material->SetVectorParameterValue(TEXT("Color"), Colors[Index]);
+            Components[Index]->SetMaterial(0, Material);
+        }
+    }
+    int32 LandmarkCount = 0;
+    for (const FTreasureLayoutNode& Node : CanyonLayout.Nodes)
+    {
+        if (Node.Landmark == ETreasureLandmark::None) continue;
+        ++LandmarkCount;
+        const bool bSide = Node.Landmark != ETreasureLandmark::StoneArch && Node.Landmark != ETreasureLandmark::BrokenBridge;
+        const FVector2D Center = Node.Position + FVector2D(0.f, bSide ? (Node.Cell.Y & 1 ? 680.f : -680.f) : 0.f);
+        const float Ground = HeightAt(Center.X, Center.Y);
+        auto Part = [&](UHierarchicalInstancedStaticMeshComponent* Component,
+            float X, float Y, float Z, float SX, float SY, float SZ, float Yaw = 0.f)
+        {
+            Component->AddInstance(FTransform(FRotator(0.f, Yaw, 0.f),
+                FVector(Center.X + X, Center.Y + Y, Ground + Z), FVector(SX, SY, SZ)));
+        };
+        switch (Node.Landmark)
+        {
+        case ETreasureLandmark::StoneArch:
+            Part(CanyonLandmarkColumns, 0, -500, 700, 2.6f, 2.6f, 14.f);
+            Part(CanyonLandmarkColumns, 0, 500, 700, 2.6f, 2.6f, 14.f);
+            Part(CanyonLandmarkCubes, 0, 0, 1490, 3.5f, 13.f, 2.2f); break;
+        case ETreasureLandmark::TwinSpires:
+            Part(CanyonLandmarkColumns, -350, -160, 900, 3.3f, 3.3f, 18.f);
+            Part(CanyonLandmarkColumns, 350, 160, 650, 2.5f, 2.5f, 13.f); break;
+        case ETreasureLandmark::BrokenBridge:
+            Part(CanyonLandmarkCubes, -450, -520, 550, 2.8f, 3.f, 11.f);
+            Part(CanyonLandmarkCubes, 450, 520, 550, 2.8f, 3.f, 11.f);
+            Part(CanyonLandmarkCubes, -150, 0, 1110, 7.f, 3.5f, 1.2f, 18.f); break;
+        case ETreasureLandmark::GiantSkull:
+            Part(CanyonLandmarkBoulders, 0, 0, 550, 9.f, 7.f, 9.f);
+            Part(CanyonLandmarkCubes, 0, 0, 180, 6.5f, 5.f, 2.7f);
+            Part(CanyonLandmarkColumns, -260, -250, 160, 0.8f, 0.8f, 3.2f);
+            Part(CanyonLandmarkColumns, -260, 250, 160, 0.8f, 0.8f, 3.2f); break;
+        case ETreasureLandmark::StoneRing:
+            for (int32 I = 0; I < 6; ++I)
+            {
+                const float Angle = 2.f * PI * I / 6.f;
+                Part(CanyonLandmarkColumns, 470.f * FMath::Cos(Angle), 470.f * FMath::Sin(Angle),
+                    340, 1.5f, 1.5f, 6.8f);
+            }
+            break;
+        case ETreasureLandmark::Watchtower:
+            Part(CanyonLandmarkCubes, 0, 0, 880, 4.5f, 4.5f, 17.6f);
+            Part(CanyonLandmarkCubes, 0, 0, 1820, 7.f, 7.f, 2.f);
+            Part(CanyonLandmarkColumns, -240, -240, 2150, 1.5f, 1.5f, 6.f);
+            Part(CanyonLandmarkColumns, 240, 240, 2150, 1.5f, 1.5f, 6.f); break;
+        case ETreasureLandmark::Cairn:
+            Part(CanyonLandmarkCubes, 0, 0, 200, 7.f, 5.f, 4.f, 10.f);
+            Part(CanyonLandmarkCubes, 80, 0, 540, 5.f, 4.f, 3.f, -17.f);
+            Part(CanyonLandmarkCubes, -50, 20, 810, 3.7f, 3.f, 2.8f, 26.f); break;
+        case ETreasureLandmark::BalancedBoulder:
+            Part(CanyonLandmarkColumns, 0, 0, 450, 2.8f, 2.8f, 9.f);
+            Part(CanyonLandmarkBoulders, 120, 0, 1180, 7.f, 6.f, 5.5f); break;
+        default: break;
+        }
+    }
+    // Small talus remains secondary detail and follows the graph's rock-field regions.
+    for (int32 Index = 0; Index < CanyonEdges.Num(); ++Index)
+    {
+        const FCanyonEdge& Edge = CanyonEdges[Index];
+        if (CanyonLayout.Nodes[Edge.A].Region != ETreasureRegion::RockField
+            && CanyonLayout.Nodes[Edge.B].Region != ETreasureRegion::RockField) continue;
+        const FVector2D Mid = (CanyonNodes[Edge.A].Position + CanyonNodes[Edge.B].Position) * 0.5f;
+        const FVector2D Direction = (CanyonNodes[Edge.B].Position - CanyonNodes[Edge.A].Position).GetSafeNormal();
+        const FVector2D Side(-Direction.Y, Direction.X);
+        const FVector2D Spot = Mid + Side * (Index & 1 ? 1250.f : -1250.f);
+        const int32 Variant = (Seed + Index * 7) % 3;
+        CanyonInstances[15 + FMath::Abs(Variant)]->AddInstance(FTransform(
+            FRotator(0.f, Index * 37.f, 0.f), FVector(Spot, HeightAt(Spot.X, Spot.Y) - 70.f), FVector(0.65f)));
+    }
+    UE_LOG(LogTemp, Display, TEXT("TREASURE_CANYON_MODULES Seed=%d FloorTiles=%d WallPieces=%d"),
+        Seed, CanyonEdges.Num(), WallPieces);
+    UE_LOG(LogTemp, Display, TEXT("TREASURE_CANYON_LANDMARKS Seed=%d Count=%d Treasure=%s"),
+        Seed, LandmarkCount, *CanyonLayout.TreasurePosition.ToString());
 }
 
 void AProceduralIsland::BuildDecorations()
@@ -765,8 +1085,17 @@ void AProceduralIsland::BuildDecorations()
     CampfireInstances->ClearInstances();
     for (UHierarchicalInstancedStaticMeshComponent* Component : JungleInstances) Component->ClearInstances();
     for (UHierarchicalInstancedStaticMeshComponent* Component : ForestInstances) Component->ClearInstances();
+    for (UHierarchicalInstancedStaticMeshComponent* Component : CanyonInstances) Component->ClearInstances();
+    CanyonLandmarkCubes->ClearInstances();
+    CanyonLandmarkColumns->ClearInstances();
+    CanyonLandmarkBoulders->ClearInstances();
     JungleTreeCollisionInstances->ClearInstances();
     OccupiedBuckets.Reset();
+    if (Theme == EIslandTheme::Canyon)
+    {
+        BuildCanyonDecorations();
+        return;
+    }
     if (Theme == EIslandTheme::JungleRuins)
     {
         BuildJungleDecorations();
@@ -1064,6 +1393,7 @@ void AProceduralIsland::ApplyDecorationMaterials()
 void AProceduralIsland::BuildWater()
 {
     WaterMesh->ClearAllMeshSections();
+    if (Theme == EIslandTheme::Canyon) return;
     const float S = CellSize * GridSize * 0.9f;
     TArray<FVector> V = { {-S,-S,0.f}, {S,-S,0.f}, {-S,S,0.f}, {S,S,0.f} };
     TArray<int32> T = { 0,2,1, 1,2,3 };

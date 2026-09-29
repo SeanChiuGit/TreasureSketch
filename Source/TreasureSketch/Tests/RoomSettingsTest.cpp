@@ -184,6 +184,23 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
             TestTrue(TEXT("Forest room area multiplier scales from the new base"), FMath::IsNearlyEqual(
                 (It->GridSize - 1) * It->CellSize, 12540.f * 0.75f * FMath::Sqrt(2.f), 0.01f));
         }
+    GM->StartSoloTest(2);
+    for (TActorIterator<AProceduralIsland> It(World); It; ++It)
+        if (!It->IsActorBeingDestroyed() && It->Theme == EIslandTheme::Canyon)
+        {
+            TestEqual(TEXT("Solo canyon uses 24 m graph spacing"), (It->GridSize - 1) * It->CellSize / 5.f, 2400.f);
+            TestTrue(TEXT("Solo canyon routes are connected and ramps are walkable"), It->ValidateCanyonRoutes());
+            const uint32 OriginalHash = It->GetCanyonLayoutHash();
+            It->OnConstruction(It->GetActorTransform());
+            TestEqual(TEXT("Canyon seed reproduces the same layout"), It->GetCanyonLayoutHash(), OriginalHash);
+            for (int32 OtherSeed = 1000; OtherSeed < 1100; ++OtherSeed)
+            {
+                It->Seed = OtherSeed;
+                It->OnConstruction(It->GetActorTransform());
+                TestTrue(*FString::Printf(TEXT("Canyon seed %d passes terrain, reachability and sightline validation"), OtherSeed),
+                    It->ValidateCanyonRoutes());
+            }
+        }
     World->DestroyWorld(false);
     return true;
 }

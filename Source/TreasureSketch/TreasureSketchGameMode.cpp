@@ -199,6 +199,8 @@ void ATreasureSketchGameMode::BuildRound()
     if (FParse::Value(FCommandLine::Get(), TEXT("IslandTheme="), RequestedTheme))
         Island->Theme = RequestedTheme.Equals(TEXT("Forest"), ESearchCase::IgnoreCase)
             ? EIslandTheme::MistForest
+            : RequestedTheme.Equals(TEXT("Canyon"), ESearchCase::IgnoreCase)
+                ? EIslandTheme::Canyon
             : RequestedTheme.Equals(TEXT("Ruins"), ESearchCase::IgnoreCase)
                 ? EIslandTheme::JungleRuins : EIslandTheme::PirateBeach;
     else
@@ -499,7 +501,7 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
     if (Island) Island->Destroy();
     FRandomStream Stream(FDateTime::Now().GetTicks());
     IslandSeed = Stream.RandRange(1000, 999999);
-    if (bHunterGameplayTest || bFullFlowTest)
+    if (bHunterGameplayTest || bFullFlowTest || ThemeChoice == 2)
     {
         if (const ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(GetWorld()->GetFirstPlayerController()))
             if (PC->GetTestSeed() > 0) IslandSeed = PC->GetTestSeed();
@@ -510,6 +512,7 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
     Island->Seed = IslandSeed;
     Island->Theme = ThemeChoice == 0 ? EIslandTheme::PirateBeach
         : ThemeChoice == 1 ? EIslandTheme::MistForest
+        : ThemeChoice == 2 ? EIslandTheme::Canyon
         : AProceduralIsland::SelectThemeFromTable(IslandSeed, true);
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (GS && (bHunterGameplayTest || bFullFlowTest))
@@ -546,6 +549,8 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
             TArray<FVector> UsedSpawns;
             PC->GetPawn()->SetActorLocation(bFullFlowTest ? Island->FindSpawnPoint() : FindHunterSpawn(UsedSpawns),
                 false, nullptr, ETeleportType::ResetPhysics);
+            if (Island->Theme == EIslandTheme::Canyon)
+                PC->SetControlRotation(FRotator(-8.f, 0.f, 0.f));
         }
         // Solo map testing deliberately shows the exact marker and its debug cylinder.
         // It must use the newly generated treasure location, not the menu preview location.

@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "TreasureGameplayLayout.h"
 #include "ProceduralIsland.generated.h"
 
 class UProceduralMeshComponent;
@@ -13,7 +14,8 @@ enum class EIslandTheme : uint8
 {
     PirateBeach,
     JungleRuins,
-    MistForest
+    MistForest,
+    Canyon
 };
 
 UCLASS()
@@ -49,6 +51,9 @@ public:
     FVector FindSpawnPoint(float LateralOffset = 0.f) const;
     FString GetShapeName() const;
     FString GetThemeName() const;
+    bool ValidateCanyonRoutes() const;
+    uint32 GetCanyonLayoutHash() const;
+    const FTreasureGameplayLayout& GetCanyonLayout() const { return CanyonLayout; }
     static EIslandTheme SelectThemeFromTable(int32 InSeed, bool bIncludeLockedThemes = true, uint8 AllowedThemesMask = 0xff);
     void ConfigureThemeParameters();
     bool ToggleDebugFog();
@@ -106,10 +111,29 @@ private:
     UPROPERTY()
     TArray<TObjectPtr<UHierarchicalInstancedStaticMeshComponent>> ForestInstances;
 
+    UPROPERTY()
+    TArray<TObjectPtr<UHierarchicalInstancedStaticMeshComponent>> CanyonInstances;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> CanyonLandmarkCubes;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> CanyonLandmarkColumns;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> CanyonLandmarkBoulders;
+
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> JungleTreeCollisionInstances;
 
     TMap<FIntPoint, TArray<FVector2D>> OccupiedBuckets;
+    FTreasureGameplayLayout CanyonLayout;
+    struct FCanyonNode { FVector2D Position; float Height = 180.f; };
+    struct FCanyonEdge { int32 A = 0; int32 B = 0; bool bMainRoute = false; };
+    TArray<FCanyonNode> CanyonNodes;
+    TArray<FCanyonEdge> CanyonEdges;
+    int32 CanyonGoalNode = 0;
+    void BuildCanyonTopology();
     void RecordDecoration(float X, float Y);
 
     void BuildIsland();
@@ -119,6 +143,7 @@ private:
     void BuildLandmarks(FRandomStream& Stream);
     void BuildJungleDecorations();
     void BuildForestDecorations();
+    void BuildCanyonDecorations();
     void ApplyDecorationMaterials();
     float NormalizedIslandDistance(float X, float Y) const;
     float SlopeAt(float X, float Y) const;

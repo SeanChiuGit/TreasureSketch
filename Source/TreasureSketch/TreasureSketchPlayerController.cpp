@@ -608,14 +608,14 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
     else if (ActionName == TEXT("MenuSolo")) OpenFrontEndPage(EFrontEndPage::SoloTest);
     else if (ActionName == TEXT("RoomDrawingRules")) OpenFrontEndPage(EFrontEndPage::RoomDrawingRules);
     else if (ActionName == TEXT("RoomDrawingRulesBack")) OpenFrontEndPage(EFrontEndPage::RoomLobby);
-    else if (ActionName == TEXT("SoloBeach") || ActionName == TEXT("SoloForest") || ActionName == TEXT("SoloRandom") || ActionName == TEXT("SoloHunter") || ActionName == TEXT("SoloFullFlow"))
+    else if (ActionName == TEXT("SoloBeach") || ActionName == TEXT("SoloForest") || ActionName == TEXT("SoloCanyon") || ActionName == TEXT("SoloRandom") || ActionName == TEXT("SoloHunter") || ActionName == TEXT("SoloFullFlow"))
     {
         if (ATreasureSketchGameMode* GameMode = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
         {
             const int32 ThemeChoice = ActionName == TEXT("SoloBeach") ? 0
-                : ActionName == TEXT("SoloForest") ? 1 : ActionName == TEXT("SoloHunter") ? -2
+                : ActionName == TEXT("SoloForest") ? 1 : ActionName == TEXT("SoloCanyon") ? 2 : ActionName == TEXT("SoloHunter") ? -2
                 : ActionName == TEXT("SoloFullFlow") ? -3 : -1;
-            if (ThemeChoice <= -2 && !TestSeedText.IsEmpty() && GetTestSeed() == 0) return;
+            if ((ThemeChoice <= -2 || ThemeChoice == 2) && !TestSeedText.IsEmpty() && GetTestSeed() == 0) return;
             GameMode->StartSoloTest(ThemeChoice);
         }
     }
