@@ -10,11 +10,28 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "Animation/AnimSequence.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Paths.h"
 #include "Net/UnrealNetwork.h"
+#include "TimerManager.h"
+#include "UnrealClient.h"
 #include "UObject/ConstructorHelpers.h"
+
+namespace
+{
+void CaptureMagePreview(const TCHAR* Name)
+{
+    const FString Directory = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Screenshots/MagePreview"));
+    IFileManager::Get().MakeDirectory(*Directory, true);
+    FScreenshotRequest::RequestScreenshot(
+        FPaths::Combine(Directory, FString(Name) + TEXT(".png")), true, false);
+}
+}
 
 ATreasureSketchCharacter::ATreasureSketchCharacter()
 {
+    PrimaryActorTick.bCanEverTick = true;
     GetCapsuleComponent()->InitCapsuleSize(42.f, 96.f);
     GetCharacterMovement()->MaxWalkSpeed = 520.f;
     GetCharacterMovement()->JumpZVelocity = NormalJumpVelocity;
@@ -33,6 +50,80 @@ ATreasureSketchCharacter::ATreasureSketchCharacter()
     static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> BaseMaterial(
         TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+    static ConstructorHelpers::FObjectFinder<USkeletalMesh> MageExplorerMesh(
+        TEXT("/Game/Characters/KayKitMageExplorer/SK_KayKitMageExplorer.SK_KayKitMageExplorer"));
+    static ConstructorHelpers::FObjectFinder<UAnimSequence> MageIdle(
+        TEXT("/Game/Characters/KayKitMageExplorer/SK_KayKitMageExplorer_Anim_Rig_Medium_A_MageExplorer_Idle_A.SK_KayKitMageExplorer_Anim_Rig_Medium_A_MageExplorer_Idle_A"));
+    static ConstructorHelpers::FObjectFinder<UAnimSequence> MageRun(
+        TEXT("/Game/Characters/KayKitMageExplorer/SK_KayKitMageExplorer_Anim_Rig_Medium_A_MageExplorer_Running_A.SK_KayKitMageExplorer_Anim_Rig_Medium_A_MageExplorer_Running_A"));
+    static ConstructorHelpers::FObjectFinder<UAnimSequence> MageJump(
+        TEXT("/Game/Characters/KayKitMageExplorer/SK_KayKitMageExplorer_Anim_Rig_Medium_A_MageExplorer_Jump_Full_Short.SK_KayKitMageExplorer_Anim_Rig_Medium_A_MageExplorer_Jump_Full_Short"));
+    static ConstructorHelpers::FObjectFinder<UAnimSequence> MageDig(
+        TEXT("/Game/Characters/KayKitMageExplorer/SK_KayKitMageExplorer_Anim_Rig_Medium_A_MageExplorer_WandDig.SK_KayKitMageExplorer_Anim_Rig_Medium_A_MageExplorer_WandDig"));
+    static ConstructorHelpers::FObjectFinder<UAnimSequence> MageRead(
+        TEXT("/Game/Characters/KayKitMageExplorer/SK_KayKitMageExplorer_Anim_Rig_Medium_A_MageExplorer_ReadBook.SK_KayKitMageExplorer_Anim_Rig_Medium_A_MageExplorer_ReadBook"));
+    static ConstructorHelpers::FObjectFinder<UAnimSequence> MageShove(
+        TEXT("/Game/Characters/KayKitMageExplorer/SK_KayKitMageExplorer_Anim_Rig_Medium_A_MageExplorer_Throw.SK_KayKitMageExplorer_Anim_Rig_Medium_A_MageExplorer_Throw"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> ClosedBook(
+        TEXT("/Game/Characters/KayKitMageExplorer/Props/SM_Spellbook_Closed.SM_Spellbook_Closed"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> OpenBook(
+        TEXT("/Game/Characters/KayKitMageExplorer/Props/SM_Spellbook_Open.SM_Spellbook_Open"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> MagicStaff(
+        TEXT("/Game/Characters/KayKitMageExplorer/Props/SM_MagicStaff.SM_MagicStaff"));
+
+    if (MageExplorerMesh.Succeeded())
+    {
+        GetMesh()->SetSkeletalMeshAsset(MageExplorerMesh.Object);
+        GetMesh()->SetRelativeLocation(FVector(0.f, 0.f, -96.f));
+        GetMesh()->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
+        GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        GetMesh()->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+    }
+    IdleAnimation = MageIdle.Object;
+    RunAnimation = MageRun.Object;
+    JumpAnimation = MageJump.Object;
+    DigAnimation = MageDig.Object;
+    ReadBookAnimation = MageRead.Object;
+    ShoveAnimation = MageShove.Object;
+
+    BackBookMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BackBookMesh"));
+    // Back gear is placed in character space so it stays stable while the
+    // single-node animations switch.  The imported KayKit character faces +X.
+    BackBookMesh->SetupAttachment(GetCapsuleComponent());
+    BackBookMesh->SetStaticMesh(ClosedBook.Object);
+    BackBookMesh->SetRelativeLocation(FVector(-60.f, 26.f, 8.f));
+    BackBookMesh->SetRelativeRotation(FRotator(5.f, -10.f, 18.f));
+    BackBookMesh->SetRelativeScale3D(FVector(0.84f));
+    BackBookMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+    BackStaffMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BackStaffMesh"));
+    BackStaffMesh->SetupAttachment(GetCapsuleComponent());
+    BackStaffMesh->SetStaticMesh(MagicStaff.Object);
+    BackStaffMesh->SetRelativeLocation(FVector(-62.f, -24.f, 22.f));
+    BackStaffMesh->SetRelativeRotation(FRotator(0.f, 7.f, 28.f));
+    BackStaffMesh->SetRelativeScale3D(FVector(0.82f));
+    BackStaffMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+    OpenBookMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("OpenBookMesh"));
+    OpenBookMesh->SetupAttachment(GetCapsuleComponent());
+    OpenBookMesh->SetStaticMesh(OpenBook.Object);
+    OpenBookMesh->SetRelativeLocation(FVector(49.f, 0.f, 0.f));
+    OpenBookMesh->SetRelativeRotation(FRotator(-8.f, 90.f, 0.f));
+    OpenBookMesh->SetRelativeScale3D(FVector(0.58f));
+    OpenBookMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    OpenBookMesh->SetVisibility(false);
+
+    HandStaffMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HandStaffMesh"));
+    // Match the prop position authored against the WandDig pose.  The imported
+    // KayKit helper bones use a different basis in UE, so their zero transform
+    // leaves the staff visibly detached from the palm.
+    HandStaffMesh->SetupAttachment(GetCapsuleComponent());
+    HandStaffMesh->SetStaticMesh(MagicStaff.Object);
+    HandStaffMesh->SetRelativeLocation(FVector(38.f, -60.f, -35.f));
+    HandStaffMesh->SetRelativeRotation(FRotator(0.f, 4.f, -8.f));
+    HandStaffMesh->SetRelativeScale3D(FVector(0.76f));
+    HandStaffMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    HandStaffMesh->SetVisibility(false);
 
     BodyMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BodyMesh"));
     HeadMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HeadMesh"));
@@ -81,6 +172,214 @@ void ATreasureSketchCharacter::BeginPlay()
     ColorPart(LeftLegMesh.Get(), FLinearColor(0.08f, 0.15f, 0.28f));
     ColorPart(RightLegMesh.Get(), FLinearColor(0.08f, 0.15f, 0.28f));
     ColorPart(FaceMesh.Get(), FLinearColor(0.02f, 0.06f, 0.09f));
+
+    if (GetMesh()->GetSkeletalMeshAsset())
+    {
+        BodyMesh->SetVisibility(false);
+        HeadMesh->SetVisibility(false);
+        LeftArmMesh->SetVisibility(false);
+        RightArmMesh->SetVisibility(false);
+        LeftLegMesh->SetVisibility(false);
+        RightLegMesh->SetVisibility(false);
+        FaceMesh->SetVisibility(false);
+        SetSuitColor(FLinearColor(0.035f, 0.58f, 0.62f));
+        PlayPartyAnimation(IdleAnimation, true);
+    }
+
+    if (FParse::Param(FCommandLine::Get(), TEXT("MagePreview")) && GetWorld())
+    {
+        if (AController* OwningController = GetController())
+            OwningController->SetControlRotation(FRotator(-8.f, 155.f, 0.f));
+
+        FTimerHandle IdleShot;
+        GetWorldTimerManager().SetTimer(IdleShot, []
+        {
+            CaptureMagePreview(TEXT("01_Idle"));
+        }, 3.f, false);
+
+        FTimerHandle StartRead;
+        GetWorldTimerManager().SetTimer(StartRead, [this]
+        {
+            PlayReadBookAnimation();
+        }, 5.f, false);
+
+        FTimerHandle ReadShot;
+        GetWorldTimerManager().SetTimer(ReadShot, []
+        {
+            CaptureMagePreview(TEXT("02_ReadBook"));
+        }, 6.f, false);
+
+        FTimerHandle StartDig;
+        GetWorldTimerManager().SetTimer(StartDig, [this]
+        {
+            PlayDigAnimation();
+        }, 8.f, false);
+
+        FTimerHandle DigShot;
+        GetWorldTimerManager().SetTimer(DigShot, []
+        {
+            CaptureMagePreview(TEXT("03_WandDig"));
+        }, 8.65f, false);
+
+        FTimerHandle StartRun;
+        GetWorldTimerManager().SetTimer(StartRun, [this]
+        {
+            SetDefaultGearVisibility();
+            bActionGearVisible = false;
+            PlayPartyAnimation(RunAnimation, true, 1.15f);
+            PartyActionUntil = GetWorld()->GetTimeSeconds() + 3.f;
+        }, 11.f, false);
+
+        FTimerHandle RunShot;
+        GetWorldTimerManager().SetTimer(RunShot, []
+        {
+            CaptureMagePreview(TEXT("04_Run"));
+        }, 11.6f, false);
+    }
+}
+
+void ATreasureSketchCharacter::Tick(float DeltaSeconds)
+{
+    Super::Tick(DeltaSeconds);
+    if (!GetMesh()->GetSkeletalMeshAsset() || !GetWorld()) return;
+
+    // Keep the staff grip locked to the animated right palm while preserving
+    // the mostly upright orientation from the Blender WandDig preview.
+    if (HandStaffMesh->IsVisible())
+    {
+        // Unreal sanitizes KayKit's Blender bone name `hand.r` to `hand_r`
+        // during FBX import. Using the dotted name silently returned the mesh
+        // root at the character's feet.
+        const FVector HandLocation = GetMesh()->GetSocketLocation(TEXT("hand_r"));
+        HandStaffMesh->SetWorldLocation(HandLocation - GetActorUpVector() * 18.f);
+        HandStaffMesh->SetWorldRotation(FRotator(8.f, GetActorRotation().Yaw + 4.f, 0.f));
+    }
+
+    const float Now = GetWorld()->GetTimeSeconds();
+    if (bReadingBook) return;
+    if (Now < PartyActionUntil) return;
+    if (bActionGearVisible)
+    {
+        SetDefaultGearVisibility();
+        bActionGearVisible = false;
+    }
+
+    UAnimSequence* Desired = nullptr;
+    if (GetCharacterMovement()->IsFalling()) Desired = JumpAnimation;
+    else if (GetVelocity().SizeSquared2D() > 100.f) Desired = RunAnimation;
+    else Desired = IdleAnimation;
+
+    if (Desired != CurrentPartyAnimation)
+        PlayPartyAnimation(Desired, true, Desired == RunAnimation ? 1.15f : 1.f);
+}
+
+void ATreasureSketchCharacter::SetSuitColor(FLinearColor Color)
+{
+    if (!GetMesh()->GetSkeletalMeshAsset()) return;
+    const int32 SuitIndex = GetMesh()->GetMaterialIndex(TEXT("MI_PartyExplorer_SuitColor"));
+    if (SuitIndex == INDEX_NONE) return;
+    UMaterialInterface* ColorMaterial = LoadObject<UMaterialInterface>(
+        nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+    if (!ColorMaterial) return;
+    SuitMaterial = UMaterialInstanceDynamic::Create(ColorMaterial, this);
+    SuitMaterial->SetVectorParameterValue(TEXT("Color"), Color);
+    GetMesh()->SetMaterial(SuitIndex, SuitMaterial);
+}
+
+void ATreasureSketchCharacter::PlayPartyAnimation(UAnimSequence* Animation, bool bLooping, float PlayRate)
+{
+    if (!Animation || !GetMesh()->GetSkeletalMeshAsset()) return;
+    GetMesh()->PlayAnimation(Animation, bLooping);
+    GetMesh()->SetPlayRate(PlayRate);
+    CurrentPartyAnimation = Animation;
+}
+
+void ATreasureSketchCharacter::PlayDigAnimation()
+{
+    BackBookMesh->SetVisibility(true);
+    BackStaffMesh->SetVisibility(false);
+    OpenBookMesh->SetVisibility(false);
+    HandStaffMesh->SetVisibility(true);
+    bActionGearVisible = true;
+    PlayPartyAnimation(DigAnimation, false, 1.25f);
+    if (GetWorld()) PartyActionUntil = GetWorld()->GetTimeSeconds() + 1.2f;
+}
+
+void ATreasureSketchCharacter::PlayReadBookAnimation()
+{
+    if (HasAuthority())
+    {
+        MulticastPlayReadBookAnimation();
+        return;
+    }
+
+    // Play immediately for the owning player, then ask the server to mirror it
+    // to spectators and the other clients.
+    ApplyReadBookAnimation();
+    ServerPlayReadBookAnimation();
+}
+
+void ATreasureSketchCharacter::ServerPlayReadBookAnimation_Implementation()
+{
+    MulticastPlayReadBookAnimation();
+}
+
+void ATreasureSketchCharacter::MulticastPlayReadBookAnimation_Implementation()
+{
+    // The owner already played it before the RPC round trip.
+    if (!IsLocallyControlled() || HasAuthority())
+        ApplyReadBookAnimation();
+}
+
+void ATreasureSketchCharacter::ApplyReadBookAnimation()
+{
+    BackBookMesh->SetVisibility(false);
+    BackStaffMesh->SetVisibility(true);
+    OpenBookMesh->SetVisibility(true);
+    HandStaffMesh->SetVisibility(false);
+    bActionGearVisible = true;
+    bReadingBook = true;
+    PlayPartyAnimation(ReadBookAnimation, true, 1.f);
+    PartyActionUntil = TNumericLimits<float>::Max();
+}
+
+void ATreasureSketchCharacter::StopReadBookAnimation()
+{
+    if (HasAuthority())
+    {
+        MulticastStopReadBookAnimation();
+        return;
+    }
+
+    SetDefaultGearVisibility();
+    bReadingBook = false;
+    bActionGearVisible = false;
+    PartyActionUntil = 0.f;
+    PlayPartyAnimation(IdleAnimation, true);
+    ServerStopReadBookAnimation();
+}
+
+void ATreasureSketchCharacter::ServerStopReadBookAnimation_Implementation()
+{
+    MulticastStopReadBookAnimation();
+}
+
+void ATreasureSketchCharacter::MulticastStopReadBookAnimation_Implementation()
+{
+    if (IsLocallyControlled() && !HasAuthority()) return;
+    SetDefaultGearVisibility();
+    bReadingBook = false;
+    bActionGearVisible = false;
+    PartyActionUntil = 0.f;
+    PlayPartyAnimation(IdleAnimation, true);
+}
+
+void ATreasureSketchCharacter::SetDefaultGearVisibility()
+{
+    BackBookMesh->SetVisibility(true);
+    BackStaffMesh->SetVisibility(true);
+    OpenBookMesh->SetVisibility(false);
+    HandStaffMesh->SetVisibility(false);
 }
 
 void ATreasureSketchCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -106,6 +405,11 @@ void ATreasureSketchCharacter::OnRep_ShoveWindingUp()
     if (UMaterialInstanceDynamic* Material = Cast<UMaterialInstanceDynamic>(RightArmMesh->GetMaterial(0)))
         Material->SetVectorParameterValue(TEXT("Color"), bShoveWindingUp
             ? FLinearColor(1.f, 0.33f, 0.04f) : FLinearColor(0.08f, 0.55f, 0.68f));
+    if (bShoveWindingUp)
+    {
+        PlayPartyAnimation(ShoveAnimation, false, 1.7f);
+        if (GetWorld()) PartyActionUntil = GetWorld()->GetTimeSeconds() + 0.65f;
+    }
 }
 
 void ATreasureSketchCharacter::SetMovementSpeedMultiplier(float Multiplier)

@@ -1,5 +1,10 @@
 # TreasureSketch 开发接手说明
 
+## 字体 UI 与 KayKit 人物（`feature/ground-up-canyon`）
+
+- 已合并 `codex/ui-readability-refresh`：主菜单、房间和游戏 HUD 使用随项目附带的字体；人物换为 KayKit Mage Explorer 骨骼模型，并接入行走、跳跃、读书和魔杖挖掘动作。峡谷入口、三种地图池选项和照片界面与新 UI 一并保留。
+- 字体许可与 KayKit 许可随素材保留。UE 5.6 编辑器编译及 `TreasureSketch.RoomSettings.MultiMapmaker` 冒烟测试通过；尚未打包新版游戏。
+
 ## 峡谷与地图师相机（`feature/ground-up-canyon`）
 
 - 已将 `codex/photo-clue` 合并进峡谷分支。峡谷默认加入房间地图池，可用于合作寻宝、多地图师和探索者对抗；房主可在大厅只勾选峡谷，面积倍数 0.5–5 生效。灰盒专用的 5 倍移速、飞行和 R 刷图仅在单人峡谷测试中启用。
