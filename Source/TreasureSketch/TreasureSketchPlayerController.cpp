@@ -15,6 +15,7 @@
 #include "Components/PrimitiveComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/CommandLine.h"
 
 namespace
 {
@@ -194,6 +195,9 @@ void ATreasureSketchPlayerController::BeginPlay()
         SetViewTarget(MenuCamera);
     }
     UpdateFrontEnd();
+    if (FParse::Param(FCommandLine::Get(), TEXT("MagePreview")))
+        if (ATreasureSketchGameMode* GameMode = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
+            GameMode->StartSoloTest(1);
 }
 
 void ATreasureSketchPlayerController::SetupInputComponent()
@@ -984,6 +988,11 @@ void ATreasureSketchPlayerController::ToggleMap()
         && GS->Phase == ETreasureRoundPhase::ScoutDrawing) return;
     SetSprayCursorMode(false);
     bMapOpen = !bMapOpen;
+    if (bMapOpen)
+    {
+        if (ATreasureSketchCharacter* ExplorerCharacter = Cast<ATreasureSketchCharacter>(GetPawn()))
+            ExplorerCharacter->PlayReadBookAnimation();
+    }
     if (bMapOpen && GS && GS->bSketchSceneLock && IsLocalScout()
         && GS->Phase == ETreasureRoundPhase::ScoutDrawing) bSketchSceneCommitted = true;
     bShowMouseCursor = bMapOpen;
@@ -1000,6 +1009,8 @@ void ATreasureSketchPlayerController::ToggleMap()
     }
     else
     {
+        if (ATreasureSketchCharacter* ExplorerCharacter = Cast<ATreasureSketchCharacter>(GetPawn()))
+            ExplorerCharacter->StopReadBookAnimation();
         SetInputMode(FInputModeGameOnly());
         UE_LOG(LogTemp, Display, TEXT("TREASURE_SKETCH_DRAWING_FOCUS Exploration controls restored"));
     }
@@ -1123,10 +1134,17 @@ void ATreasureSketchPlayerController::Dig()
     if (!GetPawn()) return;
     const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (PS && PS->PlayerRole == ETreasurePlayerRole::Hunter)
+    {
+        if (ATreasureSketchCharacter* ExplorerCharacter = Cast<ATreasureSketchCharacter>(GetPawn()))
+            ExplorerCharacter->PlayDigAnimation();
+    }
     if (PS && GS && PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->bGameStarted
         && GS->Phase == ETreasureRoundPhase::HunterSearching
         && PS->GetDigCooldownRemaining(GS->RoundSerial, GS->GetServerWorldTimeSeconds()) <= 0.f)
+    {
         ServerTryDig();
+    }
 }
 
 void ATreasureSketchPlayerController::ServerSpraySurface_Implementation(FVector_NetQuantize ViewOrigin, FVector_NetQuantizeNormal ViewDirection)

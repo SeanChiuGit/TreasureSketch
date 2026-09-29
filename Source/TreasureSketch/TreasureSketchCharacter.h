@@ -7,6 +7,8 @@
 class USpringArmComponent;
 class UCameraComponent;
 class UStaticMeshComponent;
+class UAnimSequence;
+class UMaterialInstanceDynamic;
 
 UCLASS()
 class TREASURESKETCH_API ATreasureSketchCharacter : public ACharacter
@@ -15,11 +17,24 @@ class TREASURESKETCH_API ATreasureSketchCharacter : public ACharacter
 
 public:
     ATreasureSketchCharacter();
+    virtual void Tick(float DeltaSeconds) override;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     void SetSpectatorHidden(bool bShouldHide);
     void SetMovementSpeedMultiplier(float Multiplier);
     void SetShoveWindingUp(bool bWindingUp);
     bool IsShoveWindingUp() const { return bShoveWindingUp; }
+
+    UFUNCTION(BlueprintCallable, Category="Party Explorer")
+    void SetSuitColor(FLinearColor Color);
+
+    UFUNCTION(BlueprintCallable, Category="Party Explorer")
+    void PlayDigAnimation();
+
+    UFUNCTION(BlueprintCallable, Category="Party Explorer")
+    void PlayReadBookAnimation();
+
+    UFUNCTION(BlueprintCallable, Category="Party Explorer")
+    void StopReadBookAnimation();
 
 protected:
     virtual void BeginPlay() override;
@@ -58,6 +73,46 @@ private:
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UStaticMeshComponent> FaceMesh;
 
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UStaticMeshComponent> BackBookMesh;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UStaticMeshComponent> BackStaffMesh;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UStaticMeshComponent> OpenBookMesh;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UStaticMeshComponent> HandStaffMesh;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UMaterialInstanceDynamic> SuitMaterial;
+
+    UPROPERTY()
+    TObjectPtr<UAnimSequence> IdleAnimation;
+
+    UPROPERTY()
+    TObjectPtr<UAnimSequence> RunAnimation;
+
+    UPROPERTY()
+    TObjectPtr<UAnimSequence> JumpAnimation;
+
+    UPROPERTY()
+    TObjectPtr<UAnimSequence> DigAnimation;
+
+    UPROPERTY()
+    TObjectPtr<UAnimSequence> ReadBookAnimation;
+
+    UPROPERTY()
+    TObjectPtr<UAnimSequence> ShoveAnimation;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UAnimSequence> CurrentPartyAnimation;
+
+    float PartyActionUntil = 0.f;
+    bool bActionGearVisible = false;
+    bool bReadingBook = false;
+
     UPROPERTY(ReplicatedUsing=OnRep_SpectatorHidden)
     bool bSpectatorHidden = false;
 
@@ -74,4 +129,20 @@ private:
     void MoveRight(float Value);
     void Turn(float Value);
     void LookUp(float Value);
+    void PlayPartyAnimation(UAnimSequence* Animation, bool bLooping, float PlayRate = 1.f);
+    void ApplyReadBookAnimation();
+
+    UFUNCTION(Server, Reliable)
+    void ServerPlayReadBookAnimation();
+
+    UFUNCTION(NetMulticast, Reliable)
+    void MulticastPlayReadBookAnimation();
+
+    UFUNCTION(Server, Reliable)
+    void ServerStopReadBookAnimation();
+
+    UFUNCTION(NetMulticast, Reliable)
+    void MulticastStopReadBookAnimation();
+
+    void SetDefaultGearVisibility();
 };
