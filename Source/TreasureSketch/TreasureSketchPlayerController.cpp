@@ -9,12 +9,17 @@
 #include "ProceduralIsland.h"
 #include "TreasureOnlineSubsystem.h"
 #include "Camera/CameraActor.h"
+#include "Components/SceneCaptureComponent2D.h"
 #include "Engine/Engine.h"
+#include "Engine/TextureRenderTarget2D.h"
 #include "EngineUtils.h"
+#include "IImageWrapper.h"
+#include "IImageWrapperModule.h"
 #include "InputKeyEventArgs.h"
 #include "Components/PrimitiveComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Modules/ModuleManager.h"
 
 namespace
 {
@@ -203,6 +208,7 @@ void ATreasureSketchPlayerController::SetupInputComponent()
     InputComponent->BindAction("Handoff", IE_Pressed, this, &ATreasureSketchPlayerController::Handoff);
     InputComponent->BindAction("Dig", IE_Pressed, this, &ATreasureSketchPlayerController::Dig);
     InputComponent->BindAction("Shove", IE_Pressed, this, &ATreasureSketchPlayerController::Shove);
+    InputComponent->BindAction("TakePhoto", IE_Pressed, this, &ATreasureSketchPlayerController::TakePhoto);
     InputComponent->BindAction("ClearSketch", IE_Pressed, this, &ATreasureSketchPlayerController::ClearSketch);
     InputComponent->BindAction("NewRound", IE_Pressed, this, &ATreasureSketchPlayerController::NewRound);
     InputComponent->BindAction("HostOnline", IE_Pressed, this, &ATreasureSketchPlayerController::HostOnlineGame);
@@ -226,6 +232,86 @@ void ATreasureSketchPlayerController::ToggleWeatherFog()
     }
 }
 
+void ATreasureSketchPlayerController::ResetRoundPhoto()
+{
+    ServerPhotoJpeg.Reset();
+    bServerDrawingOverheadView = false;
+}
+
+void ATreasureSketchPlayerController::TakePhoto()
+{
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing
+        || !IsLocalScout() || HasSubmittedSketch() || bMapOpen || bPauseMenuOpen
+        || bDrawingOverheadView || SpectatorCamera || !GetPawn() || !LocalPhotoJpeg.IsEmpty()) return;
+
+    FVector ViewOrigin;
+    FRotator ViewRotation;
+    GetPlayerViewPoint(ViewOrigin, ViewRotation);
+    constexpr int32 Width = 384, Height = 216;
+    UTextureRenderTarget2D* Target = NewObject<UTextureRenderTarget2D>(this);
+    Target->InitCustomFormat(Width, Height, PF_B8G8R8A8, false);
+    Target->UpdateResourceImmediate(true);
+    USceneCaptureComponent2D* Capture = NewObject<USceneCaptureComponent2D>(this);
+    Capture->TextureTarget = Target;
+    Capture->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
+    Capture->bCaptureEveryFrame = false;
+    Capture->bCaptureOnMovement = false;
+    Capture->FOVAngle = PlayerCameraManager ? PlayerCameraManager->GetFOVAngle() : 90.f;
+    Capture->HiddenActors.Add(GetPawn());
+    if (LocalScoutMarker) Capture->HiddenActors.Add(LocalScoutMarker);
+    Capture->RegisterComponentWithWorld(GetWorld());
+    Capture->SetWorldLocationAndRotation(ViewOrigin, ViewRotation);
+    Capture->CaptureScene();
+    TArray<FColor> Pixels;
+    const bool bCaptured = Target->GameThread_GetRenderTargetResource()->ReadPixels(Pixels);
+    Capture->DestroyComponent();
+    if (!bCaptured || Pixels.Num() != Width * Height) return;
+
+    IImageWrapperModule& Images = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
+    const TSharedPtr<IImageWrapper> Jpeg = Images.CreateImageWrapper(EImageFormat::JPEG);
+    if (!Jpeg.IsValid() || !Jpeg->SetRaw(Pixels.GetData(), Pixels.Num() * sizeof(FColor),
+        Width, Height, ERGBFormat::BGRA, 8)) return;
+    TArray64<uint8> Compressed = Jpeg->GetCompressed(55);
+    if (Compressed.Num() > 48 * 1024) Compressed = Jpeg->GetCompressed(25);
+    if (Compressed.IsEmpty() || Compressed.Num() > 48 * 1024)
+    {
+        StatusMessage = TEXT("照片太复杂，请换一个角度再拍。");
+        StatusUntil = GetWorld()->GetTimeSeconds() + 4.f;
+        return;
+    }
+    LocalPhotoJpeg.Append(Compressed.GetData(), static_cast<int32>(Compressed.Num()));
+    ServerSubmitPhoto(GS->RoundSerial, ViewOrigin, ViewRotation, LocalPhotoJpeg);
+    StatusMessage = TEXT("照片已拍好；打开画纸可查看，交图后探索者也能看到。");
+    StatusUntil = GetWorld()->GetTimeSeconds() + 5.f;
+}
+
+void ATreasureSketchPlayerController::ServerSetDrawingOverheadView_Implementation(bool bOverhead)
+{
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (GS && GS->bGameStarted && GS->Phase == ETreasureRoundPhase::ScoutDrawing && IsLocalScout())
+        bServerDrawingOverheadView = bOverhead;
+}
+
+void ATreasureSketchPlayerController::ServerSubmitPhoto_Implementation(
+    int32 RoundSerial, FVector_NetQuantize ViewOrigin, FRotator ViewRotation, const TArray<uint8>& PhotoJpeg)
+{
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing
+        || GS->RoundSerial != RoundSerial || !IsLocalScout() || HasSubmittedSketch()
+        || bServerDrawingOverheadView || !GetPawn() || !ServerPhotoJpeg.IsEmpty()
+        || PhotoJpeg.Num() < 100 || PhotoJpeg.Num() > 48 * 1024
+        || FVector::DistSquared(ViewOrigin, GetPawn()->GetActorLocation()) > FMath::Square(700.f)
+        || FVector::DotProduct(ViewRotation.Vector(), GetControlRotation().Vector()) < 0.6f) return;
+    IImageWrapperModule& Images = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
+    const TSharedPtr<IImageWrapper> Jpeg = Images.CreateImageWrapper(EImageFormat::JPEG);
+    if (!Jpeg.IsValid() || !Jpeg->SetCompressed(PhotoJpeg.GetData(), PhotoJpeg.Num())
+        || Jpeg->GetWidth() != 384 || Jpeg->GetHeight() != 216) return;
+    ServerPhotoJpeg = PhotoJpeg;
+    if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
+        GM->BroadcastSketchPhoto(GetPlayerState<ATreasureSketchPlayerState>(), ServerPhotoJpeg);
+}
+
 FVector2D ATreasureSketchPlayerController::GetPaperMin() const
 {
     int32 W = 1280, H = 720; GetViewportSize(W, H);
@@ -240,6 +326,7 @@ FVector2D ATreasureSketchPlayerController::GetPaperSize() const
 
 bool ATreasureSketchPlayerController::IsPointOnPaper(const FVector2D& Point) const
 {
+    if (bPhotoExpanded) return false;
     const FVector2D Min = GetPaperMin(), Max = Min + GetPaperSize();
     return Point.X >= Min.X && Point.Y >= Min.Y + 92.f && Point.X <= Max.X && Point.Y <= Max.Y;
 }
@@ -485,6 +572,12 @@ void ATreasureSketchPlayerController::OpenFrontEndPage(EFrontEndPage NewPage)
 
 void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
 {
+    if (ActionName == TEXT("TogglePhoto"))
+    {
+        if ((bMapOpen || IsHunterWaiting()) && !GetPhotoJpeg().IsEmpty())
+            bPhotoExpanded = !bPhotoExpanded;
+        return;
+    }
     if (ActionName == TEXT("InkBlack") || ActionName == TEXT("InkRed") || ActionName == TEXT("InkBlue")
         || ActionName == TEXT("InkGreen") || ActionName == TEXT("InkGold")
         || ActionName == TEXT("InkEraserSmall") || ActionName == TEXT("InkEraserLarge"))
@@ -910,6 +1003,7 @@ void ATreasureSketchPlayerController::ToggleSpectatorView()
         if (GS->bSketchSceneLock && bSketchSceneCommitted) return;
         if (bMapOpen) ToggleMap();
         bDrawingOverheadView = !bDrawingOverheadView;
+        ServerSetDrawingOverheadView(bDrawingOverheadView);
         if (!bDrawingOverheadView) StopSpectating(false);
         else SetSprayCursorMode(false);
         ApplyPhaseInputRules();
@@ -986,6 +1080,7 @@ void ATreasureSketchPlayerController::ToggleMap()
     bMapOpen = !bMapOpen;
     if (bMapOpen && GS && GS->bSketchSceneLock && IsLocalScout()
         && GS->Phase == ETreasureRoundPhase::ScoutDrawing) bSketchSceneCommitted = true;
+    if (!bMapOpen) bPhotoExpanded = false;
     bShowMouseCursor = bMapOpen;
     ApplyPhaseInputRules();
     if (bMapOpen)
@@ -1047,6 +1142,7 @@ void ATreasureSketchPlayerController::ClientReceiveSketch_Implementation(const T
     Strokes = CompletedStrokes;
     PendingDrawingPoints.Reset();
     bMapOpen = false;
+    bPhotoExpanded = false;
     bWasDrawing = false;
     bShowMouseCursor = false;
     SetInputMode(FInputModeGameOnly());
@@ -1069,6 +1165,7 @@ void ATreasureSketchPlayerController::ClientReceiveSketchPages_Implementation(in
                 { ActiveSketchPage = PageIndex; break; }
     PendingDrawingPoints.Reset();
     bMapOpen = false;
+    bPhotoExpanded = false;
     bWasDrawing = false;
     bShowMouseCursor = false;
     SetInputMode(FInputModeGameOnly());
@@ -1115,6 +1212,14 @@ void ATreasureSketchPlayerController::ClientReplaceLiveSketch_Implementation(int
     if (!bLiveSketchActive || RoundSerial != CurrentSketchRoundSerial) return;
     if (FSketchPage* Existing = SketchPages.FindByPredicate([&Page](const FSketchPage& Candidate)
         { return Candidate.MapmakerId == Page.MapmakerId; })) *Existing = Page;
+}
+
+void ATreasureSketchPlayerController::ClientReceiveLivePhoto_Implementation(
+    int32 RoundSerial, int32 MapmakerId, const TArray<uint8>& PhotoJpeg)
+{
+    if (!bLiveSketchActive || RoundSerial != CurrentSketchRoundSerial) return;
+    if (FSketchPage* Page = SketchPages.FindByPredicate([MapmakerId](const FSketchPage& Candidate)
+        { return Candidate.MapmakerId == MapmakerId; })) Page->PhotoJpeg = PhotoJpeg;
 }
 
 void ATreasureSketchPlayerController::Dig()
@@ -1228,6 +1333,8 @@ void ATreasureSketchPlayerController::ClientStartNewRound_Implementation(int32 N
     bHasScoutTreasureLocation = false;
     SetLocalTreasureMarkerVisible(false);
     Strokes.Reset();
+    LocalPhotoJpeg.Reset();
+    if (HasAuthority()) ResetRoundPhoto();
     SketchPages.Reset();
     bLiveSketchActive = false;
     ActiveSketchPage = 0;
@@ -1240,6 +1347,7 @@ void ATreasureSketchPlayerController::ClientStartNewRound_Implementation(int32 N
     PendingDrawingPoints.Reset();
     NextDrawingSyncTime = 0.f;
     bMapOpen = false;
+    bPhotoExpanded = false;
     bWaitingSketchInputActive = false;
     bWasDrawing = false;
     StatusMessage = TEXT("新的一局开始了！");

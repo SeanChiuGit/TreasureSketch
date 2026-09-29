@@ -31,6 +31,7 @@ public:
     void SubmitPlayerSketch(ATreasureSketchPlayerState* Scout, const TArray<FSketchStroke>& SubmittedStrokes);
     void BroadcastSketchDelta(ATreasureSketchPlayerState* Scout, int32 StrokeIndex, uint8 ColorIndex, uint8 EraserSize, const TArray<FVector2D>& Points);
     void BroadcastSketchClear(ATreasureSketchPlayerState* Scout);
+    void BroadcastSketchPhoto(ATreasureSketchPlayerState* Scout, const TArray<uint8>& PhotoJpeg);
     bool TryDig(ATreasureSketchPlayerState* Hunter, const FVector& WorldLocation, float& OutDistance, bool& bAttempted);
     bool TryShove(ATreasureSketchPlayerController* ShovingPlayer);
     void StartNewRound(bool bSwapRoles = false, ATreasureSketchPlayerState* RoleRequester = nullptr);

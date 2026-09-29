@@ -715,7 +715,12 @@ void ATreasureSketchGameMode::ResetSubmittedSketches()
     if (ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>())
         for (APlayerState* State : GS->PlayerArray)
             if (ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State))
-            { PS->bSketchSubmitted = false; PS->ForceNetUpdate(); }
+            {
+                PS->bSketchSubmitted = false;
+                PS->ForceNetUpdate();
+                if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(PS->GetOwner()))
+                    PC->ResetRoundPhoto();
+            }
 }
 
 TArray<FSketchPage> ATreasureSketchGameMode::CollectSketchPages() const
@@ -733,7 +738,10 @@ TArray<FSketchPage> ATreasureSketchGameMode::CollectSketchPages() const
             {
                 Page.MapmakerName = PS->GetPlayerName();
                 if (const ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(PS->GetOwner()))
+                {
                     Page.Strokes = PC->GetServerDrawing();
+                    Page.PhotoJpeg = PC->GetServerPhoto();
+                }
             }
             if (Page.MapmakerName.IsEmpty()) Page.MapmakerName = FString::Printf(TEXT("地图师 %d"), Pages.Num() + 1);
             Pages.Add(MoveTemp(Page));
@@ -749,6 +757,8 @@ void ATreasureSketchGameMode::SubmitPlayerSketch(ATreasureSketchPlayerState* Sco
     FSketchPage Page;
     Page.MapmakerId = Scout->GetPlayerId();
     Page.MapmakerName = Scout->GetPlayerName();
+    if (const ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(Scout->GetOwner()))
+        Page.PhotoJpeg = PC->GetServerPhoto();
     int32 InkUsed = 0, EraserUsed = 0;
     for (const FSketchStroke& Stroke : SubmittedStrokes)
     {
@@ -809,6 +819,18 @@ void ATreasureSketchGameMode::BroadcastSketchClear(ATreasureSketchPlayerState* S
             if (const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
                 PS && PS->PlayerRole == ETreasurePlayerRole::Hunter)
                 PC->ClientClearLiveSketch(GS->RoundSerial, Scout->GetPlayerId());
+}
+
+void ATreasureSketchGameMode::BroadcastSketchPhoto(ATreasureSketchPlayerState* Scout, const TArray<uint8>& PhotoJpeg)
+{
+    const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing || !Scout
+        || Scout->PlayerRole != ETreasurePlayerRole::Scout || Scout->bSketchSubmitted) return;
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+        if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(It->Get()))
+            if (const ATreasureSketchPlayerState* PS = PC->GetPlayerState<ATreasureSketchPlayerState>();
+                PS && PS->PlayerRole == ETreasurePlayerRole::Hunter)
+                PC->ClientReceiveLivePhoto(GS->RoundSerial, Scout->GetPlayerId(), PhotoJpeg);
 }
 
 void ATreasureSketchGameMode::BeginHunterSearching(const TArray<FSketchPage>& Pages)

@@ -52,6 +52,9 @@ public:
     bool IsSprayCursorMode() const { return bSprayCursorMode; }
     bool IsMapOpen() const { return bMapOpen; }
     const TArray<FSketchStroke>& GetStrokes() const { return SketchPages.IsValidIndex(ActiveSketchPage) ? SketchPages[ActiveSketchPage].Strokes : Strokes; }
+    const TArray<uint8>& GetPhotoJpeg() const { return SketchPages.IsValidIndex(ActiveSketchPage) ? SketchPages[ActiveSketchPage].PhotoJpeg : LocalPhotoJpeg; }
+    bool HasTakenPhoto() const { return !LocalPhotoJpeg.IsEmpty(); }
+    bool IsPhotoExpanded() const { return bPhotoExpanded; }
     uint8 GetSelectedInkColor() const { return SelectedInkColor; }
     uint8 GetSelectedEraserSize() const { return SelectedEraserSize; }
     const TArray<FPlayedRoundRecord>& GetHistoryRecords() const;
@@ -70,6 +73,8 @@ public:
     bool HasSubmittedSketch() const;
     void CycleSketchPage(int32 Direction);
     const TArray<FSketchStroke>& GetServerDrawing() const;
+    const TArray<uint8>& GetServerPhoto() const { return ServerPhotoJpeg; }
+    void ResetRoundPhoto();
     FString GetStatusMessage() const { return StatusMessage; }
     FVector2D GetPaperMin() const;
     FVector2D GetPaperSize() const;
@@ -108,6 +113,9 @@ public:
 
     UFUNCTION(Client, Reliable)
     void ClientReplaceLiveSketch(int32 RoundSerial, const FSketchPage& Page);
+
+    UFUNCTION(Client, Reliable)
+    void ClientReceiveLivePhoto(int32 RoundSerial, int32 MapmakerId, const TArray<uint8>& PhotoJpeg);
 
     UFUNCTION(Client, Reliable)
     void ClientDigResult(bool bFound, int32 FeedbackValue, bool bRace);
@@ -166,6 +174,11 @@ private:
 
     UPROPERTY()
     TArray<FSketchStroke> ServerDrawing;
+    UPROPERTY()
+    TArray<uint8> LocalPhotoJpeg;
+    UPROPERTY()
+    TArray<uint8> ServerPhotoJpeg;
+    bool bServerDrawingOverheadView = false;
     TArray<FVector2D> PendingDrawingPoints;
     float NextDrawingSyncTime = 0.f;
     int32 ServerDrawingRoundSerial = 0;
@@ -184,6 +197,13 @@ private:
     void ServerAppendDrawing(int32 RoundSerial, int32 StrokeIndex, uint8 ColorIndex, uint8 EraserSize, const TArray<FVector2D>& Points);
     UFUNCTION(Server, Reliable)
     void ServerClearDrawing(int32 RoundSerial);
+
+    UFUNCTION(Server, Reliable)
+    void ServerSubmitPhoto(int32 RoundSerial, FVector_NetQuantize ViewOrigin, FRotator ViewRotation,
+        const TArray<uint8>& PhotoJpeg);
+
+    UFUNCTION(Server, Reliable)
+    void ServerSetDrawingOverheadView(bool bOverhead);
 
     UPROPERTY()
     TObjectPtr<ATreasureMarker> LocalScoutMarker;
@@ -206,6 +226,7 @@ private:
     int32 PendingSpectatorRoundSerial = 0;
 
     bool bMapOpen = false;
+    bool bPhotoExpanded = false;
     bool bWaitingSketchInputActive = false;
     bool bWasDrawing = false;
     bool bReplayInputActive = false;
@@ -217,6 +238,7 @@ private:
     bool bFrontEndInputActive = false;
 
     void ToggleMap();
+    void TakePhoto();
     void Handoff();
     void Dig();
     void NewRound();
