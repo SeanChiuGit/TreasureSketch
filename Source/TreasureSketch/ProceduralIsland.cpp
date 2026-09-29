@@ -37,7 +37,7 @@ const FIslandThemeDefinition ThemeTable[] = {
     // Forest 1x has 75% of the former 125.4m side length; preserve original forest density.
     { EIslandTheme::MistForest, TEXT("MistForest"), 50, true, 3.60f, 3.80f, 1.00f, 39, 247.5f,
         (9405.f * 9405.f) / (24600.f * 24600.f) },
-    { EIslandTheme::CanyonGraybox, TEXT("CanyonGraybox"), 50, true, 0.f, 0.f, 1.f, 321, 125.f, 1.f },
+    { EIslandTheme::CanyonGraybox, TEXT("CanyonGraybox"), 50, true, 0.f, 0.f, 1.f, 321, 39.1875f, 1.f },
 };
 
 const FIslandThemeDefinition& GetThemeDefinition(EIslandTheme Theme)
@@ -233,7 +233,7 @@ void AProceduralIsland::ConfigureThemeParameters()
     {
         MapScale = FMath::IsFinite(MapScale) ? FMath::Clamp(MapScale, 0.5f, 5.f) : 1.f;
         GridSize = 321;
-        CellSize = 125.f * FMath::Sqrt(MapScale);
+        CellSize = 39.1875f * FMath::Sqrt(MapScale);
         return;
     }
     const FIslandThemeDefinition& Definition = GetThemeDefinition(Theme);
@@ -613,7 +613,7 @@ bool AProceduralIsland::IsCanyonRouteAt(float X, float Y) const
         return false;
     float Distance = 0.f;
     CanyonLayout.HeightAt(X, Y, &Distance);
-    return Distance < 650.f * CanyonLayout.LengthScale;
+    return Distance < FMath::Max(320.f, 650.f * CanyonLayout.LengthScale);
 }
 
 float AProceduralIsland::SlopeAt(float X, float Y) const
@@ -694,8 +694,10 @@ FVector AProceduralIsland::FindSpawnPoint(float LateralOffset) const
         const FVector Forward = (CanyonLayout.Nodes[1].Position - Point).GetSafeNormal2D();
         const FVector Right(-Forward.Y, Forward.X, 0.f);
         const int32 Slot = FMath::RoundToInt(FMath::Abs(LateralOffset) / 600.f);
-        const FVector Position = Point + Forward * (Slot * 210.f)
-            + Right * (LateralOffset < 0.f ? -100.f : Slot > 0 ? 100.f : 0.f);
+        const float SideOffset = Slot == 0 ? 0.f
+            : (LateralOffset < 0.f ? -1.f : 1.f) * (80.f + Slot * 20.f);
+        const FVector Position = Point + Forward * (Slot * 180.f)
+            + Right * SideOffset;
         return GetActorLocation() + FVector(Position.X, Position.Y,
             CanyonLayout.HeightAt(Position.X, Position.Y) + 180.f);
     }
@@ -1204,9 +1206,9 @@ void AProceduralIsland::BuildCanyonGrayboxTerrain()
             ECanyonRouteLayer Layer = ECanyonRouteLayer::Lower;
             CanyonLayout.HeightAt((X + 0.5f) * CellSize - Half,
                 (Y + 0.5f) * CellSize - Half, &Distance, &Layer);
-            const int32 Section = Distance < 530.f
+            const int32 Section = Distance < FMath::Max(320.f, 530.f * CanyonLayout.LengthScale)
                 ? (Layer == ECanyonRouteLayer::Upper ? 1 : 0)
-                : Distance < 1000.f ? 2 : 3;
+                : Distance < FMath::Max(650.f, 1000.f * CanyonLayout.LengthScale) ? 2 : 3;
             Triangles[Section].Append({ I, I + GridSize, I + 1, I + 1, I + GridSize, I + GridSize + 1 });
         }
 
@@ -1235,6 +1237,7 @@ void AProceduralIsland::BuildCanyonGrayboxTerrain()
 void AProceduralIsland::BuildCanyonGrayboxLandmarks()
 {
     if (!CanyonLayout.Validate()) return;
+    const float S = CanyonLayout.LengthScale;
     for (int32 NodeIndex = 0; NodeIndex < CanyonLayout.Nodes.Num(); NodeIndex += 2)
     {
         const FCanyonGrayboxNode& Node = CanyonLayout.Nodes[NodeIndex];
@@ -1242,12 +1245,12 @@ void AProceduralIsland::BuildCanyonGrayboxLandmarks()
         Fill->SetupAttachment(RootComponent);
         Fill->SetMobility(EComponentMobility::Movable);
         Fill->SetIntensity(65000.f);
-        Fill->SetAttenuationRadius(6000.f);
+        Fill->SetAttenuationRadius(FMath::Max(2500.f, 6000.f * S));
         Fill->SetLightColor(FLinearColor(1.f, 0.88f, 0.68f));
         Fill->SetCastShadows(false);
         Fill->RegisterComponent();
         Fill->SetRelativeLocation(FVector(Node.Position.X, Node.Position.Y,
-            CanyonLayout.HeightAt(Node.Position.X, Node.Position.Y) + 1300.f));
+            CanyonLayout.HeightAt(Node.Position.X, Node.Position.Y) + 1300.f * S));
         CanyonFillLights.Add(Fill);
     }
     UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr,
@@ -1263,12 +1266,12 @@ void AProceduralIsland::BuildCanyonGrayboxLandmarks()
     }
     auto Box = [&](const FVector& Center, const FVector& Size, const FRotator& Rotation = FRotator::ZeroRotator)
     {
-        CanyonLandmarkBoxes->AddInstance(FTransform(Rotation, Center, Size / 100.f));
+        CanyonLandmarkBoxes->AddInstance(FTransform(Rotation, Center, Size * S / 100.f));
     };
     auto Cylinder = [&](const FVector& Center, float Diameter, float Height)
     {
         CanyonLandmarkCylinders->AddInstance(FTransform(FRotator::ZeroRotator, Center,
-            FVector(Diameter / 100.f, Diameter / 100.f, Height / 100.f)));
+            FVector(Diameter * S / 100.f, Diameter * S / 100.f, Height * S / 100.f)));
     };
     for (int32 Index = 0; Index < CanyonLayout.Nodes.Num(); ++Index)
     {
@@ -1293,29 +1296,29 @@ void AProceduralIsland::BuildCanyonGrayboxLandmarks()
         case ECanyonGrayboxLandmark::Arch:
             for (int32 Side : { -1, 1 })
             {
-                const FVector Foot = Ground + Right * (Side * 800.f);
+                const FVector Foot = Ground + Right * (Side * 800.f * S);
                 const float BaseZ = CanyonLayout.HeightAt(Foot.X, Foot.Y);
-                Box(FVector(Foot.X, Foot.Y, BaseZ + 900.f), FVector(380.f, 420.f, 1800.f));
+                Box(FVector(Foot.X, Foot.Y, BaseZ + 900.f * S), FVector(380.f, 420.f, 1800.f));
             }
-            Box(Ground + FVector(0.f, 0.f, 1950.f), FVector(2050.f, 500.f, 380.f), Across);
+            Box(Ground + FVector(0.f, 0.f, 1950.f * S), FVector(2050.f, 500.f, 380.f), Across);
             break;
         case ECanyonGrayboxLandmark::TwinPillars:
             for (int32 Side : { -1, 1 })
             {
-                const FVector Foot = Ground + Right * (Side * 1050.f);
+                const FVector Foot = Ground + Right * (Side * 1050.f * S);
                 const float Height = Side < 0 ? 2200.f : 2900.f;
-                Box(FVector(Foot.X, Foot.Y, CanyonLayout.HeightAt(Foot.X, Foot.Y) + Height * 0.5f),
+                Box(FVector(Foot.X, Foot.Y, CanyonLayout.HeightAt(Foot.X, Foot.Y) + Height * S * 0.5f),
                     FVector(440.f, 440.f, Height), FRotator(0.f, 0.f, Side * 7.f));
             }
             break;
         case ECanyonGrayboxLandmark::SplitPeak:
         {
-            const FVector Foot = Ground + Right * 1300.f;
+            const FVector Foot = Ground + Right * (1300.f * S);
             const float BaseZ = CanyonLayout.HeightAt(Foot.X, Foot.Y);
-            Box(FVector(Foot.X, Foot.Y, BaseZ + 360.f), FVector(900.f, 850.f, 720.f));
-            Box(FVector(Foot.X, Foot.Y, BaseZ + 1400.f) + Right * 380.f,
+            Box(FVector(Foot.X, Foot.Y, BaseZ + 360.f * S), FVector(900.f, 850.f, 720.f));
+            Box(FVector(Foot.X, Foot.Y, BaseZ + 1400.f * S) + Right * (380.f * S),
                 FVector(420.f, 430.f, 2100.f), FRotator(0.f, 0.f, 22.f));
-            Box(FVector(Foot.X, Foot.Y, BaseZ + 1250.f) - Right * 390.f,
+            Box(FVector(Foot.X, Foot.Y, BaseZ + 1250.f * S) - Right * (390.f * S),
                 FVector(420.f, 430.f, 1800.f), FRotator(0.f, 0.f, -25.f));
             break;
         }
@@ -1323,29 +1326,29 @@ void AProceduralIsland::BuildCanyonGrayboxLandmarks()
         {
             for (int32 Side : { -1, 1 })
             {
-                const FVector Foot = Ground + Right * (Side * 1250.f);
-                Box(FVector(Foot.X, Foot.Y, CanyonLayout.HeightAt(Foot.X, Foot.Y) + 900.f),
+                const FVector Foot = Ground + Right * (Side * 1250.f * S);
+                Box(FVector(Foot.X, Foot.Y, CanyonLayout.HeightAt(Foot.X, Foot.Y) + 900.f * S),
                     FVector(450.f, 480.f, 1800.f));
-                Box(Ground + Right * (Side * 760.f) + FVector(0.f, 0.f, 1800.f),
+                Box(Ground + Right * (Side * 760.f * S) + FVector(0.f, 0.f, 1800.f * S),
                     FVector(950.f, 500.f, 330.f), Across);
             }
             break;
         }
         case ECanyonGrayboxLandmark::Needle:
         {
-            const FVector Foot = Ground + Right * 1350.f;
+            const FVector Foot = Ground + Right * (1350.f * S);
             const float BaseZ = CanyonLayout.HeightAt(Foot.X, Foot.Y);
-            Cylinder(FVector(Foot.X, Foot.Y, BaseZ + 1450.f), 480.f, 2900.f);
+            Cylinder(FVector(Foot.X, Foot.Y, BaseZ + 1450.f * S), 480.f, 2900.f);
             break;
         }
         case ECanyonGrayboxLandmark::StoneRing:
         {
-            const FVector Center = Ground + Right * 1450.f;
+            const FVector Center = Ground + Right * (1450.f * S);
             for (int32 I = 0; I < 6; ++I)
             {
                 const float Angle = I * PI / 3.f;
-                const FVector Foot = Center + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.f) * 500.f;
-                Cylinder(FVector(Foot.X, Foot.Y, CanyonLayout.HeightAt(Foot.X, Foot.Y) + 360.f), 240.f, 720.f);
+                const FVector Foot = Center + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.f) * (500.f * S);
+                Cylinder(FVector(Foot.X, Foot.Y, CanyonLayout.HeightAt(Foot.X, Foot.Y) + 360.f * S), 240.f, 720.f);
             }
             break;
         }

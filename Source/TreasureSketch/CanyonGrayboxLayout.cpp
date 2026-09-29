@@ -236,12 +236,19 @@ const TCHAR* FCanyonGrayboxLayout::ProblemName() const
 
 void FCanyonGrayboxLayout::ScaleForMap(float Scale)
 {
-    LengthScale = FMath::Sqrt(FMath::Clamp(Scale, 0.5f, 5.f));
+    // Fill the same 125.4 m square used by Beach while reserving space for
+    // corridor banks and landmark silhouettes, regardless of graph rotation.
+    float MaxCoordinate = 1.f;
+    for (const FCanyonGrayboxNode& Node : Nodes)
+        MaxCoordinate = FMath::Max(MaxCoordinate,
+            FMath::Max(FMath::Abs(Node.Position.X), FMath::Abs(Node.Position.Y)));
+    LengthScale = (6270.f - 1000.f) / MaxCoordinate
+        * FMath::Sqrt(FMath::Clamp(Scale, 0.5f, 5.f));
     for (FCanyonGrayboxNode& Node : Nodes) Node.Position *= LengthScale;
     for (FCanyonGrayboxEdge& Edge : Edges)
         Edge.HalfWidth = Edge.Layer == ECanyonRouteLayer::Lower
-            ? FMath::Max(170.f, Edge.HalfWidth * LengthScale)
-            : Edge.HalfWidth * LengthScale;
+            ? Edge.HalfWidth <= 170.f ? 170.f : FMath::Max(260.f, Edge.HalfWidth * LengthScale)
+            : FMath::Max(300.f, Edge.HalfWidth * LengthScale);
 }
 
 bool FCanyonGrayboxLayout::Validate() const
@@ -256,7 +263,8 @@ bool FCanyonGrayboxLayout::Validate() const
         {
             if (!Nodes.IsValidIndex(Edge.A) || !Nodes.IsValidIndex(Edge.B)) return false;
             const FVector Delta = Nodes[Edge.B].Position - Nodes[Edge.A].Position;
-            if (Delta.Size2D() < 900.f || FMath::Abs(Delta.Z) / Delta.Size2D() > 0.18f) return false;
+            if (Delta.Size2D() < 900.f * LengthScale
+                || FMath::Abs(Delta.Z) / Delta.Size2D() > 0.18f) return false;
             const int32 Next = Edge.A == Queue[Head] ? Edge.B : Edge.B == Queue[Head] ? Edge.A : INDEX_NONE;
             if (Next != INDEX_NONE && !Seen[Next]) { Seen[Next] = true; Queue.Add(Next); }
         }

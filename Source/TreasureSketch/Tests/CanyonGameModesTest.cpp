@@ -59,7 +59,7 @@ bool FCanyonGameModesTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("Canyon respects room area multiplier"),
             FMath::IsNearlyEqual(Island->MapScale, Scales[Index])
             && FMath::IsNearlyEqual((Island->GridSize - 1) * Island->CellSize,
-                40000.f * FMath::Sqrt(Scales[Index]), 0.1f));
+                12540.f * FMath::Sqrt(Scales[Index]), 0.1f));
         FRandomStream Stream(125 + Index);
         const FVector Treasure = Island->FindTreasurePoint(Stream);
         TestTrue(TEXT("Treasure uses the planned canyon goal"),

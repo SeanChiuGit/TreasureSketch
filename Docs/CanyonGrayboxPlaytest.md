@@ -2,6 +2,8 @@
 
 This branch runs an asset-free Canyon map inside Unreal. The lower paths, steep canyon walls, ramps, and upper wall-top paths are generated from a route graph. Some lower passages narrow to roughly three character widths. Stone arch, pillars, split peak, broken bridge, needle, and stone ring are temporary geometric placeholders. The independent Blender landmark work is not required for this test.
 
+At 1× map area the Canyon terrain spans **125.4 × 125.4 m**, matching Beach's square extent; Forest spans **94.05 × 94.05 m**. The playable Canyon routes occupy only part of that square.
+
 ## Start
 
 - Double-click `Scripts/PlayCanyonGraybox.cmd` for a random Canyon seed.
