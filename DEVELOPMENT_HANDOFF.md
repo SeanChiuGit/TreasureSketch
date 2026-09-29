@@ -3,7 +3,7 @@
 ## 字体 UI 与 KayKit 人物（`feature/ground-up-canyon`）
 
 - 已合并 `codex/ui-readability-refresh`：主菜单、房间和游戏 HUD 使用随项目附带的字体；人物换为 KayKit Mage Explorer 骨骼模型，并接入行走、跳跃、读书和魔杖挖掘动作。峡谷入口、三种地图池选项和照片界面与新 UI 一并保留。
-- 字体许可与 KayKit 许可随素材保留。UE 5.6 编辑器编译及 `TreasureSketch.RoomSettings.MultiMapmaker` 冒烟测试通过；尚未打包新版游戏。
+- 字体许可与 KayKit 许可随素材保留。UE 5.6 编辑器编译及 `TreasureSketch.RoomSettings.MultiMapmaker` 冒烟测试通过；已进入下方 v0.12.0 Windows 测试版。
 
 ## 峡谷与地图师相机（`feature/ground-up-canyon`）
 
@@ -12,7 +12,7 @@
 
 ## 地图师相机道具（原 `codex/photo-clue`）
 
-- 从 `codex/three-player-race` 独立分支开发，现已合并到 `feature/ground-up-canyon`。此功能尚未打包 Release。
+- 从 `codex/three-player-race` 独立分支开发，现已合并到 `feature/ground-up-canyon`，并进入 v0.12.0 Windows 测试版。
 - 地图师在探索阶段地面视角按 B 拍一张 384×216 JPEG 照片；每人每局一张，不可重拍。照片与本人图纸关联，等待中的探索者可实时收到，交图后在寻宝、观战、复盘和本地游玩历史中保留。
 - 打开画纸后点击“查看照片”放大，点击“收起照片”继续画图；查看放大照片时禁止误画。照片不包含本地宝藏标记或自己角色的模型。
 - 画纸打开、暂停、交图后、俯视鬼魂状态及观战状态不能拍照；服务端按回合、身份、一次拍摄限额、地面视角状态、相机位置和 JPEG 尺寸再次验证。新局清空照片。
@@ -25,7 +25,14 @@
 - 主菜单新增“游玩历史”，按对抗赛分组，详情可切换局数及每位地图师的图纸。未完成的回合不会保存；不同电脑的历史不会自动同步。
 - TreasureSketch 与 TreasureSketchEditor Win64 Development 完整构建通过；无窗口 `TreasureSketch.RoomSettings` 四项测试全部成功，包含新增的 HistorySave 测试和大橡皮擦最终交图检查。日志在 `Saved/Logs/Saved/CodexRelease/history-tests.log`。用户负责交互测试；此版本随后已发布，见下方 v0.11.0 记录。
 
-## 最新 Windows 测试 Release：v0.11.0
+## 最新 Windows 测试 Release：v0.12.0
+
+- 已发布预发布版 `v0.12.0-canyon-camera-ui-rc1`：https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.12.0-canyon-camera-ui-rc1
+- 标签指向源码提交 `6969afa`，分支 `feature/ground-up-canyon`。附件 `TreasureSketch-v0.12.0-canyon-camera-ui-rc1-6969afa-Windows.zip`，390341173 字节；SHA-256：`700abc1327e84298a6cedfb7948027109c6722115586ee147f1be0bd70be1991`。远端附件大小和摘要与本机 ZIP 一致。
+- UE 5.6 编辑器构建、Win64 Development Build/Cook/Stage/Pak/Archive 成功；`TreasureSketch.RoomSettings.MultiMapmaker` 冒烟测试通过。包内核对了游戏 EXE、PAK、Steam DLL、Steam AppID、中文字体和测试说明。
+- 打包仅使用版本库中的 `Config/DefaultEngine.ini`，本机私有配置在结束后逐字节恢复，未进入提交或分发包。本机归档和 ZIP 位于 `Builds/TreasureSketch-v0.12.0-canyon-camera-ui-rc1-6969afa*`。
+
+## 上一版 Windows 测试 Release：v0.11.0
 
 - 已发布预发布版 `v0.11.0-race-history-rc1`：https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.11.0-race-history-rc1
 - 标签指向源码提交 `a0e1325`，分支 `codex/three-player-race` 后续补交本文档。
