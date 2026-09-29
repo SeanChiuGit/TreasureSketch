@@ -40,9 +40,10 @@ void ATreasureSketchHUD::DrawHUD()
         const float W = Canvas->SizeX;
         const float H = Canvas->SizeY;
         const float PanelX = W * 0.075f;
-        const float PanelY = H * 0.10f;
+        const bool bCanyonMenuSpace = PC->GetFrontEndPage() == EFrontEndPage::SoloTest;
+        const float PanelY = H * (bCanyonMenuSpace ? 0.045f : 0.10f);
         const float PanelW = FMath::Clamp(W * 0.38f, 440.f, 650.f);
-        const float PanelH = H * 0.80f;
+        const float PanelH = H * (bCanyonMenuSpace ? 0.91f : 0.80f);
         DrawRect(FLinearColor(0.018f, 0.035f, 0.045f, 0.38f), 0.f, 0.f, W, H);
         DrawRect(FLinearColor(0.035f, 0.075f, 0.085f, 0.91f), PanelX, PanelY, PanelW, PanelH);
         DrawRect(FLinearColor(0.88f, 0.66f, 0.25f, 0.95f), PanelX, PanelY, 7.f, PanelH);
@@ -285,14 +286,15 @@ void ATreasureSketchHUD::DrawHUD()
                 GEngine->GetSmallFont(), 0.9f);
             DrawMenuButton(TEXT("SoloForest"), TEXT("测试雾森林"), PanelY + 225.f, true);
             DrawMenuButton(TEXT("SoloBeach"), TEXT("测试海盗沙滩岛"), PanelY + 285.f);
-            DrawMenuButton(TEXT("SoloRandom"), TEXT("随机主题与新种子"), PanelY + 345.f);
-            DrawMenuButton(TEXT("SoloHunter"), TEXT("探索者玩法测试"), PanelY + 405.f, true);
-            DrawMenuButton(TEXT("SoloFullFlow"), TEXT("完整流程测试：自己画，自己找"), PanelY + 465.f, true);
-            DrawMenuButton(TEXT("MenuBack"), TEXT("返回主页面"), PanelY + 525.f);
+            DrawMenuButton(TEXT("SoloCanyon"), TEXT("测试峡谷路线灰盒"), PanelY + 345.f, true);
+            DrawMenuButton(TEXT("SoloRandom"), TEXT("随机主题与新种子"), PanelY + 405.f);
+            DrawMenuButton(TEXT("SoloHunter"), TEXT("探索者玩法测试"), PanelY + 465.f, true);
+            DrawMenuButton(TEXT("SoloFullFlow"), TEXT("完整流程测试：自己画，自己找"), PanelY + 525.f, true);
+            DrawMenuButton(TEXT("MenuBack"), TEXT("返回主页面"), PanelY + 585.f);
             const float SeedX = PanelX + PanelW + 28.f;
             const float SeedW = FMath::Max(180.f, FMath::Min(390.f, W - SeedX - 24.f));
             const float SeedY = PanelY + 150.f;
-            DrawText(TEXT("玩法测试种子（可留空）"), FLinearColor::White, SeedX, SeedY,
+            DrawText(TEXT("峡谷／玩法测试种子（可留空）"), FLinearColor::White, SeedX, SeedY,
                 GEngine->GetMediumFont(), 1.f);
             DrawRect(PC->IsTestSeedEditing() ? FLinearColor(0.15f, 0.30f, 0.30f) : FLinearColor(0.06f, 0.12f, 0.13f),
                 SeedX, SeedY + 35.f, SeedW, 44.f);
@@ -776,6 +778,14 @@ void ATreasureSketchHUD::DrawHUD()
         : TEXT("等待交图；收到后 M 查看地图 | E 挖掘");
     DrawText(FString::Printf(TEXT("%s  |  岛屿种子 %d"), *RoleLabel, GS->IslandSeed), FLinearColor::White, 35.f, 28.f, GEngine->GetLargeFont(), 1.f);
     DrawText(Help, FLinearColor(0.9f,0.9f,0.9f), 35.f, 62.f, GEngine->GetSmallFont(), 1.f);
+    if (GetNetMode() == NM_Standalone)
+        for (TActorIterator<AProceduralIsland> It(GetWorld()); It; ++It)
+            if (!It->IsActorBeingDestroyed() && It->Theme == EIslandTheme::CanyonGraybox)
+            {
+                DrawText(TEXT("峡谷路线灰盒  |  R 换新地图  |  菜单可输入种子复现"),
+                    FLinearColor(0.95f, 0.78f, 0.43f), 35.f, 86.f, GEngine->GetSmallFont(), 1.f);
+                break;
+            }
     if (PC->IsScoutSpectating() && GS->Phase == ETreasureRoundPhase::HunterSearching)
     {
         DrawText(TEXT("鼠标转向 | Tab 切换视角 | Q 切换探索者 | T 宝藏"),

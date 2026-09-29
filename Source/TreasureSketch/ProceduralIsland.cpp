@@ -1,6 +1,7 @@
 #include "ProceduralIsland.h"
 
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
+#include "Components/PointLightComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Engine/ExponentialHeightFog.h"
 #include "Engine/Engine.h"
@@ -36,6 +37,7 @@ const FIslandThemeDefinition ThemeTable[] = {
     // Forest 1x has 75% of the former 125.4m side length; preserve original forest density.
     { EIslandTheme::MistForest, TEXT("MistForest"), 50, true, 3.60f, 3.80f, 1.00f, 39, 247.5f,
         (9405.f * 9405.f) / (24600.f * 24600.f) },
+    { EIslandTheme::CanyonGraybox, TEXT("CanyonGraybox"), 0, false, 0.f, 0.f, 1.f, 129, 225.f, 1.f },
 };
 
 const FIslandThemeDefinition& GetThemeDefinition(EIslandTheme Theme)
@@ -137,6 +139,7 @@ AProceduralIsland::AProceduralIsland()
     static ConstructorHelpers::FObjectFinder<UStaticMesh> BushMesh(TEXT("/Game/IslandAssets/Prototype/SM_Bush_A/StaticMeshes/SM_Bush_A.SM_Bush_A"));
     static ConstructorHelpers::FObjectFinder<UStaticMesh> DriftwoodMesh(TEXT("/Game/IslandAssets/Prototype/SM_Driftwood_A/StaticMeshes/SM_Driftwood_A.SM_Driftwood_A"));
     static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderMesh(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
     static ConstructorHelpers::FObjectFinder<UStaticMesh> SkullMesh(TEXT("/Game/IslandAssets/PirateLandmarks/SM_SkullIdol_A/StaticMeshes/SM_SkullIdol_A.SM_SkullIdol_A"));
     static ConstructorHelpers::FObjectFinder<UStaticMesh> FaceMesh(TEXT("/Game/IslandAssets/PirateLandmarks/SM_FaceIdol_A/StaticMeshes/SM_FaceIdol_A.SM_FaceIdol_A"));
     static ConstructorHelpers::FObjectFinder<UStaticMesh> AnchorMesh(TEXT("/Game/IslandAssets/PirateLandmarks/SM_GiantAnchor_A/StaticMeshes/SM_GiantAnchor_A.SM_GiantAnchor_A"));
@@ -156,6 +159,15 @@ AProceduralIsland::AProceduralIsland()
     BrokenMastInstances->SetStaticMesh(MastMesh.Object);
     StoneRingInstances->SetStaticMesh(StoneRingMesh.Object);
     CampfireInstances->SetStaticMesh(CampfireMesh.Object);
+
+    CanyonLandmarkBoxes = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("CanyonLandmarkBoxes"));
+    CanyonLandmarkBoxes->SetupAttachment(RootComponent);
+    ConfigureInstances(CanyonLandmarkBoxes);
+    CanyonLandmarkBoxes->SetStaticMesh(CubeMesh.Object);
+    CanyonLandmarkCylinders = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("CanyonLandmarkCylinders"));
+    CanyonLandmarkCylinders->SetupAttachment(RootComponent);
+    ConfigureInstances(CanyonLandmarkCylinders);
+    CanyonLandmarkCylinders->SetStaticMesh(CylinderMesh.Object);
 
     JungleTreeCollisionInstances = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("JungleTreeCollisionInstances"));
     JungleTreeCollisionInstances->SetupAttachment(RootComponent);
@@ -217,6 +229,13 @@ AProceduralIsland::AProceduralIsland()
 
 void AProceduralIsland::ConfigureThemeParameters()
 {
+    if (Theme == EIslandTheme::CanyonGraybox)
+    {
+        GridSize = 129;
+        CellSize = 225.f;
+        MapScale = 1.f;
+        return;
+    }
     const FIslandThemeDefinition& Definition = GetThemeDefinition(Theme);
     MapScale = FMath::IsFinite(MapScale) ? FMath::Clamp(MapScale, 0.5f, 5.f) : 1.f;
     const float LengthScale = FMath::Sqrt(MapScale);
@@ -372,6 +391,7 @@ void AProceduralIsland::OnConstruction(const FTransform& Transform)
 
 FString AProceduralIsland::GetShapeName() const
 {
+    if (Theme == EIslandTheme::CanyonGraybox) return CanyonLayout.ProblemName();
     switch (ShapeFromSeed(Seed))
     {
     case EIslandShape::RoundBay: return TEXT("RoundBay");
@@ -502,6 +522,7 @@ float AProceduralIsland::NormalizedIslandDistance(float X, float Y) const
 
 float AProceduralIsland::HeightAt(float X, float Y) const
 {
+    if (Theme == EIslandTheme::CanyonGraybox) return CanyonLayout.HeightAt(X, Y);
     const float Edge = NormalizedIslandDistance(X, Y);
     if (Edge >= 1.f)
     {
@@ -617,6 +638,11 @@ void AProceduralIsland::RecordDecoration(float X, float Y)
 
 FVector AProceduralIsland::FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight) const
 {
+    if (Theme == EIslandTheme::CanyonGraybox && CanyonLayout.Nodes.IsValidIndex(CanyonLayout.TreasureNode))
+    {
+        const FVector& Point = CanyonLayout.Nodes[CanyonLayout.TreasureNode].Position;
+        return GetActorLocation() + FVector(Point.X, Point.Y, CanyonLayout.HeightAt(Point.X, Point.Y));
+    }
     const float Extent = CellSize * (GridSize - 1) * 0.42f;
     const float Radius = CellSize * (GridSize - 1) * 0.46f;
     for (int32 Attempt = 0; Attempt < 500; ++Attempt)
@@ -635,6 +661,12 @@ FVector AProceduralIsland::FindRandomLandPoint(FRandomStream& Stream, float Mini
 
 FVector AProceduralIsland::FindSpawnPoint(float LateralOffset) const
 {
+    if (Theme == EIslandTheme::CanyonGraybox && CanyonLayout.Nodes.IsValidIndex(CanyonLayout.SpawnNode))
+    {
+        const FVector& Point = CanyonLayout.Nodes[CanyonLayout.SpawnNode].Position;
+        return GetActorLocation() + FVector(Point.X, Point.Y + LateralOffset,
+            CanyonLayout.HeightAt(Point.X, Point.Y + LateralOffset) + 180.f);
+    }
     const float Radius = CellSize * (GridSize - 1) * 0.46f;
     const FVector2D Desired(-Radius * 0.68f, LateralOffset);
     FVector Best(0.f, 0.f, HeightAt(0.f, 0.f));
@@ -660,9 +692,21 @@ FVector AProceduralIsland::FindSpawnPoint(float LateralOffset) const
     return GetActorLocation() + Best;
 }
 
+FRotator AProceduralIsland::GetCanyonStartFacing() const
+{
+    if (Theme == EIslandTheme::CanyonGraybox && CanyonLayout.Nodes.Num() > 1)
+        return (CanyonLayout.Nodes[1].Position - CanyonLayout.Nodes[CanyonLayout.SpawnNode].Position).Rotation();
+    return FRotator::ZeroRotator;
+}
+
 void AProceduralIsland::BuildIsland()
 {
     IslandMesh->ClearAllMeshSections();
+    if (Theme == EIslandTheme::CanyonGraybox)
+    {
+        BuildCanyonGrayboxTerrain();
+        return;
+    }
     TArray<FVector> Vertices;
     TArray<FVector> Normals;
     TArray<FVector2D> UVs;
@@ -751,6 +795,16 @@ void AProceduralIsland::BuildIsland()
 
 void AProceduralIsland::BuildDecorations()
 {
+    CanyonLandmarkBoxes->ClearInstances();
+    CanyonLandmarkCylinders->ClearInstances();
+    for (UPointLightComponent* Light : CanyonFillLights)
+        if (Light) Light->DestroyComponent();
+    CanyonFillLights.Empty();
+    if (Theme == EIslandTheme::CanyonGraybox)
+    {
+        BuildCanyonGrayboxLandmarks();
+        return;
+    }
     PalmInstances->ClearInstances();
     PalmCollisionInstances->ClearInstances();
     RockInstances->ClearInstances();
@@ -1064,6 +1118,7 @@ void AProceduralIsland::ApplyDecorationMaterials()
 void AProceduralIsland::BuildWater()
 {
     WaterMesh->ClearAllMeshSections();
+    if (Theme == EIslandTheme::CanyonGraybox) return;
     const float S = CellSize * GridSize * 0.9f;
     TArray<FVector> V = { {-S,-S,0.f}, {S,-S,0.f}, {-S,S,0.f}, {S,S,0.f} };
     TArray<int32> T = { 0,2,1, 1,2,3 };
@@ -1077,5 +1132,186 @@ void AProceduralIsland::BuildWater()
         UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(Base, this);
         Material->SetVectorParameterValue(TEXT("Color"), FLinearColor(0.015f, 0.16f, 0.34f, 1.f));
         WaterMesh->SetMaterial(0, Material);
+    }
+}
+
+void AProceduralIsland::BuildCanyonGrayboxTerrain()
+{
+    CanyonLayout = FCanyonGrayboxLayout::Generate(Seed);
+    const bool bValid = CanyonLayout.Validate();
+    UE_LOG(LogTemp, Warning, TEXT("TREASURE_CANYON_GRAYBOX Seed=%d Problem=%s Nodes=%d Edges=%d Valid=%s"),
+        Seed, CanyonLayout.ProblemName(), CanyonLayout.Nodes.Num(), CanyonLayout.Edges.Num(),
+        bValid ? TEXT("YES") : TEXT("NO"));
+    if (!bValid) return;
+
+    TArray<FVector> Vertices, Normals;
+    TArray<FVector2D> UVs;
+    TArray<FLinearColor> Colors;
+    TArray<FProcMeshTangent> Tangents;
+    TArray<int32> Triangles[3];
+    const float Half = (GridSize - 1) * CellSize * 0.5f;
+    for (int32 Y = 0; Y < GridSize; ++Y)
+        for (int32 X = 0; X < GridSize; ++X)
+        {
+            const float WX = X * CellSize - Half, WY = Y * CellSize - Half;
+            const float Z = CanyonLayout.HeightAt(WX, WY);
+            const float DX = CanyonLayout.HeightAt(WX + 70.f, WY) - CanyonLayout.HeightAt(WX - 70.f, WY);
+            const float DY = CanyonLayout.HeightAt(WX, WY + 70.f) - CanyonLayout.HeightAt(WX, WY - 70.f);
+            Vertices.Add(FVector(WX, WY, Z));
+            Normals.Add(FVector(-DX / 140.f, -DY / 140.f, 1.f).GetSafeNormal());
+            UVs.Add(FVector2D(X / 12.f, Y / 12.f));
+            Colors.Add(FLinearColor::White);
+            Tangents.Add(FProcMeshTangent(1.f, 0.f, 0.f));
+        }
+    for (int32 Y = 0; Y < GridSize - 1; ++Y)
+        for (int32 X = 0; X < GridSize - 1; ++X)
+        {
+            const int32 I = Y * GridSize + X;
+            float Distance = 0.f;
+            CanyonLayout.HeightAt((X + 0.5f) * CellSize - Half,
+                (Y + 0.5f) * CellSize - Half, &Distance);
+            const int32 Section = Distance < 520.f ? 0 : Distance < 1000.f ? 1 : 2;
+            Triangles[Section].Append({ I, I + GridSize, I + 1, I + 1, I + GridSize, I + GridSize + 1 });
+        }
+
+    UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr,
+        TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+    const FLinearColor Palette[] = {
+        FLinearColor(0.60f, 0.49f, 0.34f), // walkable floor
+        FLinearColor(0.46f, 0.23f, 0.16f), // steep walls
+        FLinearColor(0.26f, 0.18f, 0.17f)  // unreachable mesa
+    };
+    for (int32 Section = 0; Section < 3; ++Section)
+    {
+        IslandMesh->CreateMeshSection_LinearColor(Section, Vertices, Triangles[Section], Normals, UVs,
+            Colors, Tangents, true);
+        if (Base)
+        {
+            UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(Base, this);
+            Material->SetVectorParameterValue(TEXT("Color"), Palette[Section]);
+            IslandMesh->SetMaterial(Section, Material);
+        }
+    }
+    IslandMesh->ContainsPhysicsTriMeshData(true);
+}
+
+void AProceduralIsland::BuildCanyonGrayboxLandmarks()
+{
+    if (!CanyonLayout.Validate()) return;
+    for (const FCanyonGrayboxNode& Node : CanyonLayout.Nodes)
+    {
+        UPointLightComponent* Fill = NewObject<UPointLightComponent>(this);
+        Fill->SetupAttachment(RootComponent);
+        Fill->SetMobility(EComponentMobility::Movable);
+        Fill->SetIntensity(65000.f);
+        Fill->SetAttenuationRadius(6000.f);
+        Fill->SetLightColor(FLinearColor(1.f, 0.88f, 0.68f));
+        Fill->SetCastShadows(false);
+        Fill->RegisterComponent();
+        Fill->SetRelativeLocation(FVector(Node.Position.X, Node.Position.Y,
+            CanyonLayout.HeightAt(Node.Position.X, Node.Position.Y) + 1300.f));
+        CanyonFillLights.Add(Fill);
+    }
+    UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr,
+        TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+    if (Base)
+    {
+        UMaterialInstanceDynamic* BoxMaterial = UMaterialInstanceDynamic::Create(Base, this);
+        BoxMaterial->SetVectorParameterValue(TEXT("Color"), FLinearColor(0.83f, 0.72f, 0.44f));
+        CanyonLandmarkBoxes->SetMaterial(0, BoxMaterial);
+        UMaterialInstanceDynamic* CylinderMaterial = UMaterialInstanceDynamic::Create(Base, this);
+        CylinderMaterial->SetVectorParameterValue(TEXT("Color"), FLinearColor(0.92f, 0.80f, 0.53f));
+        CanyonLandmarkCylinders->SetMaterial(0, CylinderMaterial);
+    }
+    auto Box = [&](const FVector& Center, const FVector& Size, const FRotator& Rotation = FRotator::ZeroRotator)
+    {
+        CanyonLandmarkBoxes->AddInstance(FTransform(Rotation, Center, Size / 100.f));
+    };
+    auto Cylinder = [&](const FVector& Center, float Diameter, float Height)
+    {
+        CanyonLandmarkCylinders->AddInstance(FTransform(FRotator::ZeroRotator, Center,
+            FVector(Diameter / 100.f, Diameter / 100.f, Height / 100.f)));
+    };
+    for (int32 Index = 0; Index < CanyonLayout.Nodes.Num(); ++Index)
+    {
+        const FCanyonGrayboxNode& Node = CanyonLayout.Nodes[Index];
+        if (Node.Landmark == ECanyonGrayboxLandmark::None) continue;
+        FVector Approach = FVector::ForwardVector;
+        for (const FCanyonGrayboxEdge& Edge : CanyonLayout.Edges)
+        {
+            const int32 Other = Edge.A == Index ? Edge.B : Edge.B == Index ? Edge.A : INDEX_NONE;
+            if (Other != INDEX_NONE)
+            {
+                Approach = (Node.Position - CanyonLayout.Nodes[Other].Position).GetSafeNormal2D();
+                break;
+            }
+        }
+        const FVector Right(-Approach.Y, Approach.X, 0.f);
+        const FVector Ground(Node.Position.X, Node.Position.Y,
+            CanyonLayout.HeightAt(Node.Position.X, Node.Position.Y));
+        const FRotator Across = Right.Rotation();
+        switch (Node.Landmark)
+        {
+        case ECanyonGrayboxLandmark::Arch:
+            for (int32 Side : { -1, 1 })
+            {
+                const FVector Foot = Ground + Right * (Side * 800.f);
+                const float BaseZ = CanyonLayout.HeightAt(Foot.X, Foot.Y);
+                Box(FVector(Foot.X, Foot.Y, BaseZ + 900.f), FVector(380.f, 420.f, 1800.f));
+            }
+            Box(Ground + FVector(0.f, 0.f, 1950.f), FVector(2050.f, 500.f, 380.f), Across);
+            break;
+        case ECanyonGrayboxLandmark::TwinPillars:
+            for (int32 Side : { -1, 1 })
+            {
+                const FVector Foot = Ground + Right * (Side * 1050.f);
+                const float Height = Side < 0 ? 2200.f : 2900.f;
+                Box(FVector(Foot.X, Foot.Y, CanyonLayout.HeightAt(Foot.X, Foot.Y) + Height * 0.5f),
+                    FVector(440.f, 440.f, Height), FRotator(0.f, 0.f, Side * 7.f));
+            }
+            break;
+        case ECanyonGrayboxLandmark::SplitPeak:
+        {
+            const FVector Foot = Ground + Right * 1300.f;
+            const float BaseZ = CanyonLayout.HeightAt(Foot.X, Foot.Y);
+            Box(FVector(Foot.X, Foot.Y, BaseZ + 360.f), FVector(900.f, 850.f, 720.f));
+            Box(FVector(Foot.X, Foot.Y, BaseZ + 1400.f) + Right * 380.f,
+                FVector(420.f, 430.f, 2100.f), FRotator(0.f, 0.f, 22.f));
+            Box(FVector(Foot.X, Foot.Y, BaseZ + 1250.f) - Right * 390.f,
+                FVector(420.f, 430.f, 1800.f), FRotator(0.f, 0.f, -25.f));
+            break;
+        }
+        case ECanyonGrayboxLandmark::BrokenBridge:
+        {
+            for (int32 Side : { -1, 1 })
+            {
+                const FVector Foot = Ground + Right * (Side * 1250.f);
+                Box(FVector(Foot.X, Foot.Y, CanyonLayout.HeightAt(Foot.X, Foot.Y) + 900.f),
+                    FVector(450.f, 480.f, 1800.f));
+                Box(Ground + Right * (Side * 760.f) + FVector(0.f, 0.f, 1800.f),
+                    FVector(950.f, 500.f, 330.f), Across);
+            }
+            break;
+        }
+        case ECanyonGrayboxLandmark::Needle:
+        {
+            const FVector Foot = Ground + Right * 1350.f;
+            const float BaseZ = CanyonLayout.HeightAt(Foot.X, Foot.Y);
+            Cylinder(FVector(Foot.X, Foot.Y, BaseZ + 1450.f), 480.f, 2900.f);
+            break;
+        }
+        case ECanyonGrayboxLandmark::StoneRing:
+        {
+            const FVector Center = Ground + Right * 1450.f;
+            for (int32 I = 0; I < 6; ++I)
+            {
+                const float Angle = I * PI / 3.f;
+                const FVector Foot = Center + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.f) * 500.f;
+                Cylinder(FVector(Foot.X, Foot.Y, CanyonLayout.HeightAt(Foot.X, Foot.Y) + 360.f), 240.f, 720.f);
+            }
+            break;
+        }
+        default: break;
+        }
     }
 }

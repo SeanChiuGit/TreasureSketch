@@ -43,7 +43,8 @@ public:
     void AdjustRoomSetting(FName Setting, int32 Direction);
     bool SetRoomMapScale(float Scale);
     void ReturnToSetup();
-    void StartSoloTest(int32 ThemeChoice);
+    void StartSoloTest(int32 ThemeChoice, bool bForceNewSeed = false);
+    bool RefreshSoloMap();
     void ToggleSurfacePaint();
     void SpraySurface(const FHitResult& Hit);
 
@@ -57,6 +58,7 @@ private:
 
     FVector TreasureLocation = FVector::ZeroVector;
     int32 IslandSeed = 0;
+    int32 SoloThemeChoice = INDEX_NONE;
     float HunterViewUpdateTime = 0.f;
     UPROPERTY() TObjectPtr<ATreasureSurfacePaint> SurfacePaint;
     void ResetSurfacePaint();

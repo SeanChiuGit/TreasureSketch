@@ -44,6 +44,9 @@ void ATreasureSketchGameMode::BeginPlay()
     Super::BeginPlay();
     BuildRound();
     RevealTreasureToScout();
+    if (GetNetMode() == NM_Standalone && FParse::Param(FCommandLine::Get(), TEXT("CanyonGrayboxPreview")))
+        GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this,
+            [this]() { StartSoloTest(2); }));
 }
 
 void ATreasureSketchGameMode::Tick(float DeltaSeconds)
@@ -199,6 +202,8 @@ void ATreasureSketchGameMode::BuildRound()
     if (FParse::Value(FCommandLine::Get(), TEXT("IslandTheme="), RequestedTheme))
         Island->Theme = RequestedTheme.Equals(TEXT("Forest"), ESearchCase::IgnoreCase)
             ? EIslandTheme::MistForest
+            : RequestedTheme.Equals(TEXT("Canyon"), ESearchCase::IgnoreCase)
+                ? EIslandTheme::CanyonGraybox
             : RequestedTheme.Equals(TEXT("Ruins"), ESearchCase::IgnoreCase)
                 ? EIslandTheme::JungleRuins : EIslandTheme::PirateBeach;
     else
@@ -485,9 +490,20 @@ void ATreasureSketchGameMode::StartHostedRound()
     }
 }
 
-void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
+bool ATreasureSketchGameMode::RefreshSoloMap()
+{
+    if (!HasAuthority() || GetNetMode() != NM_Standalone || !Island
+        || SoloThemeChoice < -1 || SoloThemeChoice > 2) return false;
+    const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
+    if (!GS || !GS->bGameStarted || GS->IsRoundOver()) return false;
+    StartSoloTest(SoloThemeChoice, true);
+    return true;
+}
+
+void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice, bool bForceNewSeed)
 {
     if (!HasAuthority()) return;
+    SoloThemeChoice = ThemeChoice;
     ResetSurfacePaint();
     ResetSubmittedSketches();
     const bool bHunterGameplayTest = ThemeChoice == -2;
@@ -496,13 +512,19 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
     // The menu preview may already have revealed the previous round's marker while the
     // local player was assigned Scout. Remove it before replacing the island/treasure.
     HideTreasureFromScout();
+    const int32 PreviousSeed = IslandSeed;
     if (Island) Island->Destroy();
     FRandomStream Stream(FDateTime::Now().GetTicks());
     IslandSeed = Stream.RandRange(1000, 999999);
-    if (bHunterGameplayTest || bFullFlowTest)
+    if (IslandSeed == PreviousSeed) ++IslandSeed;
+    if (!bForceNewSeed && (ThemeChoice == 2 || bHunterGameplayTest || bFullFlowTest))
     {
         if (const ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(GetWorld()->GetFirstPlayerController()))
             if (PC->GetTestSeed() > 0) IslandSeed = PC->GetTestSeed();
+        int32 PreviewSeed = 0;
+        if (ThemeChoice == 2 && FParse::Param(FCommandLine::Get(), TEXT("CanyonGrayboxPreview"))
+            && FParse::Value(FCommandLine::Get(), TEXT("IslandSeed="), PreviewSeed) && PreviewSeed > 0)
+            IslandSeed = PreviewSeed;
     }
     Stream.Initialize(IslandSeed ^ 0x35D1A7);
 
@@ -510,6 +532,7 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
     Island->Seed = IslandSeed;
     Island->Theme = ThemeChoice == 0 ? EIslandTheme::PirateBeach
         : ThemeChoice == 1 ? EIslandTheme::MistForest
+        : ThemeChoice == 2 ? EIslandTheme::CanyonGraybox
         : AProceduralIsland::SelectThemeFromTable(IslandSeed, true);
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (GS && (bHunterGameplayTest || bFullFlowTest))
@@ -544,8 +567,11 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice)
             if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(PC->GetPawn()))
                 Character->SetSpectatorHidden(false);
             TArray<FVector> UsedSpawns;
-            PC->GetPawn()->SetActorLocation(bFullFlowTest ? Island->FindSpawnPoint() : FindHunterSpawn(UsedSpawns),
+            PC->GetPawn()->SetActorLocation((bFullFlowTest || Island->Theme == EIslandTheme::CanyonGraybox)
+                ? Island->FindSpawnPoint() : FindHunterSpawn(UsedSpawns),
                 false, nullptr, ETeleportType::ResetPhysics);
+            if (Island->Theme == EIslandTheme::CanyonGraybox)
+                PC->SetControlRotation(Island->GetCanyonStartFacing());
         }
         // Solo map testing deliberately shows the exact marker and its debug cylinder.
         // It must use the newly generated treasure location, not the menu preview location.

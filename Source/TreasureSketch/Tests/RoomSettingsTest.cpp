@@ -184,6 +184,15 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
             TestTrue(TEXT("Forest room area multiplier scales from the new base"), FMath::IsNearlyEqual(
                 (It->GridSize - 1) * It->CellSize, 12540.f * 0.75f * FMath::Sqrt(2.f), 0.01f));
         }
+    GM->StartSoloTest(2);
+    const int32 CanyonSeed = GS->IslandSeed;
+    bool bCanyonFound = false;
+    for (TActorIterator<AProceduralIsland> It(World); It; ++It)
+        if (!It->IsActorBeingDestroyed() && It->Theme == EIslandTheme::CanyonGraybox)
+        { bCanyonFound = true; TestEqual(TEXT("Canyon graybox uses its own terrain grid"), It->GridSize, 129); }
+    TestTrue(TEXT("Canyon graybox starts in solo test"), bCanyonFound);
+    TestTrue(TEXT("Solo map preview can be refreshed"), GM->RefreshSoloMap());
+    TestNotEqual(TEXT("Refresh chooses a new seed"), GS->IslandSeed, CanyonSeed);
     World->DestroyWorld(false);
     return true;
 }

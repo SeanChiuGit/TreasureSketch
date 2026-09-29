@@ -1,11 +1,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "CanyonGrayboxLayout.h"
 #include "GameFramework/Actor.h"
 #include "ProceduralIsland.generated.h"
 
 class UProceduralMeshComponent;
 class UHierarchicalInstancedStaticMeshComponent;
+class UPointLightComponent;
 class AExponentialHeightFog;
 
 UENUM(BlueprintType)
@@ -13,7 +15,8 @@ enum class EIslandTheme : uint8
 {
     PirateBeach,
     JungleRuins,
-    MistForest
+    MistForest,
+    CanyonGraybox
 };
 
 UCLASS()
@@ -47,6 +50,7 @@ public:
     float HeightAt(float X, float Y) const;
     FVector FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight = 130.f) const;
     FVector FindSpawnPoint(float LateralOffset = 0.f) const;
+    FRotator GetCanyonStartFacing() const;
     FString GetShapeName() const;
     FString GetThemeName() const;
     static EIslandTheme SelectThemeFromTable(int32 InSeed, bool bIncludeLockedThemes = true, uint8 AllowedThemesMask = 0xff);
@@ -109,10 +113,23 @@ private:
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> JungleTreeCollisionInstances;
 
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> CanyonLandmarkBoxes;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> CanyonLandmarkCylinders;
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UPointLightComponent>> CanyonFillLights;
+
+    FCanyonGrayboxLayout CanyonLayout;
+
     TMap<FIntPoint, TArray<FVector2D>> OccupiedBuckets;
     void RecordDecoration(float X, float Y);
 
     void BuildIsland();
+    void BuildCanyonGrayboxTerrain();
+    void BuildCanyonGrayboxLandmarks();
     void BuildWater();
     void BuildDecorations();
     void CreateRuntimeForestFog();
