@@ -34,6 +34,13 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
         const FCanyonGrayboxLayout Again = FCanyonGrayboxLayout::Generate(Seed);
         TestEqual(TEXT("Seed reproduces problem"), Layout.Problem, Again.Problem);
         TestEqual(TEXT("Seed reproduces node count"), Layout.Nodes.Num(), Again.Nodes.Num());
+        if (Seed < 1003)
+            for (float Scale : { 0.5f, 2.f, 5.f })
+            {
+                FCanyonGrayboxLayout Scaled = FCanyonGrayboxLayout::Generate(Seed);
+                Scaled.ScaleForMap(Scale);
+                TestTrue(TEXT("Scaled canyon graph stays traversable"), Scaled.Validate());
+            }
         TestTrue(TEXT("Spawn and treasure are separated"),
             FVector::Dist2D(Layout.Nodes[Layout.SpawnNode].Position,
                 Layout.Nodes[Layout.TreasureNode].Position) > 2800.f);

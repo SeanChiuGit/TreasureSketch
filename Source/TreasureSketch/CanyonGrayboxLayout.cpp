@@ -234,6 +234,16 @@ const TCHAR* FCanyonGrayboxLayout::ProblemName() const
     }
 }
 
+void FCanyonGrayboxLayout::ScaleForMap(float Scale)
+{
+    LengthScale = FMath::Sqrt(FMath::Clamp(Scale, 0.5f, 5.f));
+    for (FCanyonGrayboxNode& Node : Nodes) Node.Position *= LengthScale;
+    for (FCanyonGrayboxEdge& Edge : Edges)
+        Edge.HalfWidth = Edge.Layer == ECanyonRouteLayer::Lower
+            ? FMath::Max(170.f, Edge.HalfWidth * LengthScale)
+            : Edge.HalfWidth * LengthScale;
+}
+
 bool FCanyonGrayboxLayout::Validate() const
 {
     if (!Nodes.IsValidIndex(SpawnNode) || !Nodes.IsValidIndex(TreasureNode) || Nodes.Num() < 6) return false;
@@ -267,7 +277,7 @@ float FCanyonGrayboxLayout::HeightAt(float X, float Y, float* DistanceFromRoute,
         // Within one level the closest route owns the surface. Taking the lowest
         // height from every adjoining branch creates sudden drops at high/low forks.
         if (Distance >= LayerDistance[Index]) return;
-        const float T = FMath::Clamp((Distance - HalfWidth) / 470.f, 0.f, 1.f);
+        const float T = FMath::Clamp((Distance - HalfWidth) / (470.f * LengthScale), 0.f, 1.f);
         LayerHeight[Index] = FloorZ + Rise * T * T * (3.f - 2.f * T);
         LayerDistance[Index] = Distance;
     };
@@ -279,16 +289,19 @@ float FCanyonGrayboxLayout::HeightAt(float X, float Y, float* DistanceFromRoute,
         const float T = FMath::Clamp(FVector2D::DotProduct(Point - Start, Delta) / Delta.SizeSquared(), 0.f, 1.f);
         const float Distance = FVector2D::Distance(Point, Start + Delta * T);
         const float FloorZ = FMath::Lerp(A.Z, B.Z, T);
-        const float Rise = Edge.Layer == ECanyonRouteLayer::Upper ? 1200.f
-            : Edge.Layer == ECanyonRouteLayer::Ramp ? 2200.f - FloorZ : 2200.f;
+        const float Rise = Edge.Layer == ECanyonRouteLayer::Upper ? 1200.f * LengthScale
+            : Edge.Layer == ECanyonRouteLayer::Ramp ? 2200.f * LengthScale - FloorZ
+            : 2200.f * LengthScale;
         Consider(Distance, Edge.HalfWidth, FloorZ, Rise, Edge.Layer);
     }
     for (const FCanyonGrayboxNode& Node : Nodes)
     {
         const float Distance = FVector2D::Distance(Point, FVector2D(Node.Position.X, Node.Position.Y));
-        Consider(Distance * 0.72f, Node.Layer == ECanyonRouteLayer::Upper ? 480.f : 440.f,
-            Node.Position.Z, Node.Layer == ECanyonRouteLayer::Upper ? 1200.f
-                : Node.Layer == ECanyonRouteLayer::Ramp ? 2200.f - Node.Position.Z : 2200.f,
+        Consider(Distance * 0.72f,
+            (Node.Layer == ECanyonRouteLayer::Upper ? 480.f : 440.f) * LengthScale,
+            Node.Position.Z, Node.Layer == ECanyonRouteLayer::Upper ? 1200.f * LengthScale
+                : Node.Layer == ECanyonRouteLayer::Ramp ? 2200.f * LengthScale - Node.Position.Z
+                : 2200.f * LengthScale,
             Node.Layer);
     }
     int32 BestIndex = 0;
@@ -298,6 +311,6 @@ float FCanyonGrayboxLayout::HeightAt(float X, float Y, float* DistanceFromRoute,
     if (DistanceFromRoute) *DistanceFromRoute = BestDistance;
     if (SurfaceLayer) *SurfaceLayer = static_cast<ECanyonRouteLayer>(BestIndex);
     const float Detail = FMath::Sin(X * 0.0023f + Seed * 0.03f) * FMath::Cos(Y * 0.0027f - Seed * 0.04f)
-        * (BestDistance < 550.f ? 6.f : 25.f);
+        * (BestDistance < 550.f * LengthScale ? 6.f : 25.f);
     return 600.f + LayerHeight[BestIndex] + Detail;
 }

@@ -33,6 +33,7 @@ struct FCanyonGrayboxEdge
 struct FCanyonGrayboxLayout
 {
     int32 Seed = 0;
+    float LengthScale = 1.f;
     ECanyonGrayboxProblem Problem = ECanyonGrayboxProblem::ForkRejoin;
     TArray<FCanyonGrayboxNode> Nodes;
     TArray<FCanyonGrayboxEdge> Edges;
@@ -40,6 +41,7 @@ struct FCanyonGrayboxLayout
     int32 TreasureNode = INDEX_NONE;
 
     static FCanyonGrayboxLayout Generate(int32 Seed);
+    void ScaleForMap(float Scale);
     const TCHAR* ProblemName() const;
     bool Validate() const;
     float HeightAt(float X, float Y, float* DistanceFromRoute = nullptr,

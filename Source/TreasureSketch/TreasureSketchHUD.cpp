@@ -187,7 +187,8 @@ void ATreasureSketchHUD::DrawHUD()
                 const FString TimeText = Selected->LocalTimeText.IsEmpty()
                     ? Selected->UtcTimeIso.Left(16) : Selected->LocalTimeText;
                 const TCHAR* ThemeName = Selected->Theme == EIslandTheme::MistForest ? TEXT("雾森林")
-                    : Selected->Theme == EIslandTheme::JungleRuins ? TEXT("遗迹") : TEXT("海盗沙滩");
+                    : Selected->Theme == EIslandTheme::JungleRuins ? TEXT("遗迹")
+                    : Selected->Theme == EIslandTheme::CanyonGraybox ? TEXT("峡谷") : TEXT("海盗沙滩");
                 const TCHAR* ModeName = Selected->RoomMode == ETreasureRoomMode::ExplorerRace ? TEXT("探索者对抗")
                     : Selected->RoomMode == ETreasureRoomMode::OneExplorer ? TEXT("多地图师") : TEXT("合作寻宝");
                 const TCHAR* RoleName = Selected->LocalRole == ETreasurePlayerRole::Scout ? TEXT("地图师") : TEXT("探索者");
@@ -436,21 +437,25 @@ void ATreasureSketchHUD::DrawHUD()
                 GEngine->GetSmallFont(), 0.9f);
             const float PoolX = PanelX + 48.f;
             const float PoolY = PanelY + 294.f;
-            const float PoolButtonW = (PanelW - 181.f) * 0.5f;
+            const float PoolButtonW = (PanelW - 181.f) / 3.f;
             DrawText(TEXT("地图池"), FLinearColor::White, PoolX, PoolY + 8.f, GEngine->GetSmallFont(), 0.9f);
-            for (int32 PoolIndex = 0; PoolIndex < 2; ++PoolIndex)
+            for (int32 PoolIndex = 0; PoolIndex < 3; ++PoolIndex)
             {
-                const bool bSelected = PoolIndex == 0 ? GS->bBeachInMapPool : GS->bForestInMapPool;
-                const bool bOtherSelected = PoolIndex == 0 ? GS->bForestInMapPool : GS->bBeachInMapPool;
+                const bool bSelected = PoolIndex == 0 ? GS->bBeachInMapPool
+                    : PoolIndex == 1 ? GS->bForestInMapPool : GS->bCanyonInMapPool;
+                const int32 SelectedCount = static_cast<int32>(GS->bBeachInMapPool)
+                    + static_cast<int32>(GS->bForestInMapPool) + static_cast<int32>(GS->bCanyonInMapPool);
                 const float ButtonX = PoolX + 75.f + PoolIndex * (PoolButtonW + 10.f);
                 DrawRect(bSelected ? FLinearColor(0.53f, 0.36f, 0.14f) : FLinearColor(0.08f, 0.12f, 0.13f),
                     ButtonX, PoolY, PoolButtonW, 30.f);
                 DrawText(PoolIndex == 0 ? (bSelected ? TEXT("沙滩 ✓") : TEXT("沙滩 ○"))
-                    : (bSelected ? TEXT("森林 ✓") : TEXT("森林 ○")),
+                    : PoolIndex == 1 ? (bSelected ? TEXT("森林 ✓") : TEXT("森林 ○"))
+                    : (bSelected ? TEXT("峡谷 ✓") : TEXT("峡谷 ○")),
                     FLinearColor::White, ButtonX + 9.f, PoolY + 8.f, GEngine->GetSmallFont(), 0.9f);
-                if (bHost && (bOtherSelected || !bSelected))
+                if (bHost && (SelectedCount > 1 || !bSelected))
                     AddHitBox(FVector2D(ButtonX, PoolY), FVector2D(PoolButtonW, 30.f),
-                        PoolIndex == 0 ? TEXT("RoomPoolBeach") : TEXT("RoomPoolForest"), true, 10);
+                        PoolIndex == 0 ? TEXT("RoomPoolBeach")
+                        : PoolIndex == 1 ? TEXT("RoomPoolForest") : TEXT("RoomPoolCanyon"), true, 10);
             }
             if (GetNetMode() == NM_ListenServer)
             {
@@ -928,7 +933,7 @@ void ATreasureSketchHUD::DrawHUD()
         for (TActorIterator<AProceduralIsland> It(GetWorld()); It; ++It) { Island = *It; break; }
         if (Island)
         {
-            constexpr int32 Samples = 48;
+            const int32 Samples = Island->Theme == EIslandTheme::CanyonGraybox ? 128 : 48;
             if (CachedTemplateIsland.Get() != Island || CachedTemplateSeed != Island->Seed
                 || IslandTemplateMask.Num() != Samples * Samples)
             {
@@ -938,9 +943,12 @@ void ATreasureSketchHUD::DrawHUD()
                 const float Half = (Island->GridSize - 1) * Island->CellSize * 0.5f;
                 for (int32 Y = 0; Y < Samples; ++Y)
                     for (int32 X = 0; X < Samples; ++X)
-                        IslandTemplateMask[Y * Samples + X] = Island->HeightAt(
-                            -Half + (X + 0.5f) * 2.f * Half / Samples,
-                            -Half + (Y + 0.5f) * 2.f * Half / Samples) > 0.f;
+                    {
+                        const float WX = -Half + (X + 0.5f) * 2.f * Half / Samples;
+                        const float WY = -Half + (Y + 0.5f) * 2.f * Half / Samples;
+                        IslandTemplateMask[Y * Samples + X] = Island->Theme == EIslandTheme::CanyonGraybox
+                            ? Island->IsCanyonRouteAt(WX, WY) : Island->HeightAt(WX, WY) > 0.f;
+                    }
             }
             const float TemplateSize = FMath::Min(Size.X, Size.Y - 100.f) * 0.9f;
             const FVector2D Origin(Min.X + (Size.X - TemplateSize) * 0.5f,

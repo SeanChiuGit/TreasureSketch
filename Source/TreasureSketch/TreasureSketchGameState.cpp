@@ -15,6 +15,7 @@ void ATreasureSketchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProper
     DOREPLIFETIME(ATreasureSketchGameState, RoomMode);
     DOREPLIFETIME(ATreasureSketchGameState, bBeachInMapPool);
     DOREPLIFETIME(ATreasureSketchGameState, bForestInMapPool);
+    DOREPLIFETIME(ATreasureSketchGameState, bCanyonInMapPool);
     DOREPLIFETIME(ATreasureSketchGameState, bSurfacePaintEnabled);
     DOREPLIFETIME(ATreasureSketchGameState, SurfacePaintStampsUsed);
     DOREPLIFETIME(ATreasureSketchGameState, bTreasureRangeVisible);

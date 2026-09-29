@@ -20,7 +20,8 @@ namespace
 uint8 GetRoomMapPoolMask(const ATreasureSketchGameState* GS)
 {
     return GS ? (GS->bBeachInMapPool ? 1u << static_cast<uint8>(EIslandTheme::PirateBeach) : 0u)
-        | (GS->bForestInMapPool ? 1u << static_cast<uint8>(EIslandTheme::MistForest) : 0u) : 0xff;
+        | (GS->bForestInMapPool ? 1u << static_cast<uint8>(EIslandTheme::MistForest) : 0u)
+        | (GS->bCanyonInMapPool ? 1u << static_cast<uint8>(EIslandTheme::CanyonGraybox) : 0u) : 0xff;
 }
 
 bool IsThemeInRoomMapPool(const ATreasureSketchGameState* GS, EIslandTheme Theme)
@@ -212,7 +213,7 @@ void ATreasureSketchGameMode::BuildRound()
     Island->ConfigureThemeParameters();
     Island->FinishSpawning(FTransform::Identity);
 
-    TreasureLocation = Island->FindRandomLandPoint(Stream,
+    TreasureLocation = Island->FindTreasurePoint(Stream,
         Island->Theme == EIslandTheme::MistForest ? 105.f : 170.f) + FVector(0.f, 0.f, 35.f);
     if (ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>())
     {
@@ -273,9 +274,10 @@ bool ATreasureSketchGameMode::ToggleRoomMapPool(EIslandTheme Theme)
     if (!HasAuthority() || !GS || GS->bGameStarted
         || (GetNetMode() != NM_ListenServer && GetNetMode() != NM_Standalone)) return false;
     bool* Selected = Theme == EIslandTheme::PirateBeach ? &GS->bBeachInMapPool
-        : Theme == EIslandTheme::MistForest ? &GS->bForestInMapPool : nullptr;
-    if (!Selected || (*Selected && !(Theme == EIslandTheme::PirateBeach
-        ? GS->bForestInMapPool : GS->bBeachInMapPool))) return false;
+        : Theme == EIslandTheme::MistForest ? &GS->bForestInMapPool
+        : Theme == EIslandTheme::CanyonGraybox ? &GS->bCanyonInMapPool : nullptr;
+    const uint8 OtherThemes = GetRoomMapPoolMask(GS) & ~(1u << static_cast<uint8>(Theme));
+    if (!Selected || (*Selected && OtherThemes == 0)) return false;
     *Selected = !*Selected;
     GS->ForceNetUpdate();
 
@@ -339,7 +341,10 @@ void ATreasureSketchGameMode::PlaceRoundPlayers()
                 {
                     Character->SetSpectatorHidden(false);
                     Character->SetShoveWindingUp(false);
+                    Character->SetCanyonTestMode(false);
                 }
+                if (Island && Island->Theme == EIslandTheme::CanyonGraybox)
+                    PC->SetControlRotation(Island->GetCanyonStartFacing());
             }
 }
 
@@ -542,7 +547,7 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice, bool bForceNewSee
     Island->FinishSpawning(FTransform::Identity);
     if (bHunterGameplayTest) Island->Tags.Add(TEXT("SoloHunterGameplayTest"));
     if (bFullFlowTest) Island->Tags.Add(TEXT("SoloFullFlowTest"));
-    TreasureLocation = Island->FindRandomLandPoint(Stream, Island->Theme == EIslandTheme::MistForest ? 105.f : 170.f) + FVector(0.f, 0.f, 35.f);
+    TreasureLocation = Island->FindTreasurePoint(Stream, Island->Theme == EIslandTheme::MistForest ? 105.f : 170.f) + FVector(0.f, 0.f, 35.f);
 
     if (GS)
     {

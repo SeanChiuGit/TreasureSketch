@@ -119,7 +119,8 @@ void ATreasureSketchCharacter::SetMovementSpeedMultiplier(float Multiplier)
 void ATreasureSketchCharacter::SetCanyonTestMode(bool bEnabled)
 {
     bCanyonTestMode = bEnabled;
-    const float Scale = bEnabled ? 5.f : 1.f;
+    const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
+    const float Scale = bEnabled ? 5.f : GS ? GS->MovementSpeedMultiplier : 1.f;
     SetMovementSpeedMultiplier(Scale);
     GetCharacterMovement()->MaxFlySpeed = 520.f * Scale;
     GetCharacterMovement()->BrakingDecelerationFlying = 2048.f * Scale;

@@ -44,6 +44,9 @@ public:
     bool bForestInMapPool = true;
 
     UPROPERTY(Replicated, BlueprintReadOnly)
+    bool bCanyonInMapPool = true;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
     int32 IslandSeed = 0;
 
     UPROPERTY(Replicated, BlueprintReadOnly)

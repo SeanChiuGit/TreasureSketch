@@ -37,7 +37,7 @@ public:
     UPROPERTY(EditAnywhere, ReplicatedUsing=OnRep_Seed, Category="Island")
     EIslandTheme Theme = EIslandTheme::PirateBeach;
 
-    UPROPERTY(EditAnywhere, ReplicatedUsing=OnRep_Seed, Category="Island", meta=(ClampMin="17", ClampMax="301"))
+    UPROPERTY(EditAnywhere, ReplicatedUsing=OnRep_Seed, Category="Island", meta=(ClampMin="17", ClampMax="321"))
     int32 GridSize = 39;
 
     UPROPERTY(EditAnywhere, ReplicatedUsing=OnRep_Seed, Category="Island")
@@ -48,6 +48,8 @@ public:
     float MapScale = 1.f;
 
     float HeightAt(float X, float Y) const;
+    bool IsCanyonRouteAt(float X, float Y) const;
+    FVector FindTreasurePoint(FRandomStream& Stream, float MinimumHeight = 130.f) const;
     FVector FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight = 130.f) const;
     FVector FindSpawnPoint(float LateralOffset = 0.f) const;
     FRotator GetCanyonStartFacing() const;

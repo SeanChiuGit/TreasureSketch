@@ -37,7 +37,7 @@ const FIslandThemeDefinition ThemeTable[] = {
     // Forest 1x has 75% of the former 125.4m side length; preserve original forest density.
     { EIslandTheme::MistForest, TEXT("MistForest"), 50, true, 3.60f, 3.80f, 1.00f, 39, 247.5f,
         (9405.f * 9405.f) / (24600.f * 24600.f) },
-    { EIslandTheme::CanyonGraybox, TEXT("CanyonGraybox"), 0, false, 0.f, 0.f, 1.f, 129, 225.f, 1.f },
+    { EIslandTheme::CanyonGraybox, TEXT("CanyonGraybox"), 50, true, 0.f, 0.f, 1.f, 321, 125.f, 1.f },
 };
 
 const FIslandThemeDefinition& GetThemeDefinition(EIslandTheme Theme)
@@ -231,9 +231,9 @@ void AProceduralIsland::ConfigureThemeParameters()
 {
     if (Theme == EIslandTheme::CanyonGraybox)
     {
+        MapScale = FMath::IsFinite(MapScale) ? FMath::Clamp(MapScale, 0.5f, 5.f) : 1.f;
         GridSize = 321;
-        CellSize = 125.f;
-        MapScale = 1.f;
+        CellSize = 125.f * FMath::Sqrt(MapScale);
         return;
     }
     const FIslandThemeDefinition& Definition = GetThemeDefinition(Theme);
@@ -607,6 +607,15 @@ float AProceduralIsland::HeightAt(float X, float Y) const
     return ShoreRise + Relief * Interior + FineVariation;
 }
 
+bool AProceduralIsland::IsCanyonRouteAt(float X, float Y) const
+{
+    if (Theme != EIslandTheme::CanyonGraybox || !CanyonLayout.Nodes.IsValidIndex(CanyonLayout.SpawnNode))
+        return false;
+    float Distance = 0.f;
+    CanyonLayout.HeightAt(X, Y, &Distance);
+    return Distance < 650.f * CanyonLayout.LengthScale;
+}
+
 float AProceduralIsland::SlopeAt(float X, float Y) const
 {
     constexpr float Step = 90.f;
@@ -636,12 +645,30 @@ void AProceduralIsland::RecordDecoration(float X, float Y)
         .Add(FVector2D(X, Y));
 }
 
-FVector AProceduralIsland::FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight) const
+FVector AProceduralIsland::FindTreasurePoint(FRandomStream& Stream, float MinimumHeight) const
 {
     if (Theme == EIslandTheme::CanyonGraybox && CanyonLayout.Nodes.IsValidIndex(CanyonLayout.TreasureNode))
     {
         const FVector& Point = CanyonLayout.Nodes[CanyonLayout.TreasureNode].Position;
         return GetActorLocation() + FVector(Point.X, Point.Y, CanyonLayout.HeightAt(Point.X, Point.Y));
+    }
+    return FindRandomLandPoint(Stream, MinimumHeight);
+}
+
+FVector AProceduralIsland::FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight) const
+{
+    if (Theme == EIslandTheme::CanyonGraybox && CanyonLayout.Validate())
+    {
+        TArray<int32> Candidates;
+        for (int32 Index = 0; Index < CanyonLayout.Nodes.Num(); ++Index)
+            if (Index != CanyonLayout.TreasureNode
+                && CanyonLayout.Nodes[Index].Layer != ECanyonRouteLayer::Ramp)
+                Candidates.Add(Index);
+        if (!Candidates.IsEmpty())
+        {
+            const FVector& Point = CanyonLayout.Nodes[Candidates[Stream.RandRange(0, Candidates.Num() - 1)]].Position;
+            return GetActorLocation() + FVector(Point.X, Point.Y, CanyonLayout.HeightAt(Point.X, Point.Y));
+        }
     }
     const float Extent = CellSize * (GridSize - 1) * 0.42f;
     const float Radius = CellSize * (GridSize - 1) * 0.46f;
@@ -664,8 +691,13 @@ FVector AProceduralIsland::FindSpawnPoint(float LateralOffset) const
     if (Theme == EIslandTheme::CanyonGraybox && CanyonLayout.Nodes.IsValidIndex(CanyonLayout.SpawnNode))
     {
         const FVector& Point = CanyonLayout.Nodes[CanyonLayout.SpawnNode].Position;
-        return GetActorLocation() + FVector(Point.X, Point.Y + LateralOffset,
-            CanyonLayout.HeightAt(Point.X, Point.Y + LateralOffset) + 180.f);
+        const FVector Forward = (CanyonLayout.Nodes[1].Position - Point).GetSafeNormal2D();
+        const FVector Right(-Forward.Y, Forward.X, 0.f);
+        const int32 Slot = FMath::RoundToInt(FMath::Abs(LateralOffset) / 600.f);
+        const FVector Position = Point + Forward * (Slot * 210.f)
+            + Right * (LateralOffset < 0.f ? -100.f : Slot > 0 ? 100.f : 0.f);
+        return GetActorLocation() + FVector(Position.X, Position.Y,
+            CanyonLayout.HeightAt(Position.X, Position.Y) + 180.f);
     }
     const float Radius = CellSize * (GridSize - 1) * 0.46f;
     const FVector2D Desired(-Radius * 0.68f, LateralOffset);
@@ -1138,6 +1170,7 @@ void AProceduralIsland::BuildWater()
 void AProceduralIsland::BuildCanyonGrayboxTerrain()
 {
     CanyonLayout = FCanyonGrayboxLayout::Generate(Seed);
+    CanyonLayout.ScaleForMap(MapScale);
     const bool bValid = CanyonLayout.Validate();
     UE_LOG(LogTemp, Warning, TEXT("TREASURE_CANYON_GRAYBOX Seed=%d Problem=%s Nodes=%d Edges=%d Valid=%s"),
         Seed, CanyonLayout.ProblemName(), CanyonLayout.Nodes.Num(), CanyonLayout.Edges.Num(),

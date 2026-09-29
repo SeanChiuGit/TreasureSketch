@@ -36,6 +36,9 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Host world"), World->GetNetMode(), NM_ListenServer);
     TestTrue(TEXT("Beach is in the default room map pool"), GS->bBeachInMapPool);
     TestTrue(TEXT("Forest is in the default room map pool"), GS->bForestInMapPool);
+    TestTrue(TEXT("Canyon is in the default room map pool"), GS->bCanyonInMapPool);
+    TestTrue(TEXT("Host can remove canyon from the map pool"), GM->ToggleRoomMapPool(EIslandTheme::CanyonGraybox));
+    TestFalse(TEXT("Canyon selection is removed"), GS->bCanyonInMapPool);
     TestTrue(TEXT("Host can remove beach from the map pool"), GM->ToggleRoomMapPool(EIslandTheme::PirateBeach));
     TestFalse(TEXT("Beach selection is removed"), GS->bBeachInMapPool);
     TestFalse(TEXT("Cannot remove the last available map"), GM->ToggleRoomMapPool(EIslandTheme::MistForest));
@@ -45,6 +48,9 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Forest-only pool always selects forest"),
         AProceduralIsland::SelectThemeFromTable(1000, false, 1u << static_cast<uint8>(EIslandTheme::MistForest)),
         EIslandTheme::MistForest);
+    TestEqual(TEXT("Canyon-only pool always selects canyon"),
+        AProceduralIsland::SelectThemeFromTable(1000, false, 1u << static_cast<uint8>(EIslandTheme::CanyonGraybox)),
+        EIslandTheme::CanyonGraybox);
     GM->AdjustRoomSetting(TEXT("TreasureRange"), 1);
     GM->AdjustRoomSetting(TEXT("SpreadPlayerSpawns"), 1);
     GM->AdjustRoomSetting(TEXT("SketchSceneLock"), 1);

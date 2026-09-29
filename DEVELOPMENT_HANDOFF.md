@@ -1,8 +1,13 @@
 # TreasureSketch 开发接手说明
 
-## 地图师相机道具（`codex/photo-clue`）
+## 峡谷与地图师相机（`feature/ground-up-canyon`）
 
-- 从 `codex/three-player-race` 独立分支开发；主仓库的峡谷分支及未提交场景素材未改动。此功能尚未打包 Release。
+- 已将 `codex/photo-clue` 合并进峡谷分支。峡谷默认加入房间地图池，可用于合作寻宝、多地图师和探索者对抗；房主可在大厅只勾选峡谷，面积倍数 0.5–5 生效。灰盒专用的 5 倍移速、飞行和 R 刷图仅在单人峡谷测试中启用。
+- UE 5.6 编辑器构建以及 `TreasureSketch.Canyon`、`TreasureSketch.RoomSettings` 无窗口自动化测试通过。见 `Docs/CanyonGrayboxPlaytest.md` 的普通回合试玩方式。
+
+## 地图师相机道具（原 `codex/photo-clue`）
+
+- 从 `codex/three-player-race` 独立分支开发，现已合并到 `feature/ground-up-canyon`。此功能尚未打包 Release。
 - 地图师在探索阶段地面视角按 B 拍一张 384×216 JPEG 照片；每人每局一张，不可重拍。照片与本人图纸关联，等待中的探索者可实时收到，交图后在寻宝、观战、复盘和本地游玩历史中保留。
 - 打开画纸后点击“查看照片”放大，点击“收起照片”继续画图；查看放大照片时禁止误画。照片不包含本地宝藏标记或自己角色的模型。
 - 画纸打开、暂停、交图后、俯视鬼魂状态及观战状态不能拍照；服务端按回合、身份、一次拍摄限额、地面视角状态、相机位置和 JPEG 尺寸再次验证。新局清空照片。
