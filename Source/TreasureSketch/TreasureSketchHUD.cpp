@@ -9,7 +9,9 @@
 #include "TreasureOnlineSubsystem.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
+#include "Engine/Texture2D.h"
 #include "EngineUtils.h"
+#include "ImageUtils.h"
 
 namespace
 {
@@ -25,6 +27,16 @@ FLinearColor SketchInkColor(uint8 Index)
     default: return FLinearColor(0.08f, 0.07f, 0.05f);
     }
 }
+}
+
+UTexture2D* ATreasureSketchHUD::GetPhotoTexture(const TArray<uint8>& PhotoJpeg)
+{
+    if (CachedPhotoJpeg != PhotoJpeg)
+    {
+        CachedPhotoJpeg = PhotoJpeg;
+        CachedPhotoTexture = PhotoJpeg.IsEmpty() ? nullptr : FImageUtils::ImportBufferAsTexture2D(PhotoJpeg);
+    }
+    return CachedPhotoTexture;
 }
 
 void ATreasureSketchHUD::DrawHUD()
@@ -257,6 +269,15 @@ void ATreasureSketchHUD::DrawHUD()
                                 DrawLine(A.X, A.Y, B.X, B.Y, SketchInkColor(Stroke.ColorIndex),
                                     FMath::Max(1.f, Width * PaperW / 1000.f));
                             }
+                        if (UTexture2D* HistoryPhoto = GetPhotoTexture(Sketch.PhotoJpeg))
+                        {
+                            const float PhotoW = FMath::Min(260.f, PaperW * 0.36f);
+                            const float PhotoH = PhotoW * 9.f / 16.f;
+                            DrawRect(FLinearColor::Black, PaperMin.X + PaperW - PhotoW - 16.f,
+                                PaperMin.Y + 76.f, PhotoW + 8.f, PhotoH + 8.f);
+                            DrawTexture(HistoryPhoto, PaperMin.X + PaperW - PhotoW - 12.f,
+                                PaperMin.Y + 80.f, PhotoW, PhotoH, 0.f, 0.f, 1.f, 1.f);
+                        }
                         DrawText(FString::Printf(TEXT("图纸 %d / %d · %s"), PageIndex + 1,
                             Selected->Pages.Num(), *Sketch.MapmakerName), FLinearColor::White,
                             RightX + 12.f, PaperMin.Y + PaperH + 20.f, GEngine->GetSmallFont(), 1.f);
@@ -822,6 +843,12 @@ void ATreasureSketchHUD::DrawHUD()
             FLinearColor(0.1f, 0.6f, 1.f), 35.f, 86.f,
             GEngine->GetSmallFont(), 0.9f);
     }
+    if (bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing && !PC->HasSubmittedSketch()
+        && !PC->IsMapOpen())
+        DrawText(PC->HasTakenPhoto() ? TEXT("照片已拍好 · 按 M 在画纸上查看")
+            : PC->IsDrawingOverheadView() ? TEXT("相机：返回地面后按 B 拍照")
+            : TEXT("相机：按 B 拍一张照片 · 鬼魂视角不可拍"),
+            FLinearColor(0.95f, 0.84f, 0.52f), 35.f, 155.f, GEngine->GetSmallFont(), 0.9f);
     const int32 SecondsRemaining = GS->GetSecondsRemaining();
     const FString TimerText = FString::Printf(TEXT("%02d:%02d"), SecondsRemaining / 60, SecondsRemaining % 60);
     const FLinearColor TimerColor = SecondsRemaining <= 10 ? FLinearColor(1.f, 0.12f, 0.08f) : FLinearColor::White;
@@ -970,6 +997,31 @@ void ATreasureSketchHUD::DrawHUD()
             const FVector2D B = Min + Stroke.Points[I] * Size;
             DrawLine(A.X, A.Y, B.X, B.Y, SketchInkColor(Stroke.ColorIndex),
                 Stroke.ColorIndex == 5 ? (Stroke.EraserSize ? 48.f : 22.f) : 4.f);
+        }
+    }
+    const TArray<uint8>& PhotoJpeg = PC->GetPhotoJpeg();
+    if (UTexture2D* PhotoTexture = GetPhotoTexture(PhotoJpeg))
+    {
+        const FVector2D PhotoButton(Min.X + Size.X - 174.f, Min.Y + 96.f);
+        DrawRect(FLinearColor(0.13f, 0.35f, 0.31f), PhotoButton.X, PhotoButton.Y, 154.f, 36.f);
+        DrawText(PC->IsPhotoExpanded() ? TEXT("收起照片") : TEXT("查看照片"), FLinearColor::White,
+            PhotoButton.X + 23.f, PhotoButton.Y + 9.f, GEngine->GetSmallFont(), 1.f);
+        AddHitBox(PhotoButton, FVector2D(154.f, 36.f), TEXT("TogglePhoto"), true, 10);
+        if (PC->IsPhotoExpanded())
+        {
+            const float PhotoW = FMath::Min(Canvas->SizeX * 0.72f, 960.f);
+            const float PhotoH = PhotoW * 9.f / 16.f;
+            const float PhotoX = (Canvas->SizeX - PhotoW) * 0.5f;
+            const float PhotoY = (Canvas->SizeY - PhotoH) * 0.5f;
+            DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.88f), 0.f, 0.f, Canvas->SizeX, Canvas->SizeY);
+            DrawTexture(PhotoTexture, PhotoX, PhotoY, PhotoW, PhotoH, 0.f, 0.f, 1.f, 1.f);
+            DrawText(TEXT("拍摄的线索照片 · 点击右上角收起"), FLinearColor::White,
+                PhotoX, PhotoY - 26.f, GEngine->GetSmallFont(), 1.f);
+            DrawRect(FLinearColor(0.13f, 0.35f, 0.31f), PhotoX + PhotoW - 110.f, PhotoY - 44.f, 110.f, 36.f);
+            DrawText(TEXT("收起照片"), FLinearColor::White, PhotoX + PhotoW - 98.f, PhotoY - 35.f,
+                GEngine->GetSmallFont(), 0.85f);
+            AddHitBox(FVector2D(PhotoX + PhotoW - 110.f, PhotoY - 44.f), FVector2D(110.f, 36.f),
+                TEXT("TogglePhoto"), true, 20);
         }
     }
     if ((!bScout || GS->bReviewingRound || GS->Phase == ETreasureRoundPhase::HunterSearching)

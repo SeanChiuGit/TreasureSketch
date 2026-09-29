@@ -33,4 +33,8 @@ struct FSketchPage
 
     UPROPERTY()
     TArray<FSketchStroke> Strokes;
+
+    // One compressed photograph per mapmaker, captured before the sketch is submitted.
+    UPROPERTY()
+    TArray<uint8> PhotoJpeg;
 };

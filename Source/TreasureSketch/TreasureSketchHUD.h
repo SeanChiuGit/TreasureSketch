@@ -14,7 +14,11 @@ public:
     virtual void NotifyHitBoxClick(FName BoxName) override;
 
 private:
+    class UTexture2D* GetPhotoTexture(const TArray<uint8>& PhotoJpeg);
     TWeakObjectPtr<class AProceduralIsland> CachedTemplateIsland;
     int32 CachedTemplateSeed = 0;
     TArray<uint8> IslandTemplateMask;
+    TArray<uint8> CachedPhotoJpeg;
+    UPROPERTY()
+    TObjectPtr<class UTexture2D> CachedPhotoTexture;
 };

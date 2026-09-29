@@ -4,10 +4,14 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "IpNetDriver.h"
+#include "IImageWrapper.h"
+#include "IImageWrapperModule.h"
+#include "Modules/ModuleManager.h"
 #include "../TreasureSketchGameMode.h"
 #include "../TreasureSketchGameState.h"
 #include "../TreasureSketchPlayerController.h"
 #include "../TreasureSketchPlayerState.h"
+#include "../TreasureSketchCharacter.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMultiMapmakerFlowTest, "TreasureSketch.RoomSettings.MultiMapmaker",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -113,6 +117,32 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
         TestEqual(TEXT("Old round live update is rejected"), Explorer->GetStrokes()[0].Points.Num(), 2);
     }
     World->SetNetDriver(Driver);
+    IImageWrapperModule& Images = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
+    const TSharedPtr<IImageWrapper> Jpeg = Images.CreateImageWrapper(EImageFormat::JPEG);
+    TArray<FColor> PhotoPixels;
+    PhotoPixels.Init(FColor::Green, 384 * 216);
+    TArray<uint8> TestPhoto;
+    if (Jpeg.IsValid() && Jpeg->SetRaw(PhotoPixels.GetData(), PhotoPixels.Num() * sizeof(FColor),
+        384, 216, ERGBFormat::BGRA, 8))
+    {
+        const TArray64<uint8> Encoded = Jpeg->GetCompressed(50);
+        TestPhoto.Append(Encoded.GetData(), static_cast<int32>(Encoded.Num()));
+    }
+    TestTrue(TEXT("Test photograph can be encoded"), TestPhoto.Num() > 100);
+    ATreasureSketchCharacter* PhotoPawn = World->SpawnActor<ATreasureSketchCharacter>();
+    Controllers[1]->Possess(PhotoPawn);
+    const FVector PhotoOrigin = Controllers[1]->GetPawn()->GetActorLocation();
+    const FRotator PhotoRotation = Controllers[1]->GetControlRotation();
+    Controllers[1]->bServerDrawingOverheadView = true;
+    Controllers[1]->ServerSubmitPhoto_Implementation(GS->RoundSerial, PhotoOrigin, PhotoRotation, TestPhoto);
+    TestTrue(TEXT("Ghost camera cannot submit a photograph"), Controllers[1]->GetServerPhoto().IsEmpty());
+    Controllers[1]->bServerDrawingOverheadView = false;
+    Controllers[1]->ServerSubmitPhoto_Implementation(GS->RoundSerial, PhotoOrigin, PhotoRotation, TestPhoto);
+    TestEqual(TEXT("Ground camera stores one photograph"), Controllers[1]->GetServerPhoto(), TestPhoto);
+    Explorer->ClientReceiveLivePhoto_Implementation(GS->RoundSerial, Players[1]->GetPlayerId(), TestPhoto);
+    TestEqual(TEXT("Waiting explorer receives the matching live photograph"), Explorer->GetPhotoJpeg(), TestPhoto);
+    const TArray<FSketchPage> PhotoPages = GM->CollectSketchPages();
+    TestEqual(TEXT("Unsubmitted map page keeps its photograph"), PhotoPages[0].PhotoJpeg, TestPhoto);
     GS->bLimitedInk = true;
     GS->InkLimit = 2;
     Controllers[1]->ServerAppendDrawing_Implementation(GS->RoundSerial, 0, 1, 0,
@@ -161,6 +191,7 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("All independent pages retained, including blank"), Pages.Num(), 3);
     if (Pages.Num() == 3)
     {
+        TestEqual(TEXT("Submitted map keeps its photograph"), Pages[0].PhotoJpeg, TestPhoto);
         TestEqual(TEXT("Page identifies its author"), Pages[0].MapmakerName, FString(TEXT("Player1")));
         TestEqual(TEXT("Duplicate submit cannot overwrite page"), Pages[0].Strokes[0].Points[0], FVector2D(0.1f, 0.2f));
         if (TestEqual(TEXT("Final page retains eraser stroke"), Pages[0].Strokes.Num(), 2))
@@ -231,6 +262,7 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
         GS->RoundSerial, GS->GetServerWorldTimeSeconds()), 0.f);
     TestFalse(TEXT("Next round clears review state"), GS->bReviewingRound);
     TestEqual(TEXT("Replay keeps mode"), GS->RoomMode, ETreasureRoomMode::OneExplorer);
+    TestTrue(TEXT("Replay clears the previous photograph"), Controllers[1]->GetServerPhoto().IsEmpty());
     TestEqual(TEXT("Explorer rotates to next player"), Players[1]->PlayerRole, ETreasurePlayerRole::Hunter);
     TestEqual(TEXT("Old explorer becomes mapmaker"), Players[0]->PlayerRole, ETreasurePlayerRole::Scout);
     for (auto* PS : Players) TestFalse(TEXT("Replay clears readiness"), PS->bSketchSubmitted);
