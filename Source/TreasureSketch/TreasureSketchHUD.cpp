@@ -782,8 +782,8 @@ void ATreasureSketchHUD::DrawHUD()
         for (TActorIterator<AProceduralIsland> It(GetWorld()); It; ++It)
             if (!It->IsActorBeingDestroyed() && It->Theme == EIslandTheme::CanyonGraybox)
             {
-                DrawText(TEXT("峡谷路线灰盒  |  R 换新地图  |  菜单可输入种子复现"),
-                    FLinearColor(0.95f, 0.78f, 0.43f), 35.f, 86.f, GEngine->GetSmallFont(), 1.f);
+                DrawText(TEXT("峡谷灰盒  |  5 倍移速  |  V 飞行/落地  |  Space 上升  Ctrl 下降  |  R 换地图"),
+                    FLinearColor(0.95f, 0.78f, 0.43f), 35.f, 145.f, GEngine->GetSmallFont(), 1.f);
                 break;
             }
     if (PC->IsScoutSpectating() && GS->Phase == ETreasureRoundPhase::HunterSearching)

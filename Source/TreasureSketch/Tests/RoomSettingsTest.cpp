@@ -8,6 +8,8 @@
 #include "../TreasureSketchGameMode.h"
 #include "../TreasureSketchGameState.h"
 #include "../TreasureSketchPlayerState.h"
+#include "../TreasureSketchCharacter.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRoomSettingsFlowTest, "TreasureSketch.RoomSettings.RoundFlow",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -189,10 +191,16 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     bool bCanyonFound = false;
     for (TActorIterator<AProceduralIsland> It(World); It; ++It)
         if (!It->IsActorBeingDestroyed() && It->Theme == EIslandTheme::CanyonGraybox)
-        { bCanyonFound = true; TestEqual(TEXT("Canyon graybox uses its own terrain grid"), It->GridSize, 129); }
+        { bCanyonFound = true; TestEqual(TEXT("Canyon grid resolves three-player passages"), It->GridSize, 321); }
     TestTrue(TEXT("Canyon graybox starts in solo test"), bCanyonFound);
     TestTrue(TEXT("Solo map preview can be refreshed"), GM->RefreshSoloMap());
     TestNotEqual(TEXT("Refresh chooses a new seed"), GS->IslandSeed, CanyonSeed);
+    ATreasureSketchCharacter* TestPawn = World->SpawnActor<ATreasureSketchCharacter>();
+    TestPawn->SetCanyonTestMode(true);
+    TestEqual(TEXT("Canyon test walks five times faster"),
+        TestPawn->GetCharacterMovement()->MaxWalkSpeed, 2600.f);
+    TestEqual(TEXT("Canyon test flies five times faster"),
+        TestPawn->GetCharacterMovement()->MaxFlySpeed, 2600.f);
     World->DestroyWorld(false);
     return true;
 }

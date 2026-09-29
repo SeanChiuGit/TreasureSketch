@@ -17,14 +17,19 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed)
         ? ECanyonGrayboxLandmark::Arch : ECanyonGrayboxLandmark::BrokenBridge;
 
     auto Add = [&](float X, float Y, float Z = 0.f,
-                   ECanyonGrayboxLandmark Landmark = ECanyonGrayboxLandmark::None)
+                   ECanyonGrayboxLandmark Landmark = ECanyonGrayboxLandmark::None,
+                   ECanyonRouteLayer Layer = ECanyonRouteLayer::Lower)
     {
         FCanyonGrayboxNode Node;
         Node.Position = FVector(X, Y, Z);
         Node.Landmark = Landmark;
+        Node.Layer = Layer;
         return Plan.Nodes.Add(Node);
     };
-    auto Link = [&](int32 A, int32 B) { Plan.Edges.Add({ A, B }); };
+    auto Link = [&](int32 A, int32 B, ECanyonRouteLayer Layer = ECanyonRouteLayer::Lower)
+    {
+        Plan.Edges.Add({ A, B, Layer, 450.f });
+    };
     Plan.SpawnNode = Add(0.f, 0.f);
     const int32 First = Add(ForkX * 0.52f, R.FRandRange(-500.f, 500.f), 0.f, Early[R.RandRange(0, 2)]);
     const int32 Fork = Add(ForkX, 0.f);
@@ -107,6 +112,91 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed)
     }
     }
 
+    // Secondary loops keep the archetypes recognizable while adding local decisions.
+    // The original edge remains as a shortcut; the new bend is an alternate route.
+    const int32 CoreEdgeCount = Plan.Edges.Num();
+    int32 Detours = 0;
+    for (int32 Index = 0; Index < CoreEdgeCount && Detours < 5; ++Index)
+    {
+        const FCanyonGrayboxEdge Core = Plan.Edges[Index];
+        const FVector A = Plan.Nodes[Core.A].Position, B = Plan.Nodes[Core.B].Position;
+        const FVector2D Delta(B.X - A.X, B.Y - A.Y);
+        if (Delta.Size() < 3200.f) continue;
+        const FVector2D Side(-Delta.Y, Delta.X);
+        const FVector2D Offset = Side.GetSafeNormal() * R.FRandRange(1500.f, 2400.f)
+            * (R.RandRange(0, 1) == 0 ? -1.f : 1.f);
+        const float T = R.FRandRange(0.38f, 0.62f);
+        const FVector Mid = FMath::Lerp(A, B, T) + FVector(Offset.X, Offset.Y, 0.f);
+        const int32 Bend = Add(Mid.X, Mid.Y, Mid.Z);
+        Link(Core.A, Bend); Link(Bend, Core.B);
+        ++Detours;
+    }
+    // Short dead ends make a wrong turn meaningful without making the goal unreachable.
+    for (int32 Pocket = 0; Pocket < 2; ++Pocket)
+    {
+        const int32 Parent = Pocket == 0 ? First : Fork;
+        const FVector P = Plan.Nodes[Parent].Position;
+        const float Sign = Pocket == 0 ? 1.f : -1.f;
+        const int32 End = Add(P.X + R.FRandRange(900.f, 1500.f),
+            P.Y + Sign * R.FRandRange(1700.f, 2600.f), P.Z);
+        Link(Parent, End);
+    }
+
+    // One playable upper corridor sits on the canyon wall, with two long grade-safe
+    // ramps back to the lower graph and a second choice on the upper level.
+    const float UpperSide = Plan.Nodes[Plan.TreasureNode].Position.Y >= 0.f ? -1.f : 1.f;
+    const float UpperY = UpperSide * 10000.f;
+    const float UpperZ = 1000.f;
+    auto AddUpper = [&](float X, float Y)
+    {
+        return Add(X, Y, UpperZ, ECanyonGrayboxLandmark::None, ECanyonRouteLayer::Upper);
+    };
+    const int32 U0 = AddUpper(-2000.f, UpperY);
+    const int32 U1 = AddUpper(ForkX + 1700.f, UpperY + UpperSide * 350.f);
+    const int32 U2 = AddUpper((ForkX + MergeX) * 0.5f, UpperY - UpperSide * 450.f);
+    const int32 U3 = AddUpper(MergeX - 1700.f, UpperY + UpperSide * 300.f);
+    const int32 U4 = AddUpper(L + 2000.f, UpperY);
+    const int32 EntryFlat = Add(-2500.f, UpperY * 0.10f, 0.f,
+        ECanyonGrayboxLandmark::None, ECanyonRouteLayer::Ramp);
+    const int32 EntryMiddle = Add(-3000.f, UpperY * 0.55f, 500.f,
+        ECanyonGrayboxLandmark::None, ECanyonRouteLayer::Ramp);
+    Link(Plan.SpawnNode, EntryFlat, ECanyonRouteLayer::Ramp);
+    Link(EntryFlat, EntryMiddle, ECanyonRouteLayer::Ramp);
+    Link(EntryMiddle, U0, ECanyonRouteLayer::Ramp);
+    Link(U0, U1, ECanyonRouteLayer::Upper);
+    Link(U1, U2, ECanyonRouteLayer::Upper);
+    Link(U2, U3, ECanyonRouteLayer::Upper);
+    Link(U3, U4, ECanyonRouteLayer::Upper);
+    const float TreasureY = Plan.Nodes[Plan.TreasureNode].Position.Y;
+    const float TreasureZ = Plan.Nodes[Plan.TreasureNode].Position.Z;
+    const int32 ExitMiddle = Add(L + 3000.f, UpperY * 0.55f + TreasureY * 0.45f,
+        (UpperZ + TreasureZ) * 0.5f,
+        ECanyonGrayboxLandmark::None, ECanyonRouteLayer::Ramp);
+    const int32 ExitFlat = Add(L + 2500.f, UpperY * 0.15f + TreasureY * 0.85f, TreasureZ,
+        ECanyonGrayboxLandmark::None, ECanyonRouteLayer::Ramp);
+    Link(U4, ExitMiddle, ECanyonRouteLayer::Ramp);
+    Link(ExitMiddle, ExitFlat, ECanyonRouteLayer::Ramp);
+    Link(ExitFlat, Plan.TreasureNode, ECanyonRouteLayer::Ramp);
+    const int32 U5 = AddUpper(ForkX + (MergeX - ForkX) * 0.40f, UpperY + UpperSide * 2000.f);
+    const int32 U6 = AddUpper(ForkX + (MergeX - ForkX) * 0.73f, UpperY + UpperSide * 2000.f);
+    Link(U1, U5, ECanyonRouteLayer::Upper);
+    Link(U5, U6, ECanyonRouteLayer::Upper);
+    Link(U6, U3, ECanyonRouteLayer::Upper);
+
+    // Three character capsules are 252 cm across; the narrow flat corridors are
+    // 340 cm wide before their steep banks. Other edges stay noticeably wider.
+    int32 LowerIndex = 0;
+    for (FCanyonGrayboxEdge& Edge : Plan.Edges)
+    {
+        if (Edge.Layer == ECanyonRouteLayer::Lower)
+        {
+            Edge.HalfWidth = (LowerIndex == 1 || LowerIndex == 3 || R.FRand() < 0.27f)
+                ? 170.f : R.FRandRange(380.f, 600.f);
+            ++LowerIndex;
+        }
+        else Edge.HalfWidth = Edge.Layer == ECanyonRouteLayer::Upper ? 420.f : 460.f;
+    }
+
     const float Angle = R.FRandRange(-PI, PI);
     const float Scale = R.FRandRange(0.88f, 1.12f);
     const float C = FMath::Cos(Angle), S = FMath::Sin(Angle);
@@ -163,11 +253,24 @@ bool FCanyonGrayboxLayout::Validate() const
     return Queue.Num() == Nodes.Num();
 }
 
-float FCanyonGrayboxLayout::HeightAt(float X, float Y, float* DistanceFromRoute) const
+float FCanyonGrayboxLayout::HeightAt(float X, float Y, float* DistanceFromRoute,
+    ECanyonRouteLayer* SurfaceLayer) const
 {
     const FVector2D Point(X, Y);
-    float Best = TNumericLimits<float>::Max();
-    float FloorZ = 0.f;
+    float LayerHeight[3] = { TNumericLimits<float>::Max(), TNumericLimits<float>::Max(),
+        TNumericLimits<float>::Max() };
+    float LayerDistance[3] = { TNumericLimits<float>::Max(), TNumericLimits<float>::Max(),
+        TNumericLimits<float>::Max() };
+    auto Consider = [&](float Distance, float HalfWidth, float FloorZ, float Rise, ECanyonRouteLayer Layer)
+    {
+        const int32 Index = static_cast<int32>(Layer);
+        // Within one level the closest route owns the surface. Taking the lowest
+        // height from every adjoining branch creates sudden drops at high/low forks.
+        if (Distance >= LayerDistance[Index]) return;
+        const float T = FMath::Clamp((Distance - HalfWidth) / 470.f, 0.f, 1.f);
+        LayerHeight[Index] = FloorZ + Rise * T * T * (3.f - 2.f * T);
+        LayerDistance[Index] = Distance;
+    };
     for (const FCanyonGrayboxEdge& Edge : Edges)
     {
         const FVector& A = Nodes[Edge.A].Position;
@@ -175,17 +278,26 @@ float FCanyonGrayboxLayout::HeightAt(float X, float Y, float* DistanceFromRoute)
         const FVector2D Start(A.X, A.Y), Delta(B.X - A.X, B.Y - A.Y);
         const float T = FMath::Clamp(FVector2D::DotProduct(Point - Start, Delta) / Delta.SizeSquared(), 0.f, 1.f);
         const float Distance = FVector2D::Distance(Point, Start + Delta * T);
-        if (Distance < Best) { Best = Distance; FloorZ = FMath::Lerp(A.Z, B.Z, T); }
+        const float FloorZ = FMath::Lerp(A.Z, B.Z, T);
+        const float Rise = Edge.Layer == ECanyonRouteLayer::Upper ? 1200.f
+            : Edge.Layer == ECanyonRouteLayer::Ramp ? 2200.f - FloorZ : 2200.f;
+        Consider(Distance, Edge.HalfWidth, FloorZ, Rise, Edge.Layer);
     }
     for (const FCanyonGrayboxNode& Node : Nodes)
     {
-        const float Distance = FVector2D::Distance(Point, FVector2D(Node.Position.X, Node.Position.Y)) * 0.72f;
-        if (Distance < Best) { Best = Distance; FloorZ = Node.Position.Z; }
+        const float Distance = FVector2D::Distance(Point, FVector2D(Node.Position.X, Node.Position.Y));
+        Consider(Distance * 0.72f, Node.Layer == ECanyonRouteLayer::Upper ? 480.f : 440.f,
+            Node.Position.Z, Node.Layer == ECanyonRouteLayer::Upper ? 1200.f
+                : Node.Layer == ECanyonRouteLayer::Ramp ? 2200.f - Node.Position.Z : 2200.f,
+            Node.Layer);
     }
-    if (DistanceFromRoute) *DistanceFromRoute = Best;
-    const float T = FMath::Clamp((Best - 500.f) / 550.f, 0.f, 1.f);
-    const float Wall = T * T * (3.f - 2.f * T) * 1400.f;
+    int32 BestIndex = 0;
+    for (int32 Index = 1; Index < 3; ++Index)
+        if (LayerHeight[Index] < LayerHeight[BestIndex]) BestIndex = Index;
+    const float BestDistance = LayerDistance[BestIndex];
+    if (DistanceFromRoute) *DistanceFromRoute = BestDistance;
+    if (SurfaceLayer) *SurfaceLayer = static_cast<ECanyonRouteLayer>(BestIndex);
     const float Detail = FMath::Sin(X * 0.0023f + Seed * 0.03f) * FMath::Cos(Y * 0.0027f - Seed * 0.04f)
-        * FMath::Lerp(6.f, 42.f, T);
-    return 600.f + FloorZ + Wall + Detail;
+        * (BestDistance < 550.f ? 6.f : 25.f);
+    return 600.f + LayerHeight[BestIndex] + Detail;
 }

@@ -18,6 +18,7 @@ public:
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     void SetSpectatorHidden(bool bShouldHide);
     void SetMovementSpeedMultiplier(float Multiplier);
+    void SetCanyonTestMode(bool bEnabled);
     void SetShoveWindingUp(bool bWindingUp);
     bool IsShoveWindingUp() const { return bShoveWindingUp; }
 
@@ -66,6 +67,7 @@ private:
 
     UPROPERTY(ReplicatedUsing=OnRep_ShoveWindingUp)
     bool bShoveWindingUp = false;
+    bool bCanyonTestMode = false;
 
     UFUNCTION()
     void OnRep_ShoveWindingUp();
@@ -74,4 +76,6 @@ private:
     void MoveRight(float Value);
     void Turn(float Value);
     void LookUp(float Value);
+    void FlyVertical(float Value);
+    void ToggleCanyonFlight();
 };

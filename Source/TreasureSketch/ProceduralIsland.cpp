@@ -231,8 +231,8 @@ void AProceduralIsland::ConfigureThemeParameters()
 {
     if (Theme == EIslandTheme::CanyonGraybox)
     {
-        GridSize = 129;
-        CellSize = 225.f;
+        GridSize = 321;
+        CellSize = 125.f;
         MapScale = 1.f;
         return;
     }
@@ -1148,7 +1148,7 @@ void AProceduralIsland::BuildCanyonGrayboxTerrain()
     TArray<FVector2D> UVs;
     TArray<FLinearColor> Colors;
     TArray<FProcMeshTangent> Tangents;
-    TArray<int32> Triangles[3];
+    TArray<int32> Triangles[4];
     const float Half = (GridSize - 1) * CellSize * 0.5f;
     for (int32 Y = 0; Y < GridSize; ++Y)
         for (int32 X = 0; X < GridSize; ++X)
@@ -1168,20 +1168,24 @@ void AProceduralIsland::BuildCanyonGrayboxTerrain()
         {
             const int32 I = Y * GridSize + X;
             float Distance = 0.f;
+            ECanyonRouteLayer Layer = ECanyonRouteLayer::Lower;
             CanyonLayout.HeightAt((X + 0.5f) * CellSize - Half,
-                (Y + 0.5f) * CellSize - Half, &Distance);
-            const int32 Section = Distance < 520.f ? 0 : Distance < 1000.f ? 1 : 2;
+                (Y + 0.5f) * CellSize - Half, &Distance, &Layer);
+            const int32 Section = Distance < 530.f
+                ? (Layer == ECanyonRouteLayer::Upper ? 1 : 0)
+                : Distance < 1000.f ? 2 : 3;
             Triangles[Section].Append({ I, I + GridSize, I + 1, I + 1, I + GridSize, I + GridSize + 1 });
         }
 
     UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr,
         TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
     const FLinearColor Palette[] = {
-        FLinearColor(0.60f, 0.49f, 0.34f), // walkable floor
-        FLinearColor(0.46f, 0.23f, 0.16f), // steep walls
-        FLinearColor(0.26f, 0.18f, 0.17f)  // unreachable mesa
+        FLinearColor(0.60f, 0.49f, 0.34f), // lower route
+        FLinearColor(0.72f, 0.62f, 0.42f), // upper wall-top route
+        FLinearColor(0.46f, 0.23f, 0.16f), // steep banks
+        FLinearColor(0.26f, 0.18f, 0.17f)  // high rock
     };
-    for (int32 Section = 0; Section < 3; ++Section)
+    for (int32 Section = 0; Section < 4; ++Section)
     {
         IslandMesh->CreateMeshSection_LinearColor(Section, Vertices, Triangles[Section], Normals, UVs,
             Colors, Tangents, true);
@@ -1198,8 +1202,9 @@ void AProceduralIsland::BuildCanyonGrayboxTerrain()
 void AProceduralIsland::BuildCanyonGrayboxLandmarks()
 {
     if (!CanyonLayout.Validate()) return;
-    for (const FCanyonGrayboxNode& Node : CanyonLayout.Nodes)
+    for (int32 NodeIndex = 0; NodeIndex < CanyonLayout.Nodes.Num(); NodeIndex += 2)
     {
+        const FCanyonGrayboxNode& Node = CanyonLayout.Nodes[NodeIndex];
         UPointLightComponent* Fill = NewObject<UPointLightComponent>(this);
         Fill->SetupAttachment(RootComponent);
         Fill->SetMobility(EComponentMobility::Movable);

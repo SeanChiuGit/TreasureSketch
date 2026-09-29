@@ -565,7 +565,10 @@ void ATreasureSketchGameMode::StartSoloTest(int32 ThemeChoice, bool bForceNewSee
         if (PC && PC->GetPawn())
         {
             if (ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(PC->GetPawn()))
+            {
                 Character->SetSpectatorHidden(false);
+                Character->SetCanyonTestMode(ThemeChoice == 2);
+            }
             TArray<FVector> UsedSpawns;
             PC->GetPawn()->SetActorLocation((bFullFlowTest || Island->Theme == EIslandTheme::CanyonGraybox)
                 ? Island->FindSpawnPoint() : FindHunterSpawn(UsedSpawns),

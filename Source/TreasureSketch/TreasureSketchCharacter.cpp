@@ -116,6 +116,17 @@ void ATreasureSketchCharacter::SetMovementSpeedMultiplier(float Multiplier)
     GetCharacterMovement()->BrakingDecelerationWalking = 2048.f * Scale;
 }
 
+void ATreasureSketchCharacter::SetCanyonTestMode(bool bEnabled)
+{
+    bCanyonTestMode = bEnabled;
+    const float Scale = bEnabled ? 5.f : 1.f;
+    SetMovementSpeedMultiplier(Scale);
+    GetCharacterMovement()->MaxFlySpeed = 520.f * Scale;
+    GetCharacterMovement()->BrakingDecelerationFlying = 2048.f * Scale;
+    if (!bEnabled || GetCharacterMovement()->MovementMode == MOVE_Flying)
+        GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+}
+
 void ATreasureSketchCharacter::CheckJumpInput(float DeltaTime)
 {
     if (bPressedJump)
@@ -149,8 +160,11 @@ void ATreasureSketchCharacter::SetupPlayerInputComponent(UInputComponent* Player
     PlayerInputComponent->BindAxis("MoveRight", this, &ATreasureSketchCharacter::MoveRight);
     PlayerInputComponent->BindAxis("Turn", this, &ATreasureSketchCharacter::Turn);
     PlayerInputComponent->BindAxis("LookUp", this, &ATreasureSketchCharacter::LookUp);
+    PlayerInputComponent->BindAxis("CanyonFlyVertical", this, &ATreasureSketchCharacter::FlyVertical);
     PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
     PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
+    PlayerInputComponent->BindAction("CanyonToggleFlight", IE_Pressed, this,
+        &ATreasureSketchCharacter::ToggleCanyonFlight);
 }
 
 void ATreasureSketchCharacter::MoveForward(float Value)
@@ -173,3 +187,17 @@ void ATreasureSketchCharacter::MoveRight(float Value)
 
 void ATreasureSketchCharacter::Turn(float Value) { AddControllerYawInput(Value); }
 void ATreasureSketchCharacter::LookUp(float Value) { AddControllerPitchInput(Value); }
+
+void ATreasureSketchCharacter::FlyVertical(float Value)
+{
+    if (bCanyonTestMode && GetCharacterMovement()->MovementMode == MOVE_Flying
+        && !FMath::IsNearlyZero(Value))
+        AddMovementInput(FVector::UpVector, Value);
+}
+
+void ATreasureSketchCharacter::ToggleCanyonFlight()
+{
+    if (!bCanyonTestMode) return;
+    GetCharacterMovement()->SetMovementMode(
+        GetCharacterMovement()->MovementMode == MOVE_Flying ? MOVE_Falling : MOVE_Flying);
+}

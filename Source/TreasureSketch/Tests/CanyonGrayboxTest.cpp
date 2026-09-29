@@ -15,6 +15,22 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
         if (!TestTrue(FString::Printf(TEXT("Seed %d has a connected, walkable graph"), Seed), Layout.Validate()))
             continue;
         Problems.Add(Layout.Problem);
+        for (const FCanyonGrayboxNode& Node : Layout.Nodes)
+            TestTrue(FString::Printf(TEXT("Seed %d route stays inside terrain"), Seed),
+                FMath::Abs(Node.Position.X) < 19000.f && FMath::Abs(Node.Position.Y) < 19000.f);
+        TestTrue(TEXT("Graph adds several local route decisions"),
+            Layout.Nodes.Num() >= 14 && Layout.Edges.Num() >= 19
+            && Layout.Edges.Num() - Layout.Nodes.Num() + 1 >= 3);
+        int32 UpperEdges = 0, RampEdges = 0, NarrowEdges = 0;
+        for (const FCanyonGrayboxEdge& Edge : Layout.Edges)
+        {
+            UpperEdges += Edge.Layer == ECanyonRouteLayer::Upper;
+            RampEdges += Edge.Layer == ECanyonRouteLayer::Ramp;
+            NarrowEdges += Edge.Layer == ECanyonRouteLayer::Lower && Edge.HalfWidth <= 170.f;
+        }
+        TestTrue(TEXT("Upper route has a loop and two multi-stage access ramps"),
+            UpperEdges >= 7 && RampEdges == 6);
+        TestTrue(TEXT("At least two passages narrow to three-character width"), NarrowEdges >= 2);
         const FCanyonGrayboxLayout Again = FCanyonGrayboxLayout::Generate(Seed);
         TestEqual(TEXT("Seed reproduces problem"), Layout.Problem, Again.Problem);
         TestEqual(TEXT("Seed reproduces node count"), Layout.Nodes.Num(), Again.Nodes.Num());
@@ -35,7 +51,8 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
             {
                 const FVector Point = FMath::Lerp(A, B, Step / 24.f);
                 const float Height = Layout.HeightAt(Point.X, Point.Y);
-                TestTrue(FString::Printf(TEXT("Seed %d edge %d-%d remains walkable"), Seed, Edge.A, Edge.B),
+                TestTrue(FString::Printf(TEXT("Seed %d edge %d-%d layer %d step %d z %.1f->%.1f run %.1f remains walkable"),
+                    Seed, Edge.A, Edge.B, static_cast<int32>(Edge.Layer), Step, LastHeight, Height, StepLength),
                     FMath::Abs(Height - LastHeight) / StepLength < 0.45f);
                 LastHeight = Height;
             }
