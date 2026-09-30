@@ -373,6 +373,7 @@ void ATreasureSketchGameMode::AdjustRoomSetting(FName Setting, int32 Direction)
         GS->bSpreadPlayerSpawns = !GS->bSpreadPlayerSpawns;
     }
     else if (Setting == TEXT("SketchSceneLock")) GS->bSketchSceneLock = !GS->bSketchSceneLock;
+    else if (Setting == TEXT("PhotoClue")) GS->bPhotoClueEnabled = !GS->bPhotoClueEnabled;
     else if (Setting == TEXT("PreprintedIsland")) GS->bPreprintedIsland = !GS->bPreprintedIsland;
     else if (Setting == TEXT("LimitedInk")) GS->bLimitedInk = !GS->bLimitedInk;
     else if (Setting == TEXT("InkLimit"))

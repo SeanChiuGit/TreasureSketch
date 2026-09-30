@@ -77,6 +77,10 @@ public:
     UPROPERTY(Replicated, BlueprintReadOnly)
     bool bSurfacePaintEnabled = false;
 
+    // Enabled by default so existing rooms retain the camera clue.
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    bool bPhotoClueEnabled = true;
+
     UPROPERTY(Replicated, BlueprintReadOnly)
     int32 SurfacePaintStampsUsed = 0;
 

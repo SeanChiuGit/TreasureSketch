@@ -161,6 +161,11 @@ bool ATreasureSketchPlayerController::InputKey(const FInputKeyEventArgs& Params)
     }
     if (Params.Key == EKeys::Escape && Params.Event == IE_Pressed && !IsFrontEndVisible())
     {
+        if (bCameraMode)
+        {
+            bCameraMode = false;
+            return true;
+        }
         const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
         if (GS && GS->bReviewingRound && GS->IsRoundOver())
         {
@@ -242,9 +247,16 @@ void ATreasureSketchPlayerController::ResetRoundPhoto()
 void ATreasureSketchPlayerController::TakePhoto()
 {
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
-    if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing
+    if (!GS || !GS->bPhotoClueEnabled || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing
         || !IsLocalScout() || HasSubmittedSketch() || bMapOpen || bPauseMenuOpen
         || bDrawingOverheadView || SpectatorCamera || !GetPawn() || !LocalPhotoJpeg.IsEmpty()) return;
+
+    if (!bCameraMode)
+    {
+        bCameraMode = true;
+        SetSprayCursorMode(false);
+        return;
+    }
 
     FVector ViewOrigin;
     FRotator ViewRotation;
@@ -282,6 +294,7 @@ void ATreasureSketchPlayerController::TakePhoto()
         return;
     }
     LocalPhotoJpeg.Append(Compressed.GetData(), static_cast<int32>(Compressed.Num()));
+    bCameraMode = false;
     ServerSubmitPhoto(GS->RoundSerial, ViewOrigin, ViewRotation, LocalPhotoJpeg);
     StatusMessage = TEXT("照片已拍好；打开画纸可查看，交图后探索者也能看到。");
     StatusUntil = GetWorld()->GetTimeSeconds() + 5.f;
@@ -298,7 +311,7 @@ void ATreasureSketchPlayerController::ServerSubmitPhoto_Implementation(
     int32 RoundSerial, FVector_NetQuantize ViewOrigin, FRotator ViewRotation, const TArray<uint8>& PhotoJpeg)
 {
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
-    if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing
+    if (!GS || !GS->bPhotoClueEnabled || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing
         || GS->RoundSerial != RoundSerial || !IsLocalScout() || HasSubmittedSketch()
         || bServerDrawingOverheadView || !GetPawn() || !ServerPhotoJpeg.IsEmpty()
         || PhotoJpeg.Num() < 100 || PhotoJpeg.Num() > 48 * 1024
@@ -362,7 +375,12 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
 {
     Super::PlayerTick(DeltaTime);
     UpdateFrontEnd();
-    if (IsFrontEndVisible()) return;
+    if (IsFrontEndVisible()) { bCameraMode = false; return; }
+    const ATreasureSketchGameState* CursorGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (bCameraMode && (!CursorGS || !CursorGS->bGameStarted || !CursorGS->bPhotoClueEnabled
+        || CursorGS->Phase != ETreasureRoundPhase::ScoutDrawing || !IsLocalScout()
+        || HasSubmittedSketch() || bMapOpen || bDrawingOverheadView || SpectatorCamera || !GetPawn()))
+        bCameraMode = false;
     UpdateReplayInput();
     if (bPauseMenuOpen)
     {
@@ -370,10 +388,9 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
         ApplyPhaseInputRules();
         return;
     }
-    const ATreasureSketchGameState* CursorGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     const bool bCanSpray = CursorGS && CursorGS->bGameStarted && CursorGS->bSurfacePaintEnabled
         && IsLocalScout() && !HasSubmittedSketch() && CursorGS->Phase == ETreasureRoundPhase::ScoutDrawing
-        && !bMapOpen && !bDrawingOverheadView;
+        && !bMapOpen && !bDrawingOverheadView && !bCameraMode;
     SetSprayCursorMode(bCanSpray);
     UpdateWaitingSketchInput();
     if (bMapOpen || IsHunterWaiting())
@@ -396,6 +413,7 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
     const ATreasureSketchGameState* PaintGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (PaintGS && PaintGS->bGameStarted && PaintGS->bSurfacePaintEnabled && IsLocalScout()
         && !HasSubmittedSketch() && PaintGS->Phase == ETreasureRoundPhase::ScoutDrawing && !bMapOpen && !bDrawingOverheadView
+        && !bCameraMode
         && IsInputKeyDown(EKeys::RightMouseButton) && GetWorld()->GetTimeSeconds() >= NextSpraySampleTime)
     {
         NextSpraySampleTime = GetWorld()->GetTimeSeconds() + 0.06f;
@@ -549,6 +567,7 @@ void ATreasureSketchPlayerController::SetPauseMenuOpen(bool bOpen)
     bPauseMenuOpen = bOpen;
     if (bOpen)
     {
+        bCameraMode = false;
         FlushDrawingPoints();
         bWasDrawing = false;
         bMapOpen = false;
@@ -599,10 +618,10 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
         RotatePaper(ActionName == TEXT("RotatePaperRight") ? 1 : -1);
         return;
     }
-    if (ActionName == TEXT("TogglePhoto"))
+    if (ActionName == TEXT("TogglePhoto") || ActionName == TEXT("ClosePhotoOverlay"))
     {
         if ((bMapOpen || IsHunterWaiting()) && !GetPhotoJpeg().IsEmpty())
-            bPhotoExpanded = !bPhotoExpanded;
+            bPhotoExpanded = ActionName == TEXT("ClosePhotoOverlay") ? false : !bPhotoExpanded;
         return;
     }
     if (ActionName == TEXT("InkBlack") || ActionName == TEXT("InkRed") || ActionName == TEXT("InkBlue")
@@ -773,7 +792,7 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
     }
     else if (ActionName == TEXT("ToggleTreasureRange") || ActionName == TEXT("ToggleSpreadPlayerSpawns")
         || ActionName == TEXT("ToggleSketchSceneLock") || ActionName == TEXT("TogglePreprintedIsland")
-        || ActionName == TEXT("ToggleLimitedInk"))
+        || ActionName == TEXT("ToggleLimitedInk") || ActionName == TEXT("TogglePhotoClue"))
     {
         if (!IsLocalController() || (FrontEndPage != EFrontEndPage::RoomLobby
             && FrontEndPage != EFrontEndPage::RoomDrawingRules && FrontEndPage != EFrontEndPage::SoloTest)) return;
@@ -781,7 +800,8 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
             GM->AdjustRoomSetting(ActionName == TEXT("ToggleTreasureRange") ? TEXT("TreasureRange")
                 : ActionName == TEXT("ToggleSpreadPlayerSpawns") ? TEXT("SpreadPlayerSpawns")
                 : ActionName == TEXT("ToggleSketchSceneLock") ? TEXT("SketchSceneLock")
-                : ActionName == TEXT("TogglePreprintedIsland") ? TEXT("PreprintedIsland") : TEXT("LimitedInk"), 1);
+                : ActionName == TEXT("TogglePreprintedIsland") ? TEXT("PreprintedIsland")
+                : ActionName == TEXT("TogglePhotoClue") ? TEXT("PhotoClue") : TEXT("LimitedInk"), 1);
     }
     else if (ActionName == TEXT("RoomMapSmaller") || ActionName == TEXT("RoomMapLarger")
         || ActionName == TEXT("RoomDrawingLess") || ActionName == TEXT("RoomDrawingMore")
@@ -1029,6 +1049,7 @@ void ATreasureSketchPlayerController::ToggleSpectatorView()
     {
         if (GS->bSketchSceneLock && bSketchSceneCommitted) return;
         if (bMapOpen) ToggleMap();
+        bCameraMode = false;
         bDrawingOverheadView = !bDrawingOverheadView;
         ServerSetDrawingOverheadView(bDrawingOverheadView);
         if (!bDrawingOverheadView) StopSpectating(false);
@@ -1104,6 +1125,7 @@ void ATreasureSketchPlayerController::ToggleMap()
     if (GS && GS->bSketchSceneLock && bSketchSceneCommitted && bMapOpen && IsLocalScout()
         && GS->Phase == ETreasureRoundPhase::ScoutDrawing) return;
     SetSprayCursorMode(false);
+    bCameraMode = false;
     bMapOpen = !bMapOpen;
     if (bMapOpen && GS && GS->bSketchSceneLock && IsLocalScout()
         && GS->Phase == ETreasureRoundPhase::ScoutDrawing) bSketchSceneCommitted = true;
@@ -1376,6 +1398,7 @@ void ATreasureSketchPlayerController::ClientStartNewRound_Implementation(int32 N
     NextDrawingSyncTime = 0.f;
     bMapOpen = false;
     bPhotoExpanded = false;
+    bCameraMode = false;
     bWaitingSketchInputActive = false;
     bWasDrawing = false;
     StatusMessage = TEXT("新的一局开始了！");
@@ -1437,6 +1460,7 @@ void ATreasureSketchPlayerController::ClearSketch()
 
 void ATreasureSketchPlayerController::ClientReturnToLobby_Implementation()
 {
+    bCameraMode = false;
     bPauseMenuOpen = false;
     bReplayInputActive = false;
     OpenFrontEndPage(GetNetMode() == NM_Standalone ? EFrontEndPage::SoloTest : EFrontEndPage::RoomLobby);

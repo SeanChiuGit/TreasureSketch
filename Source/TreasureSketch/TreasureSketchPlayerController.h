@@ -55,6 +55,7 @@ public:
     const TArray<uint8>& GetPhotoJpeg() const { return SketchPages.IsValidIndex(ActiveSketchPage) ? SketchPages[ActiveSketchPage].PhotoJpeg : LocalPhotoJpeg; }
     bool HasTakenPhoto() const { return !LocalPhotoJpeg.IsEmpty(); }
     bool IsPhotoExpanded() const { return bPhotoExpanded; }
+    bool IsCameraMode() const { return bCameraMode; }
     int32 GetPaperRotationSteps() const { return PaperRotationSteps; }
     void RotatePaper(int32 Direction);
     uint8 GetSelectedInkColor() const { return SelectedInkColor; }
@@ -230,6 +231,7 @@ private:
     bool bMapOpen = false;
     uint8 PaperRotationSteps = 0;
     bool bPhotoExpanded = false;
+    bool bCameraMode = false;
     bool bWaitingSketchInputActive = false;
     bool bWasDrawing = false;
     bool bReplayInputActive = false;

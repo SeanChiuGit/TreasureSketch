@@ -400,7 +400,7 @@ void ATreasureSketchHUD::DrawHUD()
             const float ModeW = FMath::Max(180.f, FMath::Min(410.f, W - ModeX - 24.f));
             const bool bHost = GetNetMode() == NM_ListenServer;
             DrawRect(FLinearColor(0.15f, 0.30f, 0.30f), ModeX, PanelY + 510.f, ModeW, 36.f);
-            DrawText(TEXT("画图规则：颜色、笔墨与场景限制 →"), FLinearColor::White,
+            DrawText(TEXT("画图规则：笔墨、相机与场景限制 →"), FLinearColor::White,
                 ModeX + 10.f, PanelY + 521.f, GEngine->GetSmallFont(), 0.9f);
             AddHitBox(FVector2D(ModeX, PanelY + 510.f), FVector2D(ModeW, 36.f), TEXT("RoomDrawingRules"), true, 10);
             DrawText(TEXT("游戏模式"), FLinearColor::White, ModeX, PanelY + 150.f, GEngine->GetMediumFont());
@@ -536,8 +536,23 @@ void ATreasureSketchHUD::DrawHUD()
                 if (bEnabled) AddHitBox(FVector2D(X, InkY + 4.f), FVector2D(42.f, 34.f),
                     I == 0 ? TEXT("RoomInkLess") : TEXT("RoomInkMore"), true, 10);
             }
-            DrawRule(TEXT("ToggleSurfacePaint"), GS->bSurfacePaintEnabled
-                ? TEXT("实验喷漆：开启") : TEXT("实验喷漆：关闭"), PanelY + 456.f);
+            const float ToolY = PanelY + 456.f;
+            const float ToolX = PanelX + 48.f;
+            const float ToolW = (PanelW - 104.f) * 0.5f;
+            const FLinearColor ToolColor = bHost ? FLinearColor(0.13f, 0.32f, 0.29f)
+                : FLinearColor(0.08f, 0.13f, 0.14f);
+            DrawRect(ToolColor, ToolX, ToolY, ToolW, 42.f);
+            DrawText(GS->bSurfacePaintEnabled ? TEXT("喷漆：开启") : TEXT("喷漆：关闭"),
+                FLinearColor::White, ToolX + 12.f, ToolY + 12.f, GEngine->GetSmallFont());
+            DrawRect(ToolColor, ToolX + ToolW + 8.f, ToolY, ToolW, 42.f);
+            DrawText(GS->bPhotoClueEnabled ? TEXT("相机：开启") : TEXT("相机：关闭"),
+                FLinearColor::White, ToolX + ToolW + 20.f, ToolY + 12.f, GEngine->GetSmallFont());
+            if (bHost)
+            {
+                AddHitBox(FVector2D(ToolX, ToolY), FVector2D(ToolW, 42.f), TEXT("ToggleSurfacePaint"), true, 10);
+                AddHitBox(FVector2D(ToolX + ToolW + 8.f, ToolY), FVector2D(ToolW, 42.f),
+                    TEXT("TogglePhotoClue"), true, 10);
+            }
             DrawMenuButton(TEXT("RoomDrawingRulesBack"), TEXT("返回房间"), PanelY + PanelH - 64.f);
         }
         return;
@@ -864,11 +879,12 @@ void ATreasureSketchHUD::DrawHUD()
             FLinearColor(0.1f, 0.6f, 1.f), 35.f, 86.f,
             GEngine->GetSmallFont(), 0.9f);
     }
-    if (bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing && !PC->HasSubmittedSketch()
+    if (GS->bPhotoClueEnabled && bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing && !PC->HasSubmittedSketch()
         && !PC->IsMapOpen())
         DrawText(PC->HasTakenPhoto() ? TEXT("照片已拍好 · 按 M 在画纸上查看")
-            : PC->IsDrawingOverheadView() ? TEXT("相机：返回地面后按 B 拍照")
-            : TEXT("相机：按 B 拍一张照片 · 鬼魂视角不可拍"),
+            : PC->IsCameraMode() ? TEXT("相机取景中 · B 拍照 · Esc 取消")
+            : PC->IsDrawingOverheadView() ? TEXT("相机：返回地面后按 B 取景")
+            : TEXT("相机：按 B 取景 · 再按 B 拍照"),
             FLinearColor(0.95f, 0.84f, 0.52f), 35.f, 155.f, GEngine->GetSmallFont(), 0.9f);
     const int32 SecondsRemaining = GS->GetSecondsRemaining();
     const FString TimerText = FString::Printf(TEXT("%02d:%02d"), SecondsRemaining / 60, SecondsRemaining % 60);
@@ -885,6 +901,28 @@ void ATreasureSketchHUD::DrawHUD()
 
     if (!PC->GetStatusMessage().IsEmpty())
         DrawText(PC->GetStatusMessage(), FLinearColor::Yellow, 35.f, Canvas->SizeY - 70.f, GEngine->GetMediumFont(), 1.f);
+
+    if (PC->IsCameraMode())
+    {
+        const float FrameW = FMath::Min(Canvas->SizeX * 0.78f, Canvas->SizeY * 0.78f * 16.f / 9.f);
+        const float FrameH = FrameW * 9.f / 16.f;
+        const float FrameX = (Canvas->SizeX - FrameW) * 0.5f;
+        const float FrameY = (Canvas->SizeY - FrameH) * 0.5f;
+        const FLinearColor Shade(0.f, 0.f, 0.f, 0.38f);
+        const FLinearColor Edge(1.f, 0.90f, 0.58f);
+        DrawRect(Shade, 0.f, 0.f, FrameX, Canvas->SizeY);
+        DrawRect(Shade, FrameX + FrameW, 0.f, Canvas->SizeX - FrameX - FrameW, Canvas->SizeY);
+        DrawRect(Shade, FrameX, 0.f, FrameW, FrameY);
+        DrawRect(Shade, FrameX, FrameY + FrameH, FrameW, Canvas->SizeY - FrameY - FrameH);
+        DrawLine(FrameX, FrameY, FrameX + FrameW, FrameY, Edge, 2.f);
+        DrawLine(FrameX + FrameW, FrameY, FrameX + FrameW, FrameY + FrameH, Edge, 2.f);
+        DrawLine(FrameX + FrameW, FrameY + FrameH, FrameX, FrameY + FrameH, Edge, 2.f);
+        DrawLine(FrameX, FrameY + FrameH, FrameX, FrameY, Edge, 2.f);
+        DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.72f), FrameX + FrameW * 0.5f - 118.f,
+            FrameY + FrameH - 42.f, 236.f, 34.f);
+        DrawText(TEXT("B 拍照   ·   Esc 取消"), Edge, FrameX + FrameW * 0.5f - 104.f,
+            FrameY + FrameH - 34.f, GEngine->GetSmallFont(), 1.f);
+    }
 
     if (PC->GetDigFeedbackRemaining() > 0.f && !GS->IsRoundOver())
     {
@@ -1065,7 +1103,7 @@ void ATreasureSketchHUD::DrawHUD()
             DrawText(TEXT("收起照片"), FLinearColor::White, PhotoX + PhotoW - 98.f, PhotoY - 35.f,
                 GEngine->GetSmallFont(), 0.85f);
             AddHitBox(FVector2D(PhotoX + PhotoW - 110.f, PhotoY - 44.f), FVector2D(110.f, 36.f),
-                TEXT("TogglePhoto"), true, 20);
+                TEXT("ClosePhotoOverlay"), true, 20);
         }
     }
     if ((!bScout || GS->bReviewingRound || GS->Phase == ETreasureRoundPhase::HunterSearching)
