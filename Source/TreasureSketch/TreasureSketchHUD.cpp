@@ -4,6 +4,7 @@
 #include "TreasureSketchCharacter.h"
 
 #include "TreasureSketchGameState.h"
+#include "TreasureSketchGameMode.h"
 #include "TreasureSketchPlayerController.h"
 #include "TreasureSketchPlayerState.h"
 #include "TreasureOnlineSubsystem.h"
@@ -705,8 +706,9 @@ void ATreasureSketchHUD::DrawHUD()
             for (int32 Rank = 0; Rank < Standings.Num(); ++Rank)
             {
                 const ATreasureSketchPlayerState* Member = Standings[Rank];
-                DrawText(FString::Printf(TEXT("%d. %s  %d 分  本局 %+d  找到 %d 次"), Rank + 1,
-                    *Member->GetPlayerName(), Member->RacePoints, Member->RaceLastRoundPoints, Member->RaceFinds),
+                DrawText(FString::Printf(TEXT("%d. %s  %d 分  本局 %+d  找到 %d 次  推中 %d"), Rank + 1,
+                    *Member->GetPlayerName(), Member->RacePoints, Member->RaceLastRoundPoints,
+                    Member->RaceFinds, Member->RoundShoveHits),
                     Member == PS ? FLinearColor(0.95f, 0.85f, 0.35f) : FLinearColor::White,
                     CenterX - PanelWidth * 0.5f + 80.f, CenterY - 47.f + Rank * 24.f,
                     GEngine->GetSmallFont(), 0.95f);
@@ -800,7 +802,9 @@ void ATreasureSketchHUD::DrawHUD()
                     FVector2D Screen;
                     if (PC->ProjectWorldLocationToScreen(Character->GetActorLocation() + FVector(0.f, 0.f, 135.f), Screen))
                     {
-                        const FString Name = Other->GetPlayerName();
+                        const FString Name = Other->GetPlayerName()
+                            + (Other->bDigging ? TEXT(" · 挖掘中")
+                                : Character->IsShoveWindingUp() ? TEXT(" · 正在推人") : TEXT(""));
                         float NameW = 0.f, NameH = 0.f;
                         GetTextSize(Name, NameW, NameH, GEngine->GetSmallFont(), 1.f);
                         DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.62f), Screen.X - NameW * 0.5f - 8.f,
@@ -846,8 +850,9 @@ void ATreasureSketchHUD::DrawHUD()
     {
         const int32 CooldownRemaining = FMath::CeilToInt(PS->GetDigCooldownRemaining(
             GS->RoundSerial, GS->GetServerWorldTimeSeconds()));
-        DrawText(CooldownRemaining > 0 ? FString::Printf(TEXT("挖掘冷却：%d 秒"), CooldownRemaining)
-            : GS->DigCooldownSeconds == 0 ? TEXT("挖掘就绪（无冷却）：按 E") : TEXT("挖掘就绪：按 E"),
+        DrawText(PC->IsHoldingDig() ? TEXT("正在挖掘：按住 E，松开会取消")
+            : CooldownRemaining > 0 ? FString::Printf(TEXT("挖掘冷却：%d 秒"), CooldownRemaining)
+            : GS->DigCooldownSeconds == 0 ? TEXT("挖掘就绪（无冷却）：长按 E") : TEXT("挖掘就绪：长按 E"),
             CooldownRemaining > 0 ? FLinearColor(1.f, 0.72f, 0.35f) : FLinearColor(0.4f, 0.95f, 0.65f),
             35.f, 86.f, GEngine->GetSmallFont(), 1.f);
         if (GS->RoomMode == ETreasureRoomMode::ExplorerRace)
@@ -855,7 +860,7 @@ void ATreasureSketchHUD::DrawHUD()
             const int32 ShoveCooldown = FMath::CeilToInt(FMath::Max(0.f,
                 PS->NextShoveServerTime - GS->GetServerWorldTimeSeconds()));
             DrawText(ShoveCooldown > 0 ? FString::Printf(TEXT("推人冷却：%d 秒"), ShoveCooldown)
-                : TEXT("推人就绪：靠近并面向对手按 G"), FLinearColor(0.95f, 0.75f, 0.40f),
+                : TEXT("推人就绪：瞄准对手按鼠标左键或 G"), FLinearColor(0.95f, 0.75f, 0.40f),
                 35.f, 109.f, GEngine->GetSmallFont(), 1.f);
             const int32 ProtectionRemaining = FMath::CeilToInt(FMath::Max(0.f,
                 PS->ShoveProtectedUntilServerTime - GS->GetServerWorldTimeSeconds()));
@@ -901,6 +906,38 @@ void ATreasureSketchHUD::DrawHUD()
 
     if (!PC->GetStatusMessage().IsEmpty())
         DrawText(PC->GetStatusMessage(), FLinearColor::Yellow, 35.f, Canvas->SizeY - 70.f, GEngine->GetMediumFont(), 1.f);
+
+    if (PC->GetActionFeedbackRemaining() > 0.f && !PC->IsMapOpen())
+    {
+        const uint8 Kind = PC->GetActionFeedbackKind();
+        const TCHAR* Label = Kind == 1 ? TEXT("推中了！") : Kind == 2 ? TEXT("推空了！")
+            : Kind == 3 ? TEXT("被推开！") : Kind == 4 ? TEXT("对手受保护")
+            : Kind == 5 ? TEXT("扑通！") : Kind == 6 ? TEXT("掉进深水！") : TEXT("斜坡滑行！");
+        const FLinearColor Color = Kind == 1 ? FLinearColor(1.f, 0.74f, 0.18f)
+            : Kind == 3 || Kind == 6 ? FLinearColor(1.f, 0.31f, 0.20f)
+            : Kind == 5 ? FLinearColor(0.30f, 0.75f, 1.f) : FLinearColor(0.90f, 0.88f, 0.72f);
+        const float Fade = FMath::Min(1.f, PC->GetActionFeedbackRemaining() * 1.5f);
+        DrawRect(FLinearColor(Color.R, Color.G, Color.B, 0.12f * Fade), 0.f, 0.f,
+            Canvas->SizeX, Canvas->SizeY);
+        DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.68f * Fade), Canvas->SizeX * 0.32f,
+            Canvas->SizeY * 0.26f, Canvas->SizeX * 0.36f, 70.f);
+        float LabelW = 0.f, LabelH = 0.f;
+        GetTextSize(Label, LabelW, LabelH, GEngine->GetLargeFont(), 1.5f);
+        DrawText(Label, Color, (Canvas->SizeX - LabelW) * 0.5f, Canvas->SizeY * 0.27f,
+            GEngine->GetLargeFont(), 1.5f);
+    }
+
+    if (PC->IsHoldingDig() && GS->Phase == ETreasureRoundPhase::HunterSearching)
+    {
+        const float DigFraction = PC->GetHoldDigProgress();
+        const float BarW = FMath::Min(Canvas->SizeX * 0.36f, 420.f);
+        const float BarX = (Canvas->SizeX - BarW) * 0.5f;
+        const float BarY = Canvas->SizeY * 0.72f;
+        DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.72f), BarX - 8.f, BarY - 8.f, BarW + 16.f, 60.f);
+        DrawText(TEXT("按住 E 挖掘"), FLinearColor::White, BarX + 4.f, BarY - 2.f, GEngine->GetSmallFont());
+        DrawRect(FLinearColor(0.18f, 0.21f, 0.20f), BarX, BarY + 24.f, BarW, 16.f);
+        DrawRect(FLinearColor(0.96f, 0.72f, 0.22f), BarX, BarY + 24.f, BarW * DigFraction, 16.f);
+    }
 
     if (PC->IsCameraMode())
     {

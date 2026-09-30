@@ -14,9 +14,12 @@ void ATreasureSketchPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProp
     DOREPLIFETIME(ATreasureSketchPlayerState, bSketchSubmitted);
     DOREPLIFETIME(ATreasureSketchPlayerState, DigCooldownRoundSerial);
     DOREPLIFETIME(ATreasureSketchPlayerState, NextDigServerTime);
+    DOREPLIFETIME(ATreasureSketchPlayerState, bDigging);
+    DOREPLIFETIME(ATreasureSketchPlayerState, DigStartedServerTime);
     DOREPLIFETIME(ATreasureSketchPlayerState, RacePoints);
     DOREPLIFETIME(ATreasureSketchPlayerState, RaceFinds);
     DOREPLIFETIME(ATreasureSketchPlayerState, RaceLastRoundPoints);
+    DOREPLIFETIME(ATreasureSketchPlayerState, RoundShoveHits);
     DOREPLIFETIME(ATreasureSketchPlayerState, NextShoveServerTime);
     DOREPLIFETIME(ATreasureSketchPlayerState, ShoveProtectedUntilServerTime);
 }

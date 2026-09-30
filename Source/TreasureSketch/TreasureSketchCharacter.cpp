@@ -88,6 +88,8 @@ void ATreasureSketchCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProper
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
     DOREPLIFETIME(ATreasureSketchCharacter, bSpectatorHidden);
     DOREPLIFETIME(ATreasureSketchCharacter, bShoveWindingUp);
+    DOREPLIFETIME(ATreasureSketchCharacter, bDiggingPose);
+    DOREPLIFETIME(ATreasureSketchCharacter, bWaterSlowed);
 }
 
 void ATreasureSketchCharacter::SetShoveWindingUp(bool bWindingUp)
@@ -98,11 +100,40 @@ void ATreasureSketchCharacter::SetShoveWindingUp(bool bWindingUp)
     ForceNetUpdate();
 }
 
+void ATreasureSketchCharacter::SetDiggingPose(bool bDigging)
+{
+    if (!HasAuthority() || bDiggingPose == bDigging) return;
+    bDiggingPose = bDigging;
+    OnRep_DiggingPose();
+    ForceNetUpdate();
+}
+
+void ATreasureSketchCharacter::OnRep_DiggingPose()
+{
+    LeftArmMesh->SetRelativeRotation(bDiggingPose ? FRotator(-42.f, 0.f, 0.f) : FRotator::ZeroRotator);
+    OnRep_ShoveWindingUp();
+}
+
+void ATreasureSketchCharacter::SetWaterSlowed(bool bSlowed)
+{
+    if (!HasAuthority() || bWaterSlowed == bSlowed) return;
+    bWaterSlowed = bSlowed;
+    OnRep_WaterSlowed();
+    ForceNetUpdate();
+}
+
+void ATreasureSketchCharacter::OnRep_WaterSlowed()
+{
+    const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
+    SetMovementSpeedMultiplier(GS ? GS->MovementSpeedMultiplier : 1.f);
+}
+
 void ATreasureSketchCharacter::OnRep_ShoveWindingUp()
 {
     // The raised, orange arm is visible to nearby players during the windup.
     RightArmMesh->SetRelativeLocation(bShoveWindingUp ? FVector(30.f, 28.f, 3.f) : FVector(0.f, 28.f, -14.f));
-    RightArmMesh->SetRelativeRotation(bShoveWindingUp ? FRotator(-65.f, 0.f, 0.f) : FRotator::ZeroRotator);
+    RightArmMesh->SetRelativeRotation(bShoveWindingUp ? FRotator(-65.f, 0.f, 0.f)
+        : bDiggingPose ? FRotator(-42.f, 0.f, 0.f) : FRotator::ZeroRotator);
     if (UMaterialInstanceDynamic* Material = Cast<UMaterialInstanceDynamic>(RightArmMesh->GetMaterial(0)))
         Material->SetVectorParameterValue(TEXT("Color"), bShoveWindingUp
             ? FLinearColor(1.f, 0.33f, 0.04f) : FLinearColor(0.08f, 0.55f, 0.68f));
@@ -110,7 +141,8 @@ void ATreasureSketchCharacter::OnRep_ShoveWindingUp()
 
 void ATreasureSketchCharacter::SetMovementSpeedMultiplier(float Multiplier)
 {
-    const float Scale = FMath::IsFinite(Multiplier) ? FMath::Clamp(Multiplier, 0.5f, 5.f) : 1.f;
+    const float BaseScale = FMath::IsFinite(Multiplier) ? FMath::Clamp(Multiplier, 0.5f, 5.f) : 1.f;
+    const float Scale = BaseScale * (bWaterSlowed ? 0.75f : 1.f);
     GetCharacterMovement()->MaxWalkSpeed = 520.f * Scale;
     GetCharacterMovement()->MaxAcceleration = 2048.f * Scale;
     GetCharacterMovement()->BrakingDecelerationWalking = 2048.f * Scale;

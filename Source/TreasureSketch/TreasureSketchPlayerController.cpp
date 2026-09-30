@@ -19,12 +19,45 @@
 #include "InputKeyEventArgs.h"
 #include "Components/PrimitiveComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Modules/ModuleManager.h"
+#include "Sound/SoundWaveProcedural.h"
 
 namespace
 {
 constexpr TCHAR HistorySlot[] = TEXT("TreasureSketchHistory");
+
+// Small synthesized cues keep the prototype's shove and water feedback audible without editor-only assets.
+void PlayActionCue(UObject* WorldContext, uint8 Kind)
+{
+    if (!WorldContext) return;
+    constexpr int32 SampleRate = 22050;
+    const bool bSplash = Kind == 5 || Kind == 6;
+    const float Duration = bSplash ? 0.24f : 0.15f;
+    const int32 Count = FMath::RoundToInt(SampleRate * Duration);
+    TArray<int16> Samples;
+    Samples.SetNumUninitialized(Count);
+    uint32 Noise = 0x14265u + Kind * 7919u;
+    for (int32 Index = 0; Index < Count; ++Index)
+    {
+        const float Time = static_cast<float>(Index) / SampleRate;
+        const float Fade = FMath::Square(1.f - Time / Duration);
+        Noise = Noise * 1664525u + 1013904223u;
+        const float Random = static_cast<float>((Noise >> 16) & 0xffffu) / 32767.5f - 1.f;
+        const float Pitch = Kind == 1 || Kind == 3 ? 125.f : bSplash ? 210.f : 340.f;
+        const float Tone = FMath::Sin(2.f * PI * (Pitch * Time + 85.f * Time * Time));
+        const float Value = Fade * (bSplash ? 0.32f * Random + 0.12f * Tone
+            : Kind == 1 || Kind == 3 ? 0.30f * Tone + 0.18f * Random : 0.16f * Tone + 0.20f * Random);
+        Samples[Index] = static_cast<int16>(FMath::Clamp(Value, -1.f, 1.f) * 32767.f);
+    }
+    USoundWaveProcedural* Wave = NewObject<USoundWaveProcedural>(WorldContext);
+    Wave->NumChannels = 1;
+    Wave->SetSampleRate(SampleRate);
+    Wave->Duration = Duration;
+    Wave->QueueAudio(reinterpret_cast<const uint8*>(Samples.GetData()), Samples.Num() * sizeof(int16));
+    UGameplayStatics::PlaySound2D(WorldContext, Wave, 0.45f);
+}
 }
 
 void ATreasureSketchPlayerController::LoadHistory()
@@ -213,6 +246,7 @@ void ATreasureSketchPlayerController::SetupInputComponent()
     InputComponent->BindAction("Map", IE_Pressed, this, &ATreasureSketchPlayerController::ToggleMap);
     InputComponent->BindAction("Handoff", IE_Pressed, this, &ATreasureSketchPlayerController::Handoff);
     InputComponent->BindAction("Dig", IE_Pressed, this, &ATreasureSketchPlayerController::Dig);
+    InputComponent->BindAction("Dig", IE_Released, this, &ATreasureSketchPlayerController::StopDig);
     InputComponent->BindAction("Shove", IE_Pressed, this, &ATreasureSketchPlayerController::Shove);
     InputComponent->BindAction("TakePhoto", IE_Pressed, this, &ATreasureSketchPlayerController::TakePhoto);
     InputComponent->BindAction("ClearSketch", IE_Pressed, this, &ATreasureSketchPlayerController::ClearSketch);
@@ -371,12 +405,28 @@ float ATreasureSketchPlayerController::GetDigFeedbackRemaining() const
     return GetWorld() ? FMath::Max(0.f, DigFeedbackUntil - GetWorld()->GetTimeSeconds()) : 0.f;
 }
 
+float ATreasureSketchPlayerController::GetActionFeedbackRemaining() const
+{
+    return GetWorld() ? FMath::Max(0.f, ActionFeedbackUntil - GetWorld()->GetTimeSeconds()) : 0.f;
+}
+
+float ATreasureSketchPlayerController::GetHoldDigProgress() const
+{
+    return bLocalDigHeld && GetWorld() ? FMath::Clamp((GetWorld()->GetTimeSeconds() - LocalDigStartedAt)
+        / ATreasureSketchGameMode::HeldDigSeconds, 0.f, 1.f) : 0.f;
+}
+
 void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
 {
     Super::PlayerTick(DeltaTime);
     UpdateFrontEnd();
     if (IsFrontEndVisible()) { bCameraMode = false; return; }
     const ATreasureSketchGameState* CursorGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (bLocalDigHeld && (bMapOpen || !CursorGS || CursorGS->Phase != ETreasureRoundPhase::HunterSearching
+        || !GetPawn() || FVector::Dist2D(GetPawn()->GetActorLocation(), LocalDigStartLocation) > 100.f
+        || (Cast<ATreasureSketchCharacter>(GetPawn())
+            && !Cast<ATreasureSketchCharacter>(GetPawn())->GetCharacterMovement()->IsMovingOnGround())))
+        StopDig();
     if (bCameraMode && (!CursorGS || !CursorGS->bGameStarted || !CursorGS->bPhotoClueEnabled
         || CursorGS->Phase != ETreasureRoundPhase::ScoutDrawing || !IsLocalScout()
         || HasSubmittedSketch() || bMapOpen || bDrawingOverheadView || SpectatorCamera || !GetPawn()))
@@ -567,6 +617,8 @@ void ATreasureSketchPlayerController::SetPauseMenuOpen(bool bOpen)
     bPauseMenuOpen = bOpen;
     if (bOpen)
     {
+        ServerCancelDig();
+        bLocalDigHeld = false;
         bCameraMode = false;
         FlushDrawingPoints();
         bWasDrawing = false;
@@ -1126,6 +1178,8 @@ void ATreasureSketchPlayerController::ToggleMap()
         && GS->Phase == ETreasureRoundPhase::ScoutDrawing) return;
     SetSprayCursorMode(false);
     bCameraMode = false;
+    ServerCancelDig();
+    bLocalDigHeld = false;
     bMapOpen = !bMapOpen;
     if (bMapOpen && GS && GS->bSketchSceneLock && IsLocalScout()
         && GS->Phase == ETreasureRoundPhase::ScoutDrawing) bSketchSceneCommitted = true;
@@ -1277,10 +1331,24 @@ void ATreasureSketchPlayerController::Dig()
     if (!GetPawn()) return;
     const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
-    if (PS && GS && PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->bGameStarted
+    const ATreasureSketchCharacter* DigCharacter = Cast<ATreasureSketchCharacter>(GetPawn());
+    if (PS && GS && DigCharacter && DigCharacter->GetCharacterMovement()->IsMovingOnGround()
+        && PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->bGameStarted
         && GS->Phase == ETreasureRoundPhase::HunterSearching
         && PS->GetDigCooldownRemaining(GS->RoundSerial, GS->GetServerWorldTimeSeconds()) <= 0.f)
+    {
+        bLocalDigHeld = true;
+        LocalDigStartedAt = GetWorld()->GetTimeSeconds();
+        LocalDigStartLocation = GetPawn()->GetActorLocation();
         ServerTryDig();
+    }
+}
+
+void ATreasureSketchPlayerController::StopDig()
+{
+    if (!bLocalDigHeld) return;
+    bLocalDigHeld = false;
+    ServerCancelDig();
 }
 
 void ATreasureSketchPlayerController::ServerSpraySurface_Implementation(FVector_NetQuantize ViewOrigin, FVector_NetQuantizeNormal ViewDirection)
@@ -1323,6 +1391,7 @@ void ATreasureSketchPlayerController::Shove()
         && GS->RoomMode == ETreasureRoomMode::ExplorerRace && GS->bGameStarted
         && GS->Phase == ETreasureRoundPhase::HunterSearching
         && PS->PlayerRole == ETreasurePlayerRole::Hunter
+        && !PS->bDigging
         && PS->NextShoveServerTime <= GS->GetServerWorldTimeSeconds()) ServerTryShove();
 }
 
@@ -1334,42 +1403,62 @@ void ATreasureSketchPlayerController::ServerTryShove_Implementation()
 
 void ATreasureSketchPlayerController::ServerTryDig_Implementation()
 {
-    ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
-    if (!PS || !GetPawn()) return;
-    float Distance = 0.f;
-    bool bAttempted = false;
-    bool bFound = false;
     if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
-        bFound = GM->TryDig(PS, GetPawn()->GetActorLocation(), Distance, bAttempted);
-    if (bAttempted)
-    {
-        const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
-        const bool bRace = GS && GS->RoomMode == ETreasureRoomMode::ExplorerRace;
-        const int32 FeedbackValue = TreasureRules::DigFeedbackBand(Distance, GS ? GS->RoomMapScale : 1.f);
-        ClientDigResult(bFound, FeedbackValue, bRace);
-    }
+        GM->StartHeldDig(this);
+}
+
+void ATreasureSketchPlayerController::ServerCancelDig_Implementation()
+{
+    if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
+        GM->CancelHeldDig(GetPlayerState<ATreasureSketchPlayerState>());
 }
 
 void ATreasureSketchPlayerController::ClientDigResult_Implementation(bool bFound, int32 FeedbackValue, bool bRace)
 {
+    bLocalDigHeld = false;
     DigFeedbackBand = bFound ? -1 : FMath::Clamp(FeedbackValue, 0, 4);
     DigFeedbackUntil = bFound ? 0.f : GetWorld()->GetTimeSeconds() + 3.f;
     StatusMessage = bFound ? (bRace ? TEXT("你率先找到宝藏！") : TEXT("找到宝藏！")) : FString();
     StatusUntil = bFound ? GetWorld()->GetTimeSeconds() + 4.f : 0.f;
 }
 
-void ATreasureSketchPlayerController::ClientShoveFeedback_Implementation(uint8 Result)
+void ATreasureSketchPlayerController::ClientDigInterrupted_Implementation()
 {
+    bLocalDigHeld = false;
+    StatusMessage = TEXT("挖掘被打断；未消耗挖掘冷却。");
+    StatusUntil = GetWorld()->GetTimeSeconds() + 2.f;
+}
+
+void ATreasureSketchPlayerController::ClientShoveFeedback_Implementation(uint8 Result, const FString& OtherName)
+{
+    PlayActionCue(this, Result);
     StatusMessage = Result == 0 ? TEXT("正在出手推人……")
-        : Result == 1 ? TEXT("推中了！对手短时间内不会被连续推开。")
-        : Result == 3 ? TEXT("你被推开了！短时间内不会再次被推。")
+        : Result == 1 ? FString::Printf(TEXT("推中了 %s！"), *OtherName)
+        : Result == 3 ? FString::Printf(TEXT("你被 %s 推开了！"), *OtherName)
         : Result == 4 ? TEXT("对手刚被推过，暂时推不动；本次出手已冷却。")
         : TEXT("推空了，等待冷却后再试。");
     StatusUntil = GetWorld()->GetTimeSeconds() + (Result == 0 ? 0.5f : 2.5f);
+    if (Result != 0)
+    {
+        ActionFeedbackKind = Result;
+        ActionFeedbackUntil = GetWorld()->GetTimeSeconds() + 1.2f;
+    }
+}
+
+void ATreasureSketchPlayerController::ClientTerrainFeedback_Implementation(uint8 Kind)
+{
+    PlayActionCue(this, Kind == 1 ? 5 : Kind == 2 ? 6 : 7);
+    ActionFeedbackKind = Kind == 1 ? 5 : Kind == 2 ? 6 : 7;
+    ActionFeedbackUntil = GetWorld()->GetTimeSeconds() + 1.4f;
+    if (Kind == 3 && StatusMessage.Contains(TEXT("推开"))) StatusMessage += TEXT(" 斜坡滑行！");
+    else StatusMessage = Kind == 1 ? TEXT("落入浅水，短暂减速；跳跃可上岸！")
+        : Kind == 2 ? TEXT("跌入深水，已送回安全地带。") : TEXT("被推上斜坡，滑了一段！");
+    StatusUntil = GetWorld()->GetTimeSeconds() + 2.5f;
 }
 
 void ATreasureSketchPlayerController::ClientStartNewRound_Implementation(int32 NewRoundSerial)
 {
+    bLocalDigHeld = false;
     bPauseMenuOpen = false;
     bDrawingOverheadView = false;
     SetSprayCursorMode(false);
@@ -1460,6 +1549,7 @@ void ATreasureSketchPlayerController::ClearSketch()
 
 void ATreasureSketchPlayerController::ClientReturnToLobby_Implementation()
 {
+    bLocalDigHeld = false;
     bCameraMode = false;
     bPauseMenuOpen = false;
     bReplayInputActive = false;
