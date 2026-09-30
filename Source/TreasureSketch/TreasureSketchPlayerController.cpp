@@ -8,6 +8,7 @@
 #include "TreasureMarker.h"
 #include "ProceduralIsland.h"
 #include "TreasureOnlineSubsystem.h"
+#include "SketchRotation.h"
 #include "Camera/CameraActor.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Engine/Engine.h"
@@ -327,8 +328,21 @@ FVector2D ATreasureSketchPlayerController::GetPaperSize() const
 bool ATreasureSketchPlayerController::IsPointOnPaper(const FVector2D& Point) const
 {
     if (bPhotoExpanded) return false;
-    const FVector2D Min = GetPaperMin(), Max = Min + GetPaperSize();
-    return Point.X >= Min.X && Point.Y >= Min.Y + 92.f && Point.X <= Max.X && Point.Y <= Max.Y;
+    const FVector2D Min = GetPaperMin(), Size = GetPaperSize();
+    const FVector2D ContentMin = Min + FVector2D(0.f, 92.f);
+    const FVector2D ContentSize = Size - FVector2D(0.f, 92.f);
+    const FVector2D Unrotated = SketchRotation::FromScreen(Point, ContentMin, ContentSize, PaperRotationSteps);
+    return Unrotated.X >= ContentMin.X && Unrotated.Y >= ContentMin.Y
+        && Unrotated.X <= ContentMin.X + ContentSize.X && Unrotated.Y <= ContentMin.Y + ContentSize.Y;
+}
+
+void ATreasureSketchPlayerController::RotatePaper(int32 Direction)
+{
+    if ((Direction != -1 && Direction != 1) || bPhotoExpanded
+        || (!bMapOpen && !IsHunterWaiting() && FrontEndPage != EFrontEndPage::History)) return;
+    FlushDrawingPoints();
+    bWasDrawing = false;
+    PaperRotationSteps = SketchRotation::NormalizeSteps(PaperRotationSteps + Direction);
 }
 
 int32 ATreasureSketchPlayerController::GetInkUsed() const
@@ -362,6 +376,11 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
         && !bMapOpen && !bDrawingOverheadView;
     SetSprayCursorMode(bCanSpray);
     UpdateWaitingSketchInput();
+    if (bMapOpen || IsHunterWaiting())
+    {
+        if (WasInputKeyJustPressed(EKeys::Z)) RotatePaper(-1);
+        if (WasInputKeyJustPressed(EKeys::X)) RotatePaper(1);
+    }
     if (IsScoutSpectating() && !bMapOpen && WasInputKeyJustPressed(EKeys::Q)) ServerCycleSpectatedHunter();
     UpdateSpectatorCamera(DeltaTime);
     ApplyPhaseInputRules();
@@ -405,7 +424,10 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
             Strokes.Last().ColorIndex = SelectedInkColor;
             Strokes.Last().EraserSize = SelectedInkColor == 5 ? SelectedEraserSize : 0;
         }
-        const FVector2D Normalized = (FVector2D(X,Y) - GetPaperMin()) / GetPaperSize();
+        const FVector2D PaperMin = GetPaperMin(), PaperSize = GetPaperSize();
+        const FVector2D Unrotated = SketchRotation::FromScreen(FVector2D(X, Y),
+            PaperMin + FVector2D(0.f, 92.f), PaperSize - FVector2D(0.f, 92.f), PaperRotationSteps);
+        const FVector2D Normalized = (Unrotated - PaperMin) / PaperSize;
         if (Strokes.Last().Points.IsEmpty() || FVector2D::Distance(Strokes.Last().Points.Last(), Normalized) > 0.003f)
         {
             Strokes.Last().Points.Add(Normalized);
@@ -572,6 +594,11 @@ void ATreasureSketchPlayerController::OpenFrontEndPage(EFrontEndPage NewPage)
 
 void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
 {
+    if (ActionName == TEXT("RotatePaperLeft") || ActionName == TEXT("RotatePaperRight"))
+    {
+        RotatePaper(ActionName == TEXT("RotatePaperRight") ? 1 : -1);
+        return;
+    }
     if (ActionName == TEXT("TogglePhoto"))
     {
         if ((bMapOpen || IsHunterWaiting()) && !GetPhotoJpeg().IsEmpty())
@@ -1341,6 +1368,7 @@ void ATreasureSketchPlayerController::ClientStartNewRound_Implementation(int32 N
     bLocalSketchSubmitted = false;
     bSketchSceneCommitted = false;
     SelectedInkColor = 0;
+    PaperRotationSteps = 0;
     DigFeedbackBand = -1;
     DigFeedbackUntil = 0.f;
     CurrentSketchRoundSerial = NewRoundSerial;

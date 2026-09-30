@@ -1,5 +1,12 @@
 # TreasureSketch 开发接手说明
 
+## 地图旋转（`codex/photo-clue`）
+
+- 地图师绘图、探索者等待／寻宝、地图师观战、赛后复盘以及本地历史图纸均可点“左转90°／右转90°”；游戏内画纸也可按 Z／X。每次转 90°，共四档，当前角度显示在画纸上。
+- 预印岛屿轮廓与所有笔画一起等比旋转；画纸是横向矩形，竖向两档会缩放内容以保持完整和比例。照片与工具栏不随地图旋转。
+- 绘图鼠标坐标反向换算回原始图纸坐标，旋转时结束当前笔画，避免跨档笔画相连。旋转仅影响玩家本地视角，不修改已提交图纸或其他玩家的朝向；新局重置为 0°。
+- UE 5.6 TreasureSketchEditor 与 TreasureSketch Win64 Development 编译通过；`TreasureSketch.RoomSettings` 四项无窗口测试通过，新增旋转坐标往返、岛屿轮廓四分之一转、绘图者与等待者旋转检查。日志在独立工作树 `Saved/rotation-room-tests.log`。用户负责窗口交互和多人视觉验证。
+
 ## 地图师相机道具（`codex/photo-clue`）
 
 - 从 `codex/three-player-race` 独立分支开发；主仓库的峡谷分支及未提交场景素材未改动。此功能尚未打包 Release。

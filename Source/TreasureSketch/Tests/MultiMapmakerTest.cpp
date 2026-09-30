@@ -12,12 +12,26 @@
 #include "../TreasureSketchPlayerController.h"
 #include "../TreasureSketchPlayerState.h"
 #include "../TreasureSketchCharacter.h"
+#include "../SketchRotation.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMultiMapmakerFlowTest, "TreasureSketch.RoomSettings.MultiMapmaker",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
 {
+    const FVector2D RotationMin(100.f, 150.f), RotationSize(600.f, 300.f);
+    const FVector2D OriginalPoint(180.f, 220.f);
+    for (int32 Steps = 0; Steps < 4; ++Steps)
+    {
+        const FVector2D ScreenPoint = SketchRotation::ToScreen(OriginalPoint, RotationMin, RotationSize, Steps);
+        TestTrue(TEXT("Every quarter turn maps the cursor back to the original drawing point"),
+            SketchRotation::FromScreen(ScreenPoint, RotationMin, RotationSize, Steps).Equals(OriginalPoint, 0.01f));
+    }
+    TestTrue(TEXT("Odd turns fit a landscape map without stretching"),
+        FMath::IsNearlyEqual(SketchRotation::FitScale(RotationSize, 1), 0.5f));
+    TestEqual(TEXT("Quarter-turn rotates the island mask clockwise"),
+        SketchRotation::SourceCellForDisplay(0, 0, 4, 1), FIntPoint(0, 3));
+
     UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
     GEngine->CreateNewWorldContext(EWorldType::Game).SetCurrentWorld(World);
     World->URL.AddOption(TEXT("listen"));
@@ -94,6 +108,9 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Waiting explorer receives every mapmaker's page"), LivePages.Num(), 3);
     Explorer->ClientInitializeLiveSketch_Implementation(GS->RoundSerial, LivePages);
     TestEqual(TEXT("Live pages are ready during drawing"), Explorer->GetSketchPageCount(), 3);
+    Explorer->RotatePaper(1);
+    TestEqual(TEXT("Waiting explorer can rotate the live map"), Explorer->GetPaperRotationSteps(), 1);
+    Explorer->RotatePaper(-1);
     if (LivePages.Num() == 3)
     {
         Explorer->ClientAppendLiveSketch_Implementation(GS->RoundSerial, Players[1]->GetPlayerId(), 0, 1, 0, FirstStroke.Points);
@@ -208,6 +225,10 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Mapmaker's local drawing remains available"), Mapmaker->Strokes.Num(), 1);
     Mapmaker->ToggleMap();
     TestTrue(TEXT("Mapmaker can open the map while spectating"), Mapmaker->IsMapOpen());
+    Mapmaker->RotatePaper(1);
+    TestEqual(TEXT("Mapmaker can rotate the map"), Mapmaker->GetPaperRotationSteps(), 1);
+    TestEqual(TEXT("Rotating does not change stored strokes"), Mapmaker->GetStrokes()[0].Points[0], FirstStroke.Points[0]);
+    Mapmaker->RotatePaper(-1);
     Mapmaker->CycleSketchPage(1);
     TestEqual(TEXT("Mapmaker can switch to another finished page"), Mapmaker->GetActiveSketchPage(), 1);
     Mapmaker->ClearSketch();

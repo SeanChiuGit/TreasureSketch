@@ -55,6 +55,8 @@ public:
     const TArray<uint8>& GetPhotoJpeg() const { return SketchPages.IsValidIndex(ActiveSketchPage) ? SketchPages[ActiveSketchPage].PhotoJpeg : LocalPhotoJpeg; }
     bool HasTakenPhoto() const { return !LocalPhotoJpeg.IsEmpty(); }
     bool IsPhotoExpanded() const { return bPhotoExpanded; }
+    int32 GetPaperRotationSteps() const { return PaperRotationSteps; }
+    void RotatePaper(int32 Direction);
     uint8 GetSelectedInkColor() const { return SelectedInkColor; }
     uint8 GetSelectedEraserSize() const { return SelectedEraserSize; }
     const TArray<FPlayedRoundRecord>& GetHistoryRecords() const;
@@ -226,6 +228,7 @@ private:
     int32 PendingSpectatorRoundSerial = 0;
 
     bool bMapOpen = false;
+    uint8 PaperRotationSteps = 0;
     bool bPhotoExpanded = false;
     bool bWaitingSketchInputActive = false;
     bool bWasDrawing = false;
