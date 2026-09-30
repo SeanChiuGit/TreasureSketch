@@ -4,6 +4,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "IpNetDriver.h"
+#include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "../ProceduralIsland.h"
 #include "../TreasureSketchGameMode.h"
 #include "../TreasureSketchGameState.h"
@@ -76,6 +77,32 @@ bool FCanyonGameModesTest::RunTest(const FString& Parameters)
             for (int32 B = A + 1; B < 4; ++B)
                 TestTrue(TEXT("Nearby players have separate canyon spawn positions"),
                     FVector::Dist2D(Nearby[A], Nearby[B]) >= 180.f);
+        if (Index == 0)
+        {
+            TArray<UHierarchicalInstancedStaticMeshComponent*> Components;
+            Island->GetComponents(Components);
+            UHierarchicalInstancedStaticMeshComponent* Palm = nullptr;
+            UHierarchicalInstancedStaticMeshComponent* Anchor = nullptr;
+            UHierarchicalInstancedStaticMeshComponent* ForestTree = nullptr;
+            for (UHierarchicalInstancedStaticMeshComponent* Component : Components)
+            {
+                if (Component->GetFName() == FName(TEXT("PalmInstances"))) Palm = Component;
+                if (Component->GetFName() == FName(TEXT("GiantAnchorInstances"))) Anchor = Component;
+                if (Component->GetFName() == FName(TEXT("ForestInstances_0"))) ForestTree = Component;
+            }
+            if (TestNotNull(TEXT("Beach palm component exists"), Palm)
+                && TestNotNull(TEXT("Beach anchor component exists"), Anchor)
+                && TestNotNull(TEXT("Forest tree component exists"), ForestTree))
+            {
+                Palm->AddInstance(FTransform::Identity);
+                Anchor->AddInstance(FTransform::Identity);
+                ForestTree->AddInstance(FTransform::Identity);
+                Island->OnConstruction(Island->GetActorTransform());
+                TestEqual(TEXT("Canyon rebuild removes stale palms"), Palm->GetInstanceCount(), 0);
+                TestEqual(TEXT("Canyon rebuild removes stale anchors"), Anchor->GetInstanceCount(), 0);
+                TestEqual(TEXT("Canyon rebuild removes stale forest trees"), ForestTree->GetInstanceCount(), 0);
+            }
+        }
     }
     World->SetNetDriver(nullptr);
     Driver->SetWorld(nullptr);

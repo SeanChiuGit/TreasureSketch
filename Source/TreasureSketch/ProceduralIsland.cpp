@@ -845,12 +845,8 @@ void AProceduralIsland::BuildDecorations()
     for (UPointLightComponent* Light : CanyonFillLights)
         if (Light) Light->DestroyComponent();
     CanyonFillLights.Empty();
-    if (Theme == EIslandTheme::CanyonGraybox)
-    {
-        BuildCanyonGrayboxLandmarks();
-        BuildCanyonCaves();
-        return;
-    }
+    // Replicated Seed and Theme can arrive separately. A client may have built
+    // the default beach first, so always discard its instances before Canyon.
     PalmInstances->ClearInstances();
     PalmCollisionInstances->ClearInstances();
     RockInstances->ClearInstances();
@@ -867,6 +863,12 @@ void AProceduralIsland::BuildDecorations()
     for (UHierarchicalInstancedStaticMeshComponent* Component : ForestInstances) Component->ClearInstances();
     JungleTreeCollisionInstances->ClearInstances();
     OccupiedBuckets.Reset();
+    if (Theme == EIslandTheme::CanyonGraybox)
+    {
+        BuildCanyonGrayboxLandmarks();
+        BuildCanyonCaves();
+        return;
+    }
     if (Theme == EIslandTheme::JungleRuins)
     {
         BuildJungleDecorations();
