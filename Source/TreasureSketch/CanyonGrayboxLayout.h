@@ -22,6 +22,7 @@ struct FCanyonGrayboxNode
     FVector Position = FVector::ZeroVector; // XY and relative route floor height, in cm.
     ECanyonGrayboxLandmark Landmark = ECanyonGrayboxLandmark::None;
     ECanyonRouteLayer Layer = ECanyonRouteLayer::Lower;
+    bool bCaveInterior = false;
 };
 
 struct FCanyonGrayboxEdge
@@ -33,14 +34,6 @@ struct FCanyonGrayboxEdge
     bool bCave = false;
 };
 
-struct FCanyonCaveChamber
-{
-    FVector Position = FVector::ZeroVector;
-    float Radius = 0.f;
-    float Clearance = 0.f;
-    bool bPillar = false;
-};
-
 struct FCanyonGrayboxLayout
 {
     int32 Seed = 0;
@@ -50,8 +43,8 @@ struct FCanyonGrayboxLayout
     ECanyonCavePattern CavePattern = ECanyonCavePattern::ThroughShortcut;
     TArray<FCanyonGrayboxNode> Nodes;
     TArray<FCanyonGrayboxEdge> Edges;
-    TArray<FCanyonCaveChamber> CaveChambers;
     TArray<int32> CaveMouthNodes;
+    TArray<int32> CavePathNodes; // Ordered entrance, curved interior, exit.
     int32 SpawnNode = INDEX_NONE;
     int32 TreasureNode = INDEX_NONE;
 
@@ -60,6 +53,13 @@ struct FCanyonGrayboxLayout
     const TCHAR* ProblemName() const;
     const TCHAR* CaveName() const;
     bool Validate() const;
+    bool SampleCave(float T, FVector& Position, FVector& Tangent) const;
+    bool ProjectCave(float X, float Y, float& T, float& Lateral, float& FloorZ) const;
+    float CaveHalfWidth(float T) const;
+    float CaveClearance(float T) const;
+    bool IsCaveVoid(float X, float Y) const;
+    float SurfaceHeightAt(float X, float Y, float* DistanceFromRoute = nullptr,
+        ECanyonRouteLayer* SurfaceLayer = nullptr) const;
     float HeightAt(float X, float Y, float* DistanceFromRoute = nullptr,
         ECanyonRouteLayer* SurfaceLayer = nullptr) const;
 };

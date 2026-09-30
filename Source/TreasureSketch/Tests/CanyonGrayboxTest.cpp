@@ -21,19 +21,29 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
         UpperPatterns.Add(Layout.UpperPattern);
         int32 CaveEdges = 0;
         for (const FCanyonGrayboxEdge& Edge : Layout.Edges) CaveEdges += Edge.bCave;
-        TestTrue(TEXT("Cave connects to the walkable graph"), CaveEdges > 0 && Layout.CaveMouthNodes.Num() > 0);
-        if (Layout.CavePattern == ECanyonCavePattern::ThreeMouthHall)
-            TestTrue(TEXT("Three surface entrances lead to one chamber"),
-                Layout.CaveMouthNodes.Num() == 3 && CaveEdges == 3 && Layout.CaveChambers.Num() == 1);
-        if (Layout.CavePattern == ECanyonCavePattern::PillarChamber)
-            TestTrue(TEXT("Pillar splits and rejoins the cave route"),
-                CaveEdges == 4 && Layout.CaveChambers.Num() == 1 && Layout.CaveChambers[0].bPillar);
-        if (Layout.CavePattern == ECanyonCavePattern::FissureHall)
-            TestTrue(TEXT("Narrow entrance opens into a larger chamber"),
-                CaveEdges == 2 && Layout.CaveChambers.Num() == 1 && Layout.CaveChambers[0].Radius > 170.f);
-        if (Layout.CavePattern == ECanyonCavePattern::TreasureAlcove)
-            TestEqual(TEXT("Treasure sits at the marked cave dead end"),
-                Layout.Nodes[Layout.TreasureNode].Landmark, ECanyonGrayboxLandmark::CaveBeacon);
+        TestTrue(TEXT("One curved through-cave joins two surface mouths"),
+            CaveEdges == 3 && Layout.CaveMouthNodes.Num() == 2 && Layout.CavePathNodes.Num() == 4);
+        if (Seed < 1005 && Layout.CavePathNodes.Num() == 4)
+        {
+            const int32 Entrance = Layout.CaveMouthNodes[0], Exit = Layout.CaveMouthNodes[1];
+            float CaveLength = 0.f, SurfaceLength = TNumericLimits<float>::Max();
+            for (int32 I = 1; I < Layout.CavePathNodes.Num(); ++I)
+                CaveLength += FVector::Dist2D(Layout.Nodes[Layout.CavePathNodes[I - 1]].Position,
+                    Layout.Nodes[Layout.CavePathNodes[I]].Position);
+            for (const FCanyonGrayboxEdge& First : Layout.Edges)
+            {
+                if (First.bCave || (First.A != Entrance && First.B != Entrance)) continue;
+                const int32 Bend = First.A == Entrance ? First.B : First.A;
+                for (const FCanyonGrayboxEdge& Second : Layout.Edges)
+                    if (!Second.bCave && ((Second.A == Bend && Second.B == Exit)
+                        || (Second.B == Bend && Second.A == Exit)))
+                        SurfaceLength = FMath::Min(SurfaceLength,
+                            FVector::Dist2D(Layout.Nodes[Entrance].Position, Layout.Nodes[Bend].Position)
+                            + FVector::Dist2D(Layout.Nodes[Bend].Position, Layout.Nodes[Exit].Position));
+            }
+            TestTrue(TEXT("Surface road around the mountain is longer than the cave"),
+                SurfaceLength > CaveLength * 1.15f && SurfaceLength < TNumericLimits<float>::Max());
+        }
         for (const FCanyonGrayboxNode& Node : Layout.Nodes)
             TestTrue(FString::Printf(TEXT("Seed %d route stays inside terrain"), Seed),
                 FMath::Abs(Node.Position.X) < 19000.f && FMath::Abs(Node.Position.Y) < 19000.f);
@@ -60,6 +70,18 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
                 FCanyonGrayboxLayout Scaled = FCanyonGrayboxLayout::Generate(Seed, Scale);
                 Scaled.ScaleForMap(Scale);
                 TestTrue(TEXT("Scaled canyon graph stays traversable"), Scaled.Validate());
+                if (Scale == 1.f)
+                {
+                    FVector CaveCenter, Along;
+                    Scaled.SampleCave(0.5f, CaveCenter, Along);
+                    TestTrue(TEXT("Cave floor has a solid mountain above its void"),
+                        Scaled.IsCaveVoid(CaveCenter.X, CaveCenter.Y)
+                        && Scaled.SurfaceHeightAt(CaveCenter.X, CaveCenter.Y)
+                            - Scaled.HeightAt(CaveCenter.X, CaveCenter.Y) > 380.f);
+                    TestTrue(TEXT("Tunnel widens and rises toward its middle"),
+                        Scaled.CaveHalfWidth(0.5f) > Scaled.CaveHalfWidth(0.05f) + 60.f
+                        && Scaled.CaveClearance(0.5f) > Scaled.CaveClearance(0.05f) + 50.f);
+                }
                 if (Scale >= 2.f)
                     TestTrue(TEXT("Larger maps add route nodes and choices"),
                         Scaled.Nodes.Num() > Layout.Nodes.Num()
@@ -111,7 +133,7 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
         }
     }
     TestEqual(TEXT("All six navigation problems occur in 100 seeds"), Problems.Num(), 6);
-    TestEqual(TEXT("All five cave structures occur in 100 seeds"), Caves.Num(), 5);
+    TestEqual(TEXT("Only the through-cave prototype is enabled"), Caves.Num(), 1);
     TestEqual(TEXT("All three upper route forms occur in 100 seeds"), UpperPatterns.Num(), 3);
     return true;
 }

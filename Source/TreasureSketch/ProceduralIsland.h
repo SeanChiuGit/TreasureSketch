@@ -53,6 +53,7 @@ public:
     FVector FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight = 130.f) const;
     FVector FindSpawnPoint(float LateralOffset = 0.f) const;
     FRotator GetCanyonStartFacing() const;
+    const FCanyonGrayboxLayout& GetCanyonLayout() const { return CanyonLayout; }
     FString GetShapeName() const;
     FString GetThemeName() const;
     static EIslandTheme SelectThemeFromTable(int32 InSeed, bool bIncludeLockedThemes = true, uint8 AllowedThemesMask = 0xff);
@@ -122,15 +123,14 @@ private:
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> CanyonLandmarkCylinders;
 
     UPROPERTY(VisibleAnywhere)
-    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> CanyonCaveBoxes;
-
-    UPROPERTY(VisibleAnywhere)
-    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> CanyonCaveCylinders;
+    TObjectPtr<UProceduralMeshComponent> CanyonCaveMesh;
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UPointLightComponent>> CanyonFillLights;
 
     FCanyonGrayboxLayout CanyonLayout;
+    // Terrain cells owned by the single mountain/tunnel mesh, in grid coordinates.
+    FIntRect CanyonCavePatchCells;
 
     TMap<FIntPoint, TArray<FVector2D>> OccupiedBuckets;
     void RecordDecoration(float X, float Y);

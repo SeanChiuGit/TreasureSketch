@@ -77,6 +77,39 @@ bool FCanyonGameModesTest::RunTest(const FString& Parameters)
             for (int32 B = A + 1; B < 4; ++B)
                 TestTrue(TEXT("Nearby players have separate canyon spawn positions"),
                     FVector::Dist2D(Nearby[A], Nearby[B]) >= 180.f);
+        if (Index == 1)
+        {
+            const FCanyonGrayboxLayout& Cave = Island->GetCanyonLayout();
+            FVector Previous = FVector::ZeroVector;
+            bool bTraversable = true, bFloorFound = true;
+            for (int32 Step = 0; Step <= 32; ++Step)
+            {
+                const float T = Step / 32.f;
+                FVector Point, Along;
+                Cave.SampleCave(T, Point, Along);
+                const FVector Center = Island->GetActorLocation() + FVector(Point.X, Point.Y,
+                    Cave.HeightAt(Point.X, Point.Y) + 130.f);
+                FHitResult FloorHit;
+                bFloorFound &= World->LineTraceSingleByChannel(FloorHit,
+                    Center + FVector(0.f, 0.f, 180.f), Center - FVector(0.f, 0.f, 160.f),
+                    ECC_Visibility);
+                if (Step > 0)
+                {
+                    FHitResult Blocker;
+                    if (World->SweepSingleByChannel(Blocker, Previous, Center, FQuat::Identity,
+                        ECC_Pawn, FCollisionShape::MakeCapsule(42.f, 92.f)))
+                    {
+                        AddError(FString::Printf(TEXT("Cave capsule blocked at step %d by %s"),
+                            Step, *GetNameSafe(Blocker.GetActor())));
+                        bTraversable = false;
+                        break;
+                    }
+                }
+                Previous = Center;
+            }
+            TestTrue(TEXT("Cave has a colliding floor along its length"), bFloorFound);
+            TestTrue(TEXT("A player capsule can cross the entire cave"), bTraversable);
+        }
         if (Index == 0)
         {
             TArray<UHierarchicalInstancedStaticMeshComponent*> Components;

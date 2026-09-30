@@ -2,7 +2,7 @@
 
 This branch runs an asset-free Canyon map inside Unreal. The lower paths, steep canyon walls, ramps, and upper wall-top paths are generated from a route graph. Some lower passages narrow to roughly three character widths. Stone arch, pillars, split peak, broken bridge, needle, and stone ring are temporary geometric placeholders. The independent Blender landmark work is not required for this test.
 
-Each seed also generates one colliding cave graybox with dark rock ceilings and interior light. Try seeds **1000–1004** in order to compare: a through-mountain shortcut beside a longer surface detour; three mouths leading to one hall; a central pillar with two passages that rejoin; a tight fissure opening into a broad hall; and a short dead-end cave with a distinct stone marker and the treasure. The cave type appears beside the route type in the map shape name. These are route and scale prototypes, not final cave art.
+Each seed currently generates **one through-mountain cave**. The two openings sit on opposite sides of a rock mass; the interior bends and changes width and height. A surface route remains available around the mountain, while the cave provides a shorter local connection. The other proposed cave types are paused until this form is accepted. Start with fixed seed **1000**, then try **1001–1004** to compare the placement and shape. The cave is still graybox geometry rather than final rock art.
 
 The upper level now alternates between a branching dead-end lookout, a through route, and a through route with another choice. Surface detours are placed on different edges rather than repeatedly near the first fork, and 1× maps gain an outer fork. Increasing the room's area setting adds more outer branches and crossings: at 2× there is one extra region beyond 1×, rising to four extra at 5×. Compare the same seed at 1× and 5× to judge whether the added travel and decisions feel worthwhile.
 
@@ -29,6 +29,6 @@ At 1× map area the Canyon terrain spans **125.4 × 125.4 m**, matching Beach's 
 3. Does the treasure location make you remember or draw a distinct relationship?
 4. Are the narrow passages comfortable for three players? Do the ramp and upper routes offer a useful choice?
 5. Are any routes blocked, too steep, too dark, or easy to bypass over a wall?
-6. Do the cave entrances and exits change how you understand the surface routes? Is the hall or hidden treasure location worth entering?
+6. From a distance, does the cave read as an opening in continuous rock? At the mouth and inside, are the transitions comfortable, and is the through route more appealing than the surface detour?
 
 Please note the **seed** and describe the junction or landmark when giving feedback. Geometry, lighting, and clue variety are still graybox quality; this test is for navigation, not final art.

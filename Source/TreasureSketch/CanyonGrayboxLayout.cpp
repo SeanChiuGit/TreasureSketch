@@ -4,7 +4,8 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
 {
     FCanyonGrayboxLayout Plan;
     Plan.Seed = InSeed;
-    Plan.CavePattern = static_cast<ECanyonCavePattern>(FMath::Abs(InSeed % 5));
+    // Validate the through-mountain cave before enabling the other cave ideas.
+    Plan.CavePattern = ECanyonCavePattern::ThroughShortcut;
     const float Area = FMath::IsFinite(MapScale) ? FMath::Clamp(MapScale, 0.5f, 5.f) : 1.f;
     FRandomStream R(InSeed ^ 0x4C7A21);
     const int32 UpperRoll = R.RandRange(0, 4);
@@ -134,10 +135,29 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
             CandidateEdges.Add(Index);
     for (int32 Index = CandidateEdges.Num() - 1; Index > 0; --Index)
         CandidateEdges.Swap(Index, R.RandRange(0, Index));
+    if (CandidateEdges.Num() > 0)
+    {
+        int32 Longest = 0;
+        float LongestLength = 0.f;
+        for (int32 Choice = 0; Choice < CandidateEdges.Num(); ++Choice)
+        {
+            const FCanyonGrayboxEdge& Edge = Plan.Edges[CandidateEdges[Choice]];
+            const float Length = FVector::Dist2D(Plan.Nodes[Edge.A].Position, Plan.Nodes[Edge.B].Position);
+            if (Length > LongestLength) { LongestLength = Length; Longest = Choice; }
+        }
+        CandidateEdges.Swap(0, Longest);
+    }
     const int32 DetourCount = FMath::Min(CandidateEdges.Num(), 2 + R.RandRange(0, 1));
     for (int32 Choice = 0; Choice < DetourCount; ++Choice)
     {
         const int32 Index = CandidateEdges[Choice];
+        if (Choice == 0)
+        {
+            // This edge becomes a complete mountain crossing after the other
+            // regions exist, so its rock mass can be placed in open space.
+            DetourRoutes.Add({ Index, INDEX_NONE });
+            continue;
+        }
         const FCanyonGrayboxEdge Core = Plan.Edges[Index];
         const FVector A = Plan.Nodes[Core.A].Position, B = Plan.Nodes[Core.B].Position;
         const FVector2D Delta(B.X - A.X, B.Y - A.Y);
@@ -151,9 +171,6 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
         DetourRoutes.Add({ Index, Bend });
     }
     // Short dead ends make a wrong turn meaningful without making the goal unreachable.
-    int32 PocketParents[2];
-    int32 PocketEnds[2];
-    int32 PocketEdges[2];
     for (int32 Pocket = 0; Pocket < 2; ++Pocket)
     {
         const int32 Parent = Pocket == 0 ? First : Fork;
@@ -161,9 +178,6 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
         const float Sign = Pocket == 0 ? 1.f : -1.f;
         const int32 End = Add(P.X + R.FRandRange(900.f, 1500.f),
             P.Y + Sign * R.FRandRange(1700.f, 2600.f), P.Z);
-        PocketParents[Pocket] = Parent;
-        PocketEnds[Pocket] = End;
-        PocketEdges[Pocket] = Plan.Edges.Num();
         Link(Parent, End);
     }
 
@@ -173,7 +187,10 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
     const int32 RegionCount = (Area >= 1.f ? 1 : 0) + AdditionalRegions;
     for (int32 Region = 0; Region < RegionCount && CandidateEdges.Num() > 0; ++Region)
     {
-        const FCanyonGrayboxEdge Core = Plan.Edges[CandidateEdges[(DetourCount + Region) % CandidateEdges.Num()]];
+        const int32 RegionEdge = CandidateEdges.Num() > 1
+            ? CandidateEdges[1 + (DetourCount - 1 + Region) % (CandidateEdges.Num() - 1)]
+            : CandidateEdges[0];
+        const FCanyonGrayboxEdge Core = Plan.Edges[RegionEdge];
         const FVector A = Plan.Nodes[Core.A].Position, B = Plan.Nodes[Core.B].Position;
         const FVector Direction = (B - A).GetSafeNormal2D();
         const FVector Normal(-Direction.Y, Direction.X, 0.f);
@@ -285,88 +302,117 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
         else Edge.HalfWidth = Edge.Layer == ECanyonRouteLayer::Upper ? 420.f : 460.f;
     }
 
-    // One cave structure per seed; entrances are ordinary graph nodes so caves
-    // participate in route choices, spawning and treasure placement.
+    // Move the crossing into an open side of the canyon. The exterior approach
+    // meets two rock faces; the longer surface road goes around the same mass.
     if (DetourRoutes.Num() > 0)
     {
-        const FDetour& Detour = DetourRoutes[0];
-        const FCanyonGrayboxEdge Core = Plan.Edges[Detour.CoreEdge];
+        int32 ChosenEdge = CandidateEdges[0];
+        float ChosenSign = 1.f, ChosenDistance = 5400.f;
+        float BestScore = -TNumericLimits<float>::Max();
+        for (int32 Candidate : CandidateEdges)
+        {
+            const FCanyonGrayboxEdge& Route = Plan.Edges[Candidate];
+            const FVector From = Plan.Nodes[Route.A].Position;
+            const FVector To = Plan.Nodes[Route.B].Position;
+            const FVector AlongCandidate = (To - From).GetSafeNormal2D();
+            const FVector NormalCandidate(-AlongCandidate.Y, AlongCandidate.X, 0.f);
+            for (float Distance : { 5400.f, 7000.f, 8500.f })
+                for (int32 Sign : { -1, 1 })
+                {
+                    float Clearance = TNumericLimits<float>::Max();
+                    for (float T : { 0.22f, 0.38f, 0.5f, 0.62f, 0.78f })
+                    {
+                        const FVector Probe = FMath::Lerp(From, To, T)
+                            + NormalCandidate * (Sign * (Distance - 1200.f));
+                        for (int32 Other = 0; Other < Plan.Edges.Num(); ++Other)
+                        {
+                            if (Other == Candidate) continue;
+                            const FCanyonGrayboxEdge& Neighbor = Plan.Edges[Other];
+                            const FVector P = Plan.Nodes[Neighbor.A].Position;
+                            const FVector Q = Plan.Nodes[Neighbor.B].Position;
+                            const FVector2D Delta(Q.X - P.X, Q.Y - P.Y);
+                            const float U = FMath::Clamp(FVector2D::DotProduct(
+                                FVector2D(Probe.X - P.X, Probe.Y - P.Y), Delta)
+                                / Delta.SizeSquared(), 0.f, 1.f);
+                            Clearance = FMath::Min(Clearance,
+                                FVector2D::Distance(FVector2D(Probe.X, Probe.Y),
+                                    FVector2D(P.X, P.Y) + Delta * U) - Neighbor.HalfWidth);
+                        }
+                    }
+                    const FVector Outer = (From + To) * 0.5f
+                        + NormalCandidate * (Sign * (Distance + 4500.f));
+                    float UpperClearance = TNumericLimits<float>::Max();
+                    for (const FCanyonGrayboxEdge& Neighbor : Plan.Edges)
+                    {
+                        if (Neighbor.Layer == ECanyonRouteLayer::Lower) continue;
+                        const FVector P = Plan.Nodes[Neighbor.A].Position;
+                        const FVector Q = Plan.Nodes[Neighbor.B].Position;
+                        const FVector2D Delta(Q.X - P.X, Q.Y - P.Y);
+                        const float U = FMath::Clamp(FVector2D::DotProduct(
+                            FVector2D(Outer.X - P.X, Outer.Y - P.Y), Delta)
+                            / Delta.SizeSquared(), 0.f, 1.f);
+                        UpperClearance = FMath::Min(UpperClearance,
+                            FVector2D::Distance(FVector2D(Outer.X, Outer.Y),
+                                FVector2D(P.X, P.Y) + Delta * U));
+                    }
+                    const float Score = FMath::Min(Clearance, UpperClearance * 0.8f)
+                        - Distance * 0.06f + FVector::Dist2D(From, To) * 0.05f
+                        - FMath::Max(0.f, Outer.Y * UpperSide) * 8.f
+                        - (Candidate == CandidateEdges[0] ? 0.f : 1200.f);
+                    if (Score > BestScore)
+                    {
+                        BestScore = Score;
+                        ChosenEdge = Candidate;
+                        ChosenSign = static_cast<float>(Sign);
+                        ChosenDistance = Distance;
+                    }
+                }
+        }
+        const FCanyonGrayboxEdge Core = Plan.Edges[ChosenEdge];
         const FVector A = Plan.Nodes[Core.A].Position;
         const FVector B = Plan.Nodes[Core.B].Position;
-        const FVector Mid = (A + B) * 0.5f;
         const FVector2D Along(B.X - A.X, B.Y - A.Y);
         const FVector2D Side(-Along.Y, Along.X);
         const FVector2D Normal = Side.GetSafeNormal();
-        switch (Plan.CavePattern)
+        const FVector Outward(Normal.X * ChosenSign, Normal.Y * ChosenSign, 0.f);
+        const FVector MouthA = A + Outward * ChosenDistance;
+        const FVector MouthB = B + Outward * ChosenDistance;
+        const int32 MouthAIndex = Add(MouthA.X, MouthA.Y, MouthA.Z);
+        const int32 MouthBIndex = Add(MouthB.X, MouthB.Y, MouthB.Z);
+        Link(Core.A, MouthAIndex);
+        Link(Core.B, MouthBIndex);
+        const FVector SurfaceBend = (MouthA + MouthB) * 0.5f
+            + Outward * 4500.f;
+        const int32 SurfaceBendIndex = Add(SurfaceBend.X, SurfaceBend.Y, SurfaceBend.Z);
+        Link(MouthAIndex, SurfaceBendIndex);
+        Link(SurfaceBendIndex, MouthBIndex);
+        const FVector Curve = -Outward * R.FRandRange(1000.f, 1450.f);
+        const FVector P = FMath::Lerp(MouthA, MouthB, 0.32f) + Curve;
+        const FVector Q = FMath::Lerp(MouthA, MouthB, 0.68f) + Curve * 1.15f;
+        const int32 PIndex = Add(P.X, P.Y, P.Z);
+        const int32 QIndex = Add(Q.X, Q.Y, Q.Z);
+        Plan.Nodes[PIndex].bCaveInterior = true;
+        Plan.Nodes[QIndex].bCaveInterior = true;
+        Plan.Edges.RemoveAt(ChosenEdge);
+        Plan.CavePathNodes = { MouthAIndex, PIndex, QIndex, MouthBIndex };
+        Plan.CaveMouthNodes = { MouthAIndex, MouthBIndex };
+        for (int32 Segment = 0; Segment < 3; ++Segment)
         {
-        case ECanyonCavePattern::ThroughShortcut:
-            Plan.Edges[Detour.CoreEdge].bCave = true;
-            Plan.Edges[Detour.CoreEdge].HalfWidth = 480.f;
-            Plan.CaveMouthNodes = { Core.A, Core.B };
-            break;
-        case ECanyonCavePattern::ThreeMouthHall:
-        {
-            int32 Third = INDEX_NONE;
-            for (int32 Index = 2; Index < CoreEdgeCount; ++Index)
-            {
-                const FCanyonGrayboxEdge& Candidate = Plan.Edges[Index];
-                if (Candidate.A == Fork && Candidate.B != First) { Third = Candidate.B; break; }
-                if (Candidate.B == Fork && Candidate.A != First) { Third = Candidate.A; break; }
-            }
-            if (Third == INDEX_NONE) Third = Core.B;
-            const FVector Hall = Plan.Nodes[Fork].Position + FVector(1800.f, Branch > 0.f ? -2800.f : 2800.f, 0.f);
-            const int32 HallNode = Add(Hall.X, Hall.Y);
-            for (int32 Mouth : { First, Fork, Third })
-            {
-                Link(Mouth, HallNode);
-                Plan.Edges.Last().bCave = true;
-                Plan.Edges.Last().HalfWidth = 500.f;
-                Plan.CaveMouthNodes.Add(Mouth);
-            }
-            Plan.CaveChambers.Add({ Hall, 1800.f, 1800.f, false });
-            break;
-        }
-        case ECanyonCavePattern::PillarChamber:
-        {
-            Plan.Edges.RemoveAt(Detour.CoreEdge);
-            for (int32 Sign : { -1, 1 })
-            {
-                const FVector P = Mid + FVector(Normal.X, Normal.Y, 0.f) * (Sign * 1800.f);
-                const int32 Around = Add(P.X, P.Y, P.Z);
-                Link(Core.A, Around); Plan.Edges.Last().bCave = true; Plan.Edges.Last().HalfWidth = 520.f;
-                Link(Around, Core.B); Plan.Edges.Last().bCave = true; Plan.Edges.Last().HalfWidth = 520.f;
-            }
-            Plan.CaveChambers.Add({ Mid, 3100.f, 1900.f, true });
-            Plan.CaveMouthNodes = { Core.A, Core.B };
-            break;
-        }
-        case ECanyonCavePattern::FissureHall:
-        {
-            const int32 Throat = PocketEnds[0];
-            const int32 Mouth = PocketParents[0];
-            Plan.Edges[PocketEdges[0]].bCave = true;
-            Plan.Edges[PocketEdges[0]].HalfWidth = 170.f;
-            const FVector Direction = (Plan.Nodes[Throat].Position - Plan.Nodes[Mouth].Position).GetSafeNormal2D();
-            const FVector Hall = Plan.Nodes[Throat].Position + Direction * 3200.f;
-            const int32 HallNode = Add(Hall.X, Hall.Y, Hall.Z);
-            Link(Throat, HallNode); Plan.Edges.Last().bCave = true; Plan.Edges.Last().HalfWidth = 650.f;
-            Plan.CaveChambers.Add({ Hall, 1900.f, 2200.f, false });
-            Plan.CaveMouthNodes = { Mouth };
-            break;
-        }
-        case ECanyonCavePattern::TreasureAlcove:
-        {
-            const int32 End = PocketEnds[1];
-            Plan.Edges[PocketEdges[1]].bCave = true;
-            Plan.Edges[PocketEdges[1]].HalfWidth = 440.f;
-            Plan.Nodes[End].Landmark = ECanyonGrayboxLandmark::CaveBeacon;
-            Plan.TreasureNode = End;
-            Plan.CaveChambers.Add({ Plan.Nodes[End].Position, 1000.f, 1500.f, false });
-            Plan.CaveMouthNodes = { PocketParents[1] };
-            break;
-        }
+            Link(Plan.CavePathNodes[Segment], Plan.CavePathNodes[Segment + 1]);
+            Plan.Edges.Last().bCave = true;
+            Plan.Edges.Last().HalfWidth = 480.f;
         }
     }
+    int32 NarrowCount = 0;
+    for (const FCanyonGrayboxEdge& Edge : Plan.Edges)
+        NarrowCount += Edge.Layer == ECanyonRouteLayer::Lower && !Edge.bCave && Edge.HalfWidth <= 170.f;
+    for (FCanyonGrayboxEdge& Edge : Plan.Edges)
+        if (NarrowCount < 2 && Edge.Layer == ECanyonRouteLayer::Lower && !Edge.bCave
+            && Edge.HalfWidth > 170.f)
+        {
+            Edge.HalfWidth = 170.f;
+            ++NarrowCount;
+        }
 
     const float Angle = R.FRandRange(-PI, PI);
     const float Scale = R.FRandRange(0.88f, 1.12f);
@@ -383,22 +429,11 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
         Maximum.X = FMath::Max(Maximum.X, Node.Position.X);
         Maximum.Y = FMath::Max(Maximum.Y, Node.Position.Y);
     }
-    for (FCanyonCaveChamber& Chamber : Plan.CaveChambers)
-    {
-        const float X = Chamber.Position.X * Scale, Y = Chamber.Position.Y * Scale;
-        Chamber.Position.X = X * C - Y * S;
-        Chamber.Position.Y = X * S + Y * C;
-    }
     const FVector2D Center = (Minimum + Maximum) * 0.5f;
     for (FCanyonGrayboxNode& Node : Plan.Nodes)
     {
         Node.Position.X -= Center.X;
         Node.Position.Y -= Center.Y;
-    }
-    for (FCanyonCaveChamber& Chamber : Plan.CaveChambers)
-    {
-        Chamber.Position.X -= Center.X;
-        Chamber.Position.Y -= Center.Y;
     }
     return Plan;
 }
@@ -443,20 +478,17 @@ void FCanyonGrayboxLayout::ScaleForMap(float Scale)
         Edge.HalfWidth = Edge.Layer == ECanyonRouteLayer::Lower
             ? Edge.HalfWidth <= 170.f ? 170.f : FMath::Max(260.f, Edge.HalfWidth * LengthScale)
             : FMath::Max(300.f, Edge.HalfWidth * LengthScale);
-    for (FCanyonCaveChamber& Chamber : CaveChambers)
-    {
-        Chamber.Position *= LengthScale;
-        Chamber.Radius = FMath::Max(750.f, Chamber.Radius * LengthScale);
-        Chamber.Clearance = FMath::Max(560.f, Chamber.Clearance * LengthScale);
-    }
 }
 
 bool FCanyonGrayboxLayout::Validate() const
 {
     if (!Nodes.IsValidIndex(SpawnNode) || !Nodes.IsValidIndex(TreasureNode) || Nodes.Num() < 6) return false;
-    if (CaveMouthNodes.Num() == 0) return false;
+    if (CaveMouthNodes.Num() != 2 || CavePathNodes.Num() != 4
+        || CavePathNodes[0] != CaveMouthNodes[0] || CavePathNodes.Last() != CaveMouthNodes[1]) return false;
     for (int32 Mouth : CaveMouthNodes)
         if (!Nodes.IsValidIndex(Mouth)) return false;
+    for (int32 Interior : CavePathNodes)
+        if (!Nodes.IsValidIndex(Interior)) return false;
     TArray<bool> Seen;
     Seen.Init(false, Nodes.Num());
     TArray<int32> Queue = { SpawnNode };
@@ -474,7 +506,80 @@ bool FCanyonGrayboxLayout::Validate() const
     return Queue.Num() == Nodes.Num();
 }
 
-float FCanyonGrayboxLayout::HeightAt(float X, float Y, float* DistanceFromRoute,
+bool FCanyonGrayboxLayout::SampleCave(float T, FVector& Position, FVector& Tangent) const
+{
+    if (CavePathNodes.Num() < 2) return false;
+    float Total = 0.f;
+    for (int32 I = 1; I < CavePathNodes.Num(); ++I)
+        Total += FVector::Dist2D(Nodes[CavePathNodes[I - 1]].Position, Nodes[CavePathNodes[I]].Position);
+    float Target = FMath::Clamp(T, 0.f, 1.f) * Total;
+    for (int32 I = 1; I < CavePathNodes.Num(); ++I)
+    {
+        const FVector A = Nodes[CavePathNodes[I - 1]].Position;
+        const FVector B = Nodes[CavePathNodes[I]].Position;
+        const float Length = FVector::Dist2D(A, B);
+        if (Target <= Length || I == CavePathNodes.Num() - 1)
+        {
+            Position = FMath::Lerp(A, B, FMath::Clamp(Target / Length, 0.f, 1.f));
+            Tangent = (B - A).GetSafeNormal2D();
+            return true;
+        }
+        Target -= Length;
+    }
+    return false;
+}
+
+bool FCanyonGrayboxLayout::ProjectCave(float X, float Y, float& T, float& Lateral, float& FloorZ) const
+{
+    if (CavePathNodes.Num() < 2) return false;
+    const FVector2D Point(X, Y);
+    float Total = 0.f;
+    for (int32 I = 1; I < CavePathNodes.Num(); ++I)
+        Total += FVector::Dist2D(Nodes[CavePathNodes[I - 1]].Position, Nodes[CavePathNodes[I]].Position);
+    float Along = 0.f, BestDistance = TNumericLimits<float>::Max();
+    for (int32 I = 1; I < CavePathNodes.Num(); ++I)
+    {
+        const FVector A = Nodes[CavePathNodes[I - 1]].Position;
+        const FVector B = Nodes[CavePathNodes[I]].Position;
+        const FVector2D Start(A.X, A.Y), Delta(B.X - A.X, B.Y - A.Y);
+        const float Length = Delta.Size();
+        const float Fraction = FMath::Clamp(FVector2D::DotProduct(Point - Start, Delta)
+            / Delta.SizeSquared(), 0.f, 1.f);
+        const FVector2D Difference = Point - (Start + Delta * Fraction);
+        if (Difference.SizeSquared() < BestDistance)
+        {
+            BestDistance = Difference.SizeSquared();
+            T = (Along + Length * Fraction) / Total;
+            const float Side = FVector2D::CrossProduct(Delta / Length, Difference);
+            Lateral = (Side >= 0.f ? 1.f : -1.f) * FMath::Sqrt(BestDistance);
+            FloorZ = FMath::Lerp(A.Z, B.Z, Fraction);
+        }
+        Along += Length;
+    }
+    return true;
+}
+
+float FCanyonGrayboxLayout::CaveHalfWidth(float T) const
+{
+    const float Bulge = FMath::Square(FMath::Sin(PI * T));
+    return 235.f + 105.f * Bulge + 18.f * FMath::Square(FMath::Sin(5.f * PI * T + Seed * 0.13f));
+}
+
+float FCanyonGrayboxLayout::CaveClearance(float T) const
+{
+    return 370.f + 75.f * FMath::Square(FMath::Sin(PI * T))
+        + 22.f * FMath::Square(FMath::Sin(4.f * PI * T + Seed * 0.07f));
+}
+
+bool FCanyonGrayboxLayout::IsCaveVoid(float X, float Y) const
+{
+    float T = 0.f, Lateral = 0.f, Floor = 0.f;
+    return ProjectCave(X, Y, T, Lateral, Floor)
+        && T > 0.f && T < 1.f
+        && FMath::Abs(Lateral) < CaveHalfWidth(T) + 80.f;
+}
+
+float FCanyonGrayboxLayout::SurfaceHeightAt(float X, float Y, float* DistanceFromRoute,
     ECanyonRouteLayer* SurfaceLayer) const
 {
     const FVector2D Point(X, Y);
@@ -482,7 +587,8 @@ float FCanyonGrayboxLayout::HeightAt(float X, float Y, float* DistanceFromRoute,
         TNumericLimits<float>::Max() };
     float LayerDistance[3] = { TNumericLimits<float>::Max(), TNumericLimits<float>::Max(),
         TNumericLimits<float>::Max() };
-    float LowerFloor = 0.f;
+    float CaveT = 0.f, CaveLateral = 0.f, CaveFloor = 0.f;
+    const bool bNearCave = ProjectCave(X, Y, CaveT, CaveLateral, CaveFloor);
     auto Consider = [&](float Distance, float HalfWidth, float FloorZ, float Rise, ECanyonRouteLayer Layer)
     {
         const int32 Index = static_cast<int32>(Layer);
@@ -495,6 +601,7 @@ float FCanyonGrayboxLayout::HeightAt(float X, float Y, float* DistanceFromRoute,
     };
     for (const FCanyonGrayboxEdge& Edge : Edges)
     {
+        if (Edge.bCave && (!bNearCave || (CaveT > 0.05f && CaveT < 0.95f))) continue;
         const FVector& A = Nodes[Edge.A].Position;
         const FVector& B = Nodes[Edge.B].Position;
         const FVector2D Start(A.X, A.Y), Delta(B.X - A.X, B.Y - A.Y);
@@ -504,35 +611,18 @@ float FCanyonGrayboxLayout::HeightAt(float X, float Y, float* DistanceFromRoute,
         const float Rise = Edge.Layer == ECanyonRouteLayer::Upper ? 1200.f * LengthScale
             : Edge.Layer == ECanyonRouteLayer::Ramp ? 2200.f * LengthScale - FloorZ
             : 2200.f * LengthScale;
-        if (Edge.Layer == ECanyonRouteLayer::Lower && Distance < LayerDistance[0]) LowerFloor = FloorZ;
         Consider(Distance, Edge.HalfWidth, FloorZ, Rise, Edge.Layer);
     }
     for (const FCanyonGrayboxNode& Node : Nodes)
     {
+        if (Node.bCaveInterior) continue;
         const float Distance = FVector2D::Distance(Point, FVector2D(Node.Position.X, Node.Position.Y));
-        if (Node.Layer == ECanyonRouteLayer::Lower && Distance * 0.72f < LayerDistance[0])
-            LowerFloor = Node.Position.Z;
         Consider(Distance * 0.72f,
             (Node.Layer == ECanyonRouteLayer::Upper ? 480.f : 440.f) * LengthScale,
             Node.Position.Z, Node.Layer == ECanyonRouteLayer::Upper ? 1200.f * LengthScale
                 : Node.Layer == ECanyonRouteLayer::Ramp ? 2200.f * LengthScale - Node.Position.Z
                 : 2200.f * LengthScale,
             Node.Layer);
-    }
-    for (const FCanyonCaveChamber& Chamber : CaveChambers)
-    {
-        const float Distance = FVector2D::Distance(Point,
-            FVector2D(Chamber.Position.X, Chamber.Position.Y));
-        if (Distance <= Chamber.Radius)
-        {
-            const float Blend = FMath::Clamp((Chamber.Radius - Distance)
-                / FMath::Min(350.f, Chamber.Radius * 0.4f), 0.f, 1.f);
-            LayerHeight[0] = FMath::Lerp(LayerHeight[0],
-                FMath::Min(LayerHeight[0], LowerFloor), Blend);
-            LayerDistance[0] = FMath::Min(LayerDistance[0], Distance);
-        }
-        else Consider(Distance, Chamber.Radius, Chamber.Position.Z,
-            2200.f * LengthScale, ECanyonRouteLayer::Lower);
     }
     int32 BestIndex = 0;
     for (int32 Index = 1; Index < 3; ++Index)
@@ -542,5 +632,44 @@ float FCanyonGrayboxLayout::HeightAt(float X, float Y, float* DistanceFromRoute,
     if (SurfaceLayer) *SurfaceLayer = static_cast<ECanyonRouteLayer>(BestIndex);
     const float Detail = FMath::Sin(X * 0.0023f + Seed * 0.03f) * FMath::Cos(Y * 0.0027f - Seed * 0.04f)
         * (BestDistance < 550.f * LengthScale ? 6.f : 25.f);
-    return 600.f + LayerHeight[BestIndex] + Detail;
+    float Height = 600.f + LayerHeight[BestIndex] + Detail;
+    if (bNearCave && CaveT > 0.02f && CaveT < 0.98f
+        && FMath::Abs(CaveLateral) < CaveHalfWidth(CaveT) + 650.f)
+    {
+        const float Longitudinal = FMath::Clamp((FMath::Min(CaveT, 1.f - CaveT) - 0.02f) / 0.16f, 0.f, 1.f);
+        const float EndFade = Longitudinal * Longitudinal * (3.f - 2.f * Longitudinal);
+        const float OuterWidth = CaveHalfWidth(CaveT) + 650.f;
+        const float Radial = FMath::Clamp((OuterWidth - FMath::Abs(CaveLateral)) / 500.f, 0.f, 1.f);
+        const float RadialFade = Radial * Radial * (3.f - 2.f * Radial);
+        float OtherRouteMargin = TNumericLimits<float>::Max();
+        for (const FCanyonGrayboxEdge& Edge : Edges)
+        {
+            if (Edge.bCave) continue;
+            const FVector A = Nodes[Edge.A].Position, B = Nodes[Edge.B].Position;
+            const FVector2D Start(A.X, A.Y), Delta(B.X - A.X, B.Y - A.Y);
+            const float U = FMath::Clamp(FVector2D::DotProduct(Point - Start, Delta)
+                / Delta.SizeSquared(), 0.f, 1.f);
+            OtherRouteMargin = FMath::Min(OtherRouteMargin,
+                FVector2D::Distance(Point, Start + Delta * U) - Edge.HalfWidth);
+        }
+        const float Avoidance = FMath::Clamp(OtherRouteMargin / 300.f, 0.f, 1.f);
+        Height = FMath::Max(Height,
+            600.f + CaveFloor + 1120.f * EndFade * RadialFade * Avoidance);
+    }
+    return Height;
+}
+
+float FCanyonGrayboxLayout::HeightAt(float X, float Y, float* DistanceFromRoute,
+    ECanyonRouteLayer* SurfaceLayer) const
+{
+    float T = 0.f, Lateral = 0.f, Floor = 0.f;
+    if (ProjectCave(X, Y, T, Lateral, Floor) && T > 0.001f && T < 0.999f
+        && FMath::Abs(Lateral) <= CaveHalfWidth(T))
+    {
+        if (DistanceFromRoute) *DistanceFromRoute = FMath::Abs(Lateral);
+        if (SurfaceLayer) *SurfaceLayer = ECanyonRouteLayer::Lower;
+        return 600.f + Floor + FMath::Sin(X * 0.0023f + Seed * 0.03f)
+            * FMath::Cos(Y * 0.0027f - Seed * 0.04f) * 6.f;
+    }
+    return SurfaceHeightAt(X, Y, DistanceFromRoute, SurfaceLayer);
 }
