@@ -9,12 +9,29 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCanyonGrayboxPlanTest, "TreasureSketch.Canyon.
 bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
 {
     TSet<ECanyonGrayboxProblem> Problems;
+    TSet<ECanyonCavePattern> Caves;
     for (int32 Seed = 1000; Seed < 1100; ++Seed)
     {
         const FCanyonGrayboxLayout Layout = FCanyonGrayboxLayout::Generate(Seed);
         if (!TestTrue(FString::Printf(TEXT("Seed %d has a connected, walkable graph"), Seed), Layout.Validate()))
             continue;
         Problems.Add(Layout.Problem);
+        Caves.Add(Layout.CavePattern);
+        int32 CaveEdges = 0;
+        for (const FCanyonGrayboxEdge& Edge : Layout.Edges) CaveEdges += Edge.bCave;
+        TestTrue(TEXT("Cave connects to the walkable graph"), CaveEdges > 0 && Layout.CaveMouthNodes.Num() > 0);
+        if (Layout.CavePattern == ECanyonCavePattern::ThreeMouthHall)
+            TestTrue(TEXT("Three surface entrances lead to one chamber"),
+                Layout.CaveMouthNodes.Num() == 3 && CaveEdges == 3 && Layout.CaveChambers.Num() == 1);
+        if (Layout.CavePattern == ECanyonCavePattern::PillarChamber)
+            TestTrue(TEXT("Pillar splits and rejoins the cave route"),
+                CaveEdges == 4 && Layout.CaveChambers.Num() == 1 && Layout.CaveChambers[0].bPillar);
+        if (Layout.CavePattern == ECanyonCavePattern::FissureHall)
+            TestTrue(TEXT("Narrow entrance opens into a larger chamber"),
+                CaveEdges == 2 && Layout.CaveChambers.Num() == 1 && Layout.CaveChambers[0].Radius > 170.f);
+        if (Layout.CavePattern == ECanyonCavePattern::TreasureAlcove)
+            TestEqual(TEXT("Treasure sits at the marked cave dead end"),
+                Layout.Nodes[Layout.TreasureNode].Landmark, ECanyonGrayboxLandmark::CaveBeacon);
         for (const FCanyonGrayboxNode& Node : Layout.Nodes)
             TestTrue(FString::Printf(TEXT("Seed %d route stays inside terrain"), Seed),
                 FMath::Abs(Node.Position.X) < 19000.f && FMath::Abs(Node.Position.Y) < 19000.f);
@@ -71,6 +88,7 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
         }
     }
     TestEqual(TEXT("All six navigation problems occur in 100 seeds"), Problems.Num(), 6);
+    TestEqual(TEXT("All five cave structures occur in 100 seeds"), Caves.Num(), 5);
     return true;
 }
 

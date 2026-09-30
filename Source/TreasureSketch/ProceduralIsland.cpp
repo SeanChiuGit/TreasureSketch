@@ -168,6 +168,14 @@ AProceduralIsland::AProceduralIsland()
     CanyonLandmarkCylinders->SetupAttachment(RootComponent);
     ConfigureInstances(CanyonLandmarkCylinders);
     CanyonLandmarkCylinders->SetStaticMesh(CylinderMesh.Object);
+    CanyonCaveBoxes = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("CanyonCaveBoxes"));
+    CanyonCaveBoxes->SetupAttachment(RootComponent);
+    ConfigureInstances(CanyonCaveBoxes);
+    CanyonCaveBoxes->SetStaticMesh(CubeMesh.Object);
+    CanyonCaveCylinders = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("CanyonCaveCylinders"));
+    CanyonCaveCylinders->SetupAttachment(RootComponent);
+    ConfigureInstances(CanyonCaveCylinders);
+    CanyonCaveCylinders->SetStaticMesh(CylinderMesh.Object);
 
     JungleTreeCollisionInstances = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("JungleTreeCollisionInstances"));
     JungleTreeCollisionInstances->SetupAttachment(RootComponent);
@@ -391,7 +399,8 @@ void AProceduralIsland::OnConstruction(const FTransform& Transform)
 
 FString AProceduralIsland::GetShapeName() const
 {
-    if (Theme == EIslandTheme::CanyonGraybox) return CanyonLayout.ProblemName();
+    if (Theme == EIslandTheme::CanyonGraybox)
+        return FString::Printf(TEXT("%s / %s"), CanyonLayout.ProblemName(), CanyonLayout.CaveName());
     switch (ShapeFromSeed(Seed))
     {
     case EIslandShape::RoundBay: return TEXT("RoundBay");
@@ -831,12 +840,15 @@ void AProceduralIsland::BuildDecorations()
 {
     CanyonLandmarkBoxes->ClearInstances();
     CanyonLandmarkCylinders->ClearInstances();
+    CanyonCaveBoxes->ClearInstances();
+    CanyonCaveCylinders->ClearInstances();
     for (UPointLightComponent* Light : CanyonFillLights)
         if (Light) Light->DestroyComponent();
     CanyonFillLights.Empty();
     if (Theme == EIslandTheme::CanyonGraybox)
     {
         BuildCanyonGrayboxLandmarks();
+        BuildCanyonCaves();
         return;
     }
     PalmInstances->ClearInstances();
@@ -1352,7 +1364,116 @@ void AProceduralIsland::BuildCanyonGrayboxLandmarks()
             }
             break;
         }
+        case ECanyonGrayboxLandmark::CaveBeacon:
+        {
+            for (int32 Side : { -1, 1 })
+            {
+                const FVector Foot = Ground + Right * (Side * 1100.f * S);
+                Cylinder(FVector(Foot.X, Foot.Y,
+                    CanyonLayout.HeightAt(Foot.X, Foot.Y) + 700.f * S), 260.f, 1400.f);
+            }
+            Box(Ground - Approach * (650.f * S) + FVector(0.f, 0.f, 720.f * S),
+                FVector(350.f, 350.f, 1440.f), FRotator(0.f, 0.f, 13.f));
+            break;
+        }
         default: break;
+        }
+    }
+}
+
+void AProceduralIsland::BuildCanyonCaves()
+{
+    UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr,
+        TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+    if (Base)
+    {
+        UMaterialInstanceDynamic* Rock = UMaterialInstanceDynamic::Create(Base, this);
+        Rock->SetVectorParameterValue(TEXT("Color"), FLinearColor(0.19f, 0.20f, 0.21f));
+        CanyonCaveBoxes->SetMaterial(0, Rock);
+        CanyonCaveCylinders->SetMaterial(0, Rock);
+    }
+    auto Box = [&](const FVector& Center, const FVector& Size, const FRotator& Rotation = FRotator::ZeroRotator)
+    {
+        CanyonCaveBoxes->AddInstance(FTransform(Rotation, Center, Size / 100.f));
+    };
+    auto Cylinder = [&](const FVector& Center, float Diameter, float Height)
+    {
+        CanyonCaveCylinders->AddInstance(FTransform(FRotator::ZeroRotator, Center,
+            FVector(Diameter / 100.f, Diameter / 100.f, Height / 100.f)));
+    };
+    auto InChamber = [&](const FVector& Point)
+    {
+        for (const FCanyonCaveChamber& Chamber : CanyonLayout.CaveChambers)
+            if (FVector::Dist2D(Point, Chamber.Position) < Chamber.Radius * 0.82f) return true;
+        return false;
+    };
+    for (const FCanyonGrayboxEdge& Edge : CanyonLayout.Edges)
+    {
+        if (!Edge.bCave) continue;
+        const FVector A = CanyonLayout.Nodes[Edge.A].Position;
+        const FVector B = CanyonLayout.Nodes[Edge.B].Position;
+        const FVector Along = (B - A).GetSafeNormal2D();
+        const FVector Side(-Along.Y, Along.X, 0.f);
+        const float Length = FVector::Dist2D(A, B);
+        const int32 Segments = FMath::Max(1, FMath::CeilToInt(Length / 300.f));
+        const float SegmentLength = Length / Segments;
+        for (int32 Segment = 0; Segment < Segments; ++Segment)
+        {
+            const FVector Point = FMath::Lerp(A, B, (Segment + 0.5f) / Segments);
+            if (InChamber(Point)) continue;
+            const float Floor = CanyonLayout.HeightAt(Point.X, Point.Y);
+            const float Clearance = Edge.HalfWidth <= 180.f ? 330.f : 400.f;
+            Box(FVector(Point.X, Point.Y, Floor + Clearance + 75.f),
+                FVector(SegmentLength + 35.f, Edge.HalfWidth * 2.f + 270.f, 150.f), Along.Rotation());
+            for (int32 Sign : { -1, 1 })
+            {
+                const FVector Wall = Point + Side * (Sign * (Edge.HalfWidth + 90.f));
+                Box(FVector(Wall.X, Wall.Y, Floor + Clearance * 0.5f),
+                    FVector(SegmentLength + 35.f, 180.f, Clearance + 130.f), Along.Rotation());
+            }
+        }
+    }
+    for (const FCanyonCaveChamber& Chamber : CanyonLayout.CaveChambers)
+    {
+        const float Floor = CanyonLayout.HeightAt(Chamber.Position.X, Chamber.Position.Y);
+        Cylinder(FVector(Chamber.Position.X, Chamber.Position.Y, Floor + Chamber.Clearance + 90.f),
+            Chamber.Radius * 2.f + 220.f, 180.f);
+        if (Chamber.bPillar)
+            Cylinder(FVector(Chamber.Position.X, Chamber.Position.Y, Floor + Chamber.Clearance * 0.5f),
+                420.f, Chamber.Clearance + 180.f);
+        UPointLightComponent* Lamp = NewObject<UPointLightComponent>(this);
+        Lamp->SetupAttachment(RootComponent);
+        Lamp->SetMobility(EComponentMobility::Movable);
+        Lamp->SetIntensity(19000.f);
+        Lamp->SetAttenuationRadius(FMath::Max(1700.f, Chamber.Radius * 1.7f));
+        Lamp->SetLightColor(FLinearColor(0.89f, 0.72f, 0.48f));
+        Lamp->SetCastShadows(false);
+        Lamp->RegisterComponent();
+        Lamp->SetRelativeLocation(FVector(Chamber.Position.X, Chamber.Position.Y,
+            Floor + Chamber.Clearance * 0.72f));
+        CanyonFillLights.Add(Lamp);
+    }
+    for (int32 Mouth : CanyonLayout.CaveMouthNodes)
+    {
+        for (const FCanyonGrayboxEdge& Edge : CanyonLayout.Edges)
+        {
+            if (!Edge.bCave || (Edge.A != Mouth && Edge.B != Mouth)) continue;
+            const FVector From = CanyonLayout.Nodes[Mouth].Position;
+            const FVector To = CanyonLayout.Nodes[Edge.A == Mouth ? Edge.B : Edge.A].Position;
+            const FVector Along = (To - From).GetSafeNormal2D();
+            const FVector Side(-Along.Y, Along.X, 0.f);
+            const FVector Gate = From + Along * 180.f;
+            const float Floor = CanyonLayout.HeightAt(Gate.X, Gate.Y);
+            const float Clearance = Edge.HalfWidth <= 180.f ? 330.f : 400.f;
+            for (int32 Sign : { -1, 1 })
+            {
+                const FVector Foot = Gate + Side * (Sign * (Edge.HalfWidth + 100.f));
+                Box(FVector(Foot.X, Foot.Y, Floor + Clearance * 0.5f),
+                    FVector(260.f, 250.f, Clearance + 140.f), Along.Rotation());
+            }
+            Box(FVector(Gate.X, Gate.Y, Floor + Clearance + 60.f),
+                FVector(280.f, Edge.HalfWidth * 2.f + 450.f, 130.f), Along.Rotation());
+            break;
         }
     }
 }

@@ -121,6 +121,12 @@ private:
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> CanyonLandmarkCylinders;
 
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> CanyonCaveBoxes;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> CanyonCaveCylinders;
+
     UPROPERTY(Transient)
     TArray<TObjectPtr<UPointLightComponent>> CanyonFillLights;
 
@@ -132,6 +138,7 @@ private:
     void BuildIsland();
     void BuildCanyonGrayboxTerrain();
     void BuildCanyonGrayboxLandmarks();
+    void BuildCanyonCaves();
     void BuildWater();
     void BuildDecorations();
     void CreateRuntimeForestFog();

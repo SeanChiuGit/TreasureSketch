@@ -2,6 +2,8 @@
 
 This branch runs an asset-free Canyon map inside Unreal. The lower paths, steep canyon walls, ramps, and upper wall-top paths are generated from a route graph. Some lower passages narrow to roughly three character widths. Stone arch, pillars, split peak, broken bridge, needle, and stone ring are temporary geometric placeholders. The independent Blender landmark work is not required for this test.
 
+Each seed also generates one colliding cave graybox with dark rock ceilings and interior light. Try seeds **1000–1004** in order to compare: a through-mountain shortcut beside a longer surface detour; three mouths leading to one hall; a central pillar with two passages that rejoin; a tight fissure opening into a broad hall; and a short dead-end cave with a distinct stone marker and the treasure. The cave type appears beside the route type in the map shape name. These are route and scale prototypes, not final cave art.
+
 At 1× map area the Canyon terrain spans **125.4 × 125.4 m**, matching Beach's square extent; Forest spans **94.05 × 94.05 m**. The playable Canyon routes occupy only part of that square.
 
 ## Start
@@ -25,5 +27,6 @@ At 1× map area the Canyon terrain spans **125.4 × 125.4 m**, matching Beach's 
 3. Does the treasure location make you remember or draw a distinct relationship?
 4. Are the narrow passages comfortable for three players? Do the ramp and upper routes offer a useful choice?
 5. Are any routes blocked, too steep, too dark, or easy to bypass over a wall?
+6. Do the cave entrances and exits change how you understand the surface routes? Is the hall or hidden treasure location worth entering?
 
 Please note the **seed** and describe the junction or landmark when giving feedback. Geometry, lighting, and clue variety are still graybox quality; this test is for navigation, not final art.
