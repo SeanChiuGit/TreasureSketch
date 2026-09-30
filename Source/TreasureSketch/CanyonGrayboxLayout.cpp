@@ -1,11 +1,15 @@
 #include "CanyonGrayboxLayout.h"
 
-FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed)
+FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale)
 {
     FCanyonGrayboxLayout Plan;
     Plan.Seed = InSeed;
     Plan.CavePattern = static_cast<ECanyonCavePattern>(FMath::Abs(InSeed % 5));
+    const float Area = FMath::IsFinite(MapScale) ? FMath::Clamp(MapScale, 0.5f, 5.f) : 1.f;
     FRandomStream R(InSeed ^ 0x4C7A21);
+    const int32 UpperRoll = R.RandRange(0, 4);
+    Plan.UpperPattern = UpperRoll < 2 ? ECanyonUpperPattern::Lookout
+        : UpperRoll < 4 ? ECanyonUpperPattern::Traverse : ECanyonUpperPattern::SplitTraverse;
     Plan.Problem = static_cast<ECanyonGrayboxProblem>(R.RandRange(0, 5));
     const float L = R.FRandRange(13500.f, 18500.f);
     const float Branch = R.FRandRange(3300.f, 5700.f) * (R.RandRange(0, 1) == 0 ? -1.f : 1.f);
@@ -113,27 +117,38 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed)
     }
     }
 
-    // Secondary loops keep the archetypes recognizable while adding local decisions.
-    // The original edge remains as a shortcut; the new bend is an alternate route.
+    const float UpperSide = Plan.UpperPattern == ECanyonUpperPattern::Lookout
+        ? (R.RandRange(0, 1) == 0 ? -1.f : 1.f)
+        : (Plan.Nodes[Plan.TreasureNode].Position.Y >= 0.f ? -1.f : 1.f);
+
+    // Scatter a few local alternatives across the graph instead of repeating the
+    // same small loop next to the first junction on every seed.
     const int32 CoreEdgeCount = Plan.Edges.Num();
     struct FDetour { int32 CoreEdge; int32 Bend; };
     TArray<FDetour> DetourRoutes;
-    int32 Detours = 0;
-    for (int32 Index = 0; Index < CoreEdgeCount && Detours < 5; ++Index)
+    TArray<int32> CandidateEdges;
+    for (int32 Index = 0; Index < CoreEdgeCount; ++Index)
+        if (Plan.Edges[Index].Layer == ECanyonRouteLayer::Lower
+            && FVector::Dist2D(Plan.Nodes[Plan.Edges[Index].A].Position,
+                Plan.Nodes[Plan.Edges[Index].B].Position) >= 3200.f)
+            CandidateEdges.Add(Index);
+    for (int32 Index = CandidateEdges.Num() - 1; Index > 0; --Index)
+        CandidateEdges.Swap(Index, R.RandRange(0, Index));
+    const int32 DetourCount = FMath::Min(CandidateEdges.Num(), 2 + R.RandRange(0, 1));
+    for (int32 Choice = 0; Choice < DetourCount; ++Choice)
     {
+        const int32 Index = CandidateEdges[Choice];
         const FCanyonGrayboxEdge Core = Plan.Edges[Index];
         const FVector A = Plan.Nodes[Core.A].Position, B = Plan.Nodes[Core.B].Position;
         const FVector2D Delta(B.X - A.X, B.Y - A.Y);
-        if (Delta.Size() < 3200.f) continue;
         const FVector2D Side(-Delta.Y, Delta.X);
-        const FVector2D Offset = Side.GetSafeNormal() * R.FRandRange(1500.f, 2400.f)
+        const FVector2D Offset = Side.GetSafeNormal() * R.FRandRange(1800.f, 3000.f)
             * (R.RandRange(0, 1) == 0 ? -1.f : 1.f);
         const float T = R.FRandRange(0.38f, 0.62f);
         const FVector Mid = FMath::Lerp(A, B, T) + FVector(Offset.X, Offset.Y, 0.f);
         const int32 Bend = Add(Mid.X, Mid.Y, Mid.Z);
         Link(Core.A, Bend); Link(Bend, Core.B);
         DetourRoutes.Add({ Index, Bend });
-        ++Detours;
     }
     // Short dead ends make a wrong turn meaningful without making the goal unreachable.
     int32 PocketParents[2];
@@ -152,9 +167,57 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed)
         Link(Parent, End);
     }
 
-    // One playable upper corridor sits on the canyon wall, with two long grade-safe
-    // ramps back to the lower graph and a second choice on the upper level.
-    const float UpperSide = Plan.Nodes[Plan.TreasureNode].Position.Y >= 0.f ? -1.f : 1.f;
+    // A larger play area gains additional destinations and crossings. The base
+    // problem stays recognizable for a seed, but its graph is no longer a zoom.
+    const int32 AdditionalRegions = FMath::Clamp(FMath::FloorToInt((Area - 1.f) * 1.05f + 0.1f), 0, 4);
+    const int32 RegionCount = (Area >= 1.f ? 1 : 0) + AdditionalRegions;
+    for (int32 Region = 0; Region < RegionCount && CandidateEdges.Num() > 0; ++Region)
+    {
+        const FCanyonGrayboxEdge Core = Plan.Edges[CandidateEdges[(DetourCount + Region) % CandidateEdges.Num()]];
+        const FVector A = Plan.Nodes[Core.A].Position, B = Plan.Nodes[Core.B].Position;
+        const FVector Direction = (B - A).GetSafeNormal2D();
+        const FVector Normal(-Direction.Y, Direction.X, 0.f);
+        const FVector Mid = (A + B) * 0.5f;
+        auto OpenSpace = [&](float Sign)
+        {
+            const FVector Probe = Mid + Normal * (Sign * 6500.f);
+            float Distance = TNumericLimits<float>::Max();
+            for (const FCanyonGrayboxNode& Node : Plan.Nodes)
+                Distance = FMath::Min(Distance, FVector::Dist2D(Probe, Node.Position));
+            // Keep new lower regions away from the upper shelf: the heightfield
+            // cannot represent a bridge and a floor at the same XY coordinate.
+            return Distance - FMath::Max(0.f, Probe.Y * UpperSide) * 10.f;
+        };
+        const float Sign = OpenSpace(1.f) > OpenSpace(-1.f) ? 1.f : -1.f;
+        const float Offset = R.FRandRange(3200.f, 4700.f);
+        if (Region % 2 == 0)
+        {
+            const int32 Anchor = R.RandRange(0, 1) == 0 ? Core.A : Core.B;
+            const FVector Start = Plan.Nodes[Anchor].Position;
+            const FVector Bend = Start + Normal * (Sign * Offset * 0.62f)
+                + Direction * R.FRandRange(500.f, 1100.f);
+            const FVector End = Start + Normal * (Sign * Offset * 1.5f)
+                + Direction * R.FRandRange(1000.f, 1800.f);
+            const FVector OtherEnd = Start + Normal * (Sign * Offset * 1.2f)
+                - Direction * R.FRandRange(1400.f, 2200.f);
+            const int32 BranchNode = Add(Bend.X, Bend.Y, Start.Z);
+            const int32 EndNode = Add(End.X, End.Y, Start.Z,
+                Region == 0 ? ECanyonGrayboxLandmark::StoneRing : ECanyonGrayboxLandmark::Needle);
+            const int32 OtherNode = Add(OtherEnd.X, OtherEnd.Y, Start.Z);
+            Link(Anchor, BranchNode); Link(BranchNode, EndNode); Link(BranchNode, OtherNode);
+        }
+        else
+        {
+            const FVector P = FMath::Lerp(A, B, 0.30f) + Normal * (Sign * Offset);
+            const FVector Q = FMath::Lerp(A, B, 0.70f) + Normal * (Sign * Offset * 1.12f);
+            const int32 FirstOuter = Add(P.X, P.Y, P.Z, ECanyonGrayboxLandmark::SplitPeak);
+            const int32 SecondOuter = Add(Q.X, Q.Y, Q.Z);
+            Link(Core.A, FirstOuter); Link(FirstOuter, SecondOuter); Link(SecondOuter, Core.B);
+        }
+    }
+
+    // The upper layer may be a branching lookout, a crossing, or a crossing
+    // with its own inner choice. Only the latter produces the familiar ring.
     const float UpperY = UpperSide * 10000.f;
     const float UpperZ = 1000.f;
     auto AddUpper = [&](float X, float Y)
@@ -164,8 +227,6 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed)
     const int32 U0 = AddUpper(-2000.f, UpperY);
     const int32 U1 = AddUpper(ForkX + 1700.f, UpperY + UpperSide * 350.f);
     const int32 U2 = AddUpper((ForkX + MergeX) * 0.5f, UpperY - UpperSide * 450.f);
-    const int32 U3 = AddUpper(MergeX - 1700.f, UpperY + UpperSide * 300.f);
-    const int32 U4 = AddUpper(L + 2000.f, UpperY);
     const int32 EntryFlat = Add(-2500.f, UpperY * 0.10f, 0.f,
         ECanyonGrayboxLandmark::None, ECanyonRouteLayer::Ramp);
     const int32 EntryMiddle = Add(-3000.f, UpperY * 0.55f, 500.f,
@@ -175,23 +236,40 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed)
     Link(EntryMiddle, U0, ECanyonRouteLayer::Ramp);
     Link(U0, U1, ECanyonRouteLayer::Upper);
     Link(U1, U2, ECanyonRouteLayer::Upper);
-    Link(U2, U3, ECanyonRouteLayer::Upper);
-    Link(U3, U4, ECanyonRouteLayer::Upper);
-    const float TreasureY = Plan.Nodes[Plan.TreasureNode].Position.Y;
-    const float TreasureZ = Plan.Nodes[Plan.TreasureNode].Position.Z;
-    const int32 ExitMiddle = Add(L + 3000.f, UpperY * 0.55f + TreasureY * 0.45f,
-        (UpperZ + TreasureZ) * 0.5f,
-        ECanyonGrayboxLandmark::None, ECanyonRouteLayer::Ramp);
-    const int32 ExitFlat = Add(L + 2500.f, UpperY * 0.15f + TreasureY * 0.85f, TreasureZ,
-        ECanyonGrayboxLandmark::None, ECanyonRouteLayer::Ramp);
-    Link(U4, ExitMiddle, ECanyonRouteLayer::Ramp);
-    Link(ExitMiddle, ExitFlat, ECanyonRouteLayer::Ramp);
-    Link(ExitFlat, Plan.TreasureNode, ECanyonRouteLayer::Ramp);
-    const int32 U5 = AddUpper(ForkX + (MergeX - ForkX) * 0.40f, UpperY + UpperSide * 2000.f);
-    const int32 U6 = AddUpper(ForkX + (MergeX - ForkX) * 0.73f, UpperY + UpperSide * 2000.f);
-    Link(U1, U5, ECanyonRouteLayer::Upper);
-    Link(U5, U6, ECanyonRouteLayer::Upper);
-    Link(U6, U3, ECanyonRouteLayer::Upper);
+    if (Plan.UpperPattern == ECanyonUpperPattern::Lookout)
+    {
+        const int32 End = AddUpper(MergeX + 700.f, UpperY + UpperSide * 1600.f);
+        const int32 SideEnd = AddUpper(ForkX + (MergeX - ForkX) * 0.58f,
+            UpperY + UpperSide * 2600.f);
+        Plan.Nodes[End].Landmark = ECanyonGrayboxLandmark::Needle;
+        Link(U2, End, ECanyonRouteLayer::Upper);
+        Link(U1, SideEnd, ECanyonRouteLayer::Upper);
+    }
+    else
+    {
+        const int32 U3 = AddUpper(MergeX - 1700.f, UpperY + UpperSide * 300.f);
+        const int32 U4 = AddUpper(L + 2000.f, UpperY);
+        Link(U2, U3, ECanyonRouteLayer::Upper);
+        Link(U3, U4, ECanyonRouteLayer::Upper);
+        const float TreasureY = Plan.Nodes[Plan.TreasureNode].Position.Y;
+        const float TreasureZ = Plan.Nodes[Plan.TreasureNode].Position.Z;
+        const int32 ExitMiddle = Add(L + 3000.f, UpperY * 0.55f + TreasureY * 0.45f,
+            (UpperZ + TreasureZ) * 0.5f,
+            ECanyonGrayboxLandmark::None, ECanyonRouteLayer::Ramp);
+        const int32 ExitFlat = Add(L + 2500.f, UpperY * 0.15f + TreasureY * 0.85f, TreasureZ,
+            ECanyonGrayboxLandmark::None, ECanyonRouteLayer::Ramp);
+        Link(U4, ExitMiddle, ECanyonRouteLayer::Ramp);
+        Link(ExitMiddle, ExitFlat, ECanyonRouteLayer::Ramp);
+        Link(ExitFlat, Plan.TreasureNode, ECanyonRouteLayer::Ramp);
+        if (Plan.UpperPattern == ECanyonUpperPattern::SplitTraverse)
+        {
+            const int32 U5 = AddUpper(ForkX + (MergeX - ForkX) * 0.40f, UpperY + UpperSide * 2000.f);
+            const int32 U6 = AddUpper(ForkX + (MergeX - ForkX) * 0.73f, UpperY + UpperSide * 2000.f);
+            Link(U1, U5, ECanyonRouteLayer::Upper);
+            Link(U5, U6, ECanyonRouteLayer::Upper);
+            Link(U6, U3, ECanyonRouteLayer::Upper);
+        }
+    }
 
     // Three character capsules are 252 cm across; the narrow flat corridors are
     // 340 cm wide before their steep banks. Other edges stay noticeably wider.

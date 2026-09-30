@@ -4,6 +4,8 @@ This branch runs an asset-free Canyon map inside Unreal. The lower paths, steep 
 
 Each seed also generates one colliding cave graybox with dark rock ceilings and interior light. Try seeds **1000–1004** in order to compare: a through-mountain shortcut beside a longer surface detour; three mouths leading to one hall; a central pillar with two passages that rejoin; a tight fissure opening into a broad hall; and a short dead-end cave with a distinct stone marker and the treasure. The cave type appears beside the route type in the map shape name. These are route and scale prototypes, not final cave art.
 
+The upper level now alternates between a branching dead-end lookout, a through route, and a through route with another choice. Surface detours are placed on different edges rather than repeatedly near the first fork, and 1× maps gain an outer fork. Increasing the room's area setting adds more outer branches and crossings: at 2× there is one extra region beyond 1×, rising to four extra at 5×. Compare the same seed at 1× and 5× to judge whether the added travel and decisions feel worthwhile.
+
 At 1× map area the Canyon terrain spans **125.4 × 125.4 m**, matching Beach's square extent; Forest spans **94.05 × 94.05 m**. The playable Canyon routes occupy only part of that square.
 
 ## Start

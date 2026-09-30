@@ -14,6 +14,7 @@ enum class ECanyonGrayboxLandmark : uint8
 };
 
 enum class ECanyonRouteLayer : uint8 { Lower, Ramp, Upper };
+enum class ECanyonUpperPattern : uint8 { Lookout, Traverse, SplitTraverse };
 enum class ECanyonCavePattern : uint8 { ThroughShortcut, ThreeMouthHall, PillarChamber, FissureHall, TreasureAlcove };
 
 struct FCanyonGrayboxNode
@@ -45,6 +46,7 @@ struct FCanyonGrayboxLayout
     int32 Seed = 0;
     float LengthScale = 1.f;
     ECanyonGrayboxProblem Problem = ECanyonGrayboxProblem::ForkRejoin;
+    ECanyonUpperPattern UpperPattern = ECanyonUpperPattern::Traverse;
     ECanyonCavePattern CavePattern = ECanyonCavePattern::ThroughShortcut;
     TArray<FCanyonGrayboxNode> Nodes;
     TArray<FCanyonGrayboxEdge> Edges;
@@ -53,7 +55,7 @@ struct FCanyonGrayboxLayout
     int32 SpawnNode = INDEX_NONE;
     int32 TreasureNode = INDEX_NONE;
 
-    static FCanyonGrayboxLayout Generate(int32 Seed);
+    static FCanyonGrayboxLayout Generate(int32 Seed, float MapScale = 1.f);
     void ScaleForMap(float Scale);
     const TCHAR* ProblemName() const;
     const TCHAR* CaveName() const;

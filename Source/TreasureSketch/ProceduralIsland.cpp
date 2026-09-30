@@ -1183,11 +1183,12 @@ void AProceduralIsland::BuildWater()
 
 void AProceduralIsland::BuildCanyonGrayboxTerrain()
 {
-    CanyonLayout = FCanyonGrayboxLayout::Generate(Seed);
+    CanyonLayout = FCanyonGrayboxLayout::Generate(Seed, MapScale);
     CanyonLayout.ScaleForMap(MapScale);
     const bool bValid = CanyonLayout.Validate();
-    UE_LOG(LogTemp, Warning, TEXT("TREASURE_CANYON_GRAYBOX Seed=%d Problem=%s Nodes=%d Edges=%d Valid=%s"),
-        Seed, CanyonLayout.ProblemName(), CanyonLayout.Nodes.Num(), CanyonLayout.Edges.Num(),
+    UE_LOG(LogTemp, Warning, TEXT("TREASURE_CANYON_GRAYBOX Seed=%d Scale=%.1f Problem=%s Cave=%s Upper=%d Nodes=%d Edges=%d Valid=%s"),
+        Seed, MapScale, CanyonLayout.ProblemName(), CanyonLayout.CaveName(),
+        static_cast<int32>(CanyonLayout.UpperPattern), CanyonLayout.Nodes.Num(), CanyonLayout.Edges.Num(),
         bValid ? TEXT("YES") : TEXT("NO"));
     if (!bValid) return;
 

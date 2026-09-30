@@ -10,6 +10,7 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
 {
     TSet<ECanyonGrayboxProblem> Problems;
     TSet<ECanyonCavePattern> Caves;
+    TSet<ECanyonUpperPattern> UpperPatterns;
     for (int32 Seed = 1000; Seed < 1100; ++Seed)
     {
         const FCanyonGrayboxLayout Layout = FCanyonGrayboxLayout::Generate(Seed);
@@ -17,6 +18,7 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
             continue;
         Problems.Add(Layout.Problem);
         Caves.Add(Layout.CavePattern);
+        UpperPatterns.Add(Layout.UpperPattern);
         int32 CaveEdges = 0;
         for (const FCanyonGrayboxEdge& Edge : Layout.Edges) CaveEdges += Edge.bCave;
         TestTrue(TEXT("Cave connects to the walkable graph"), CaveEdges > 0 && Layout.CaveMouthNodes.Num() > 0);
@@ -37,7 +39,7 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
                 FMath::Abs(Node.Position.X) < 19000.f && FMath::Abs(Node.Position.Y) < 19000.f);
         TestTrue(TEXT("Graph adds several local route decisions"),
             Layout.Nodes.Num() >= 14 && Layout.Edges.Num() >= 19
-            && Layout.Edges.Num() - Layout.Nodes.Num() + 1 >= 3);
+            && Layout.Edges.Num() - Layout.Nodes.Num() + 1 >= 2);
         int32 UpperEdges = 0, RampEdges = 0, NarrowEdges = 0;
         for (const FCanyonGrayboxEdge& Edge : Layout.Edges)
         {
@@ -45,8 +47,9 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
             RampEdges += Edge.Layer == ECanyonRouteLayer::Ramp;
             NarrowEdges += Edge.Layer == ECanyonRouteLayer::Lower && Edge.HalfWidth <= 170.f;
         }
-        TestTrue(TEXT("Upper route has a loop and two multi-stage access ramps"),
-            UpperEdges >= 7 && RampEdges == 6);
+        TestTrue(TEXT("Upper route has a playable lookout or traverse"),
+            UpperEdges >= 4 && RampEdges ==
+                (Layout.UpperPattern == ECanyonUpperPattern::Lookout ? 3 : 6));
         TestTrue(TEXT("At least two passages narrow to three-character width"), NarrowEdges >= 2);
         const FCanyonGrayboxLayout Again = FCanyonGrayboxLayout::Generate(Seed);
         TestEqual(TEXT("Seed reproduces problem"), Layout.Problem, Again.Problem);
@@ -54,14 +57,34 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
         if (Seed < 1003)
             for (float Scale : { 0.5f, 1.f, 2.f, 5.f })
             {
-                FCanyonGrayboxLayout Scaled = FCanyonGrayboxLayout::Generate(Seed);
+                FCanyonGrayboxLayout Scaled = FCanyonGrayboxLayout::Generate(Seed, Scale);
                 Scaled.ScaleForMap(Scale);
                 TestTrue(TEXT("Scaled canyon graph stays traversable"), Scaled.Validate());
+                if (Scale >= 2.f)
+                    TestTrue(TEXT("Larger maps add route nodes and choices"),
+                        Scaled.Nodes.Num() > Layout.Nodes.Num()
+                        && Scaled.Edges.Num() > Layout.Edges.Num());
                 const float TerrainHalf = 6270.f * FMath::Sqrt(Scale);
                 for (const FCanyonGrayboxNode& Node : Scaled.Nodes)
                     TestTrue(TEXT("Scaled route leaves room for banks at terrain edge"),
                         FMath::Abs(Node.Position.X) <= TerrainHalf - 900.f * FMath::Sqrt(Scale)
                         && FMath::Abs(Node.Position.Y) <= TerrainHalf - 900.f * FMath::Sqrt(Scale));
+                if (Scale == 5.f)
+                    for (const FCanyonGrayboxEdge& Edge : Scaled.Edges)
+                    {
+                        const FVector A = Scaled.Nodes[Edge.A].Position;
+                        const FVector B = Scaled.Nodes[Edge.B].Position;
+                        float Previous = Scaled.HeightAt(A.X, A.Y);
+                        for (int32 Step = 1; Step <= 12; ++Step)
+                        {
+                            const FVector Point = FMath::Lerp(A, B, Step / 12.f);
+                            const float Height = Scaled.HeightAt(Point.X, Point.Y);
+                            TestTrue(FString::Printf(TEXT("Seed %d large-map edge %d-%d layer %d step %d z %.1f->%.1f remains walkable"),
+                                Seed, Edge.A, Edge.B, static_cast<int32>(Edge.Layer), Step, Previous, Height),
+                                FMath::Abs(Height - Previous) / (FVector::Dist2D(A, B) / 12.f) < 0.45f);
+                            Previous = Height;
+                        }
+                    }
             }
         TestTrue(TEXT("Spawn and treasure are separated"),
             FVector::Dist2D(Layout.Nodes[Layout.SpawnNode].Position,
@@ -89,6 +112,7 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
     }
     TestEqual(TEXT("All six navigation problems occur in 100 seeds"), Problems.Num(), 6);
     TestEqual(TEXT("All five cave structures occur in 100 seeds"), Caves.Num(), 5);
+    TestEqual(TEXT("All three upper route forms occur in 100 seeds"), UpperPatterns.Num(), 3);
     return true;
 }
 
