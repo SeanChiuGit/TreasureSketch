@@ -527,7 +527,7 @@ float AProceduralIsland::NormalizedIslandDistance(float X, float Y) const
 
 float AProceduralIsland::HeightAt(float X, float Y) const
 {
-    if (Theme == EIslandTheme::CanyonGraybox) return CanyonLayout.HeightAt(X, Y);
+    if (Theme == EIslandTheme::CanyonGraybox) return CanyonLayout.SurfaceHeightAt(X, Y);
     const float Edge = NormalizedIslandDistance(X, Y);
     if (Edge >= 1.f)
     {
@@ -617,7 +617,7 @@ bool AProceduralIsland::IsCanyonRouteAt(float X, float Y) const
     if (Theme != EIslandTheme::CanyonGraybox || !CanyonLayout.Nodes.IsValidIndex(CanyonLayout.SpawnNode))
         return false;
     float Distance = 0.f;
-    CanyonLayout.HeightAt(X, Y, &Distance);
+    CanyonLayout.SurfaceHeightAt(X, Y, &Distance);
     return Distance < FMath::Max(320.f, 650.f * CanyonLayout.LengthScale);
 }
 
@@ -655,7 +655,7 @@ FVector AProceduralIsland::FindTreasurePoint(FRandomStream& Stream, float Minimu
     if (Theme == EIslandTheme::CanyonGraybox && CanyonLayout.Nodes.IsValidIndex(CanyonLayout.TreasureNode))
     {
         const FVector& Point = CanyonLayout.Nodes[CanyonLayout.TreasureNode].Position;
-        return GetActorLocation() + FVector(Point.X, Point.Y, CanyonLayout.HeightAt(Point.X, Point.Y));
+        return GetActorLocation() + FVector(Point.X, Point.Y, CanyonLayout.SurfaceHeightAt(Point.X, Point.Y));
     }
     return FindRandomLandPoint(Stream, MinimumHeight);
 }
@@ -667,12 +667,13 @@ FVector AProceduralIsland::FindRandomLandPoint(FRandomStream& Stream, float Mini
         TArray<int32> Candidates;
         for (int32 Index = 0; Index < CanyonLayout.Nodes.Num(); ++Index)
             if (Index != CanyonLayout.TreasureNode
-                && CanyonLayout.Nodes[Index].Layer != ECanyonRouteLayer::Ramp)
+                && CanyonLayout.Nodes[Index].Layer != ECanyonRouteLayer::Ramp
+                && !CanyonLayout.Nodes[Index].bCaveInterior)
                 Candidates.Add(Index);
         if (!Candidates.IsEmpty())
         {
             const FVector& Point = CanyonLayout.Nodes[Candidates[Stream.RandRange(0, Candidates.Num() - 1)]].Position;
-            return GetActorLocation() + FVector(Point.X, Point.Y, CanyonLayout.HeightAt(Point.X, Point.Y));
+            return GetActorLocation() + FVector(Point.X, Point.Y, CanyonLayout.SurfaceHeightAt(Point.X, Point.Y));
         }
     }
     const float Extent = CellSize * (GridSize - 1) * 0.42f;
@@ -704,7 +705,7 @@ FVector AProceduralIsland::FindSpawnPoint(float LateralOffset) const
         const FVector Position = Point + Forward * (Slot * 180.f)
             + Right * SideOffset;
         return GetActorLocation() + FVector(Position.X, Position.Y,
-            CanyonLayout.HeightAt(Position.X, Position.Y) + 180.f);
+            CanyonLayout.SurfaceHeightAt(Position.X, Position.Y) + 180.f);
     }
     const float Radius = CellSize * (GridSize - 1) * 0.46f;
     const FVector2D Desired(-Radius * 0.68f, LateralOffset);
@@ -1190,7 +1191,7 @@ void AProceduralIsland::BuildCanyonGrayboxTerrain()
     if (!bValid) return;
 
     CanyonCavePatchCells = FIntRect(0, 0, 0, 0);
-    if (CanyonLayout.CavePathNodes.Num() == 4)
+    if (CanyonLayout.CavePathNodes.Num() >= 4)
     {
         FVector2D Minimum(TNumericLimits<float>::Max(), TNumericLimits<float>::Max());
         FVector2D Maximum(-TNumericLimits<float>::Max(), -TNumericLimits<float>::Max());
@@ -1283,7 +1284,7 @@ void AProceduralIsland::BuildCanyonGrayboxLandmarks()
         Fill->SetCastShadows(false);
         Fill->RegisterComponent();
         Fill->SetRelativeLocation(FVector(Node.Position.X, Node.Position.Y,
-            CanyonLayout.HeightAt(Node.Position.X, Node.Position.Y) + 1300.f * S));
+            CanyonLayout.SurfaceHeightAt(Node.Position.X, Node.Position.Y) + 1300.f * S));
         CanyonFillLights.Add(Fill);
     }
     UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr,
@@ -1327,7 +1328,7 @@ void AProceduralIsland::BuildCanyonGrayboxLandmarks()
         }
         const FVector Right(-Approach.Y, Approach.X, 0.f);
         const FVector Ground(Node.Position.X, Node.Position.Y,
-            CanyonLayout.HeightAt(Node.Position.X, Node.Position.Y));
+            CanyonLayout.SurfaceHeightAt(Node.Position.X, Node.Position.Y));
         const FRotator Across = Right.Rotation();
         switch (Node.Landmark)
         {
@@ -1335,7 +1336,7 @@ void AProceduralIsland::BuildCanyonGrayboxLandmarks()
             for (int32 Side : { -1, 1 })
             {
                 const FVector Foot = Ground + Right * (Side * 800.f * S);
-                const float BaseZ = CanyonLayout.HeightAt(Foot.X, Foot.Y);
+                const float BaseZ = CanyonLayout.SurfaceHeightAt(Foot.X, Foot.Y);
                 Box(FVector(Foot.X, Foot.Y, BaseZ + 900.f * S), FVector(380.f, 420.f, 1800.f));
             }
             Box(Ground + FVector(0.f, 0.f, 1950.f * S), FVector(2050.f, 500.f, 380.f), Across);
@@ -1345,14 +1346,14 @@ void AProceduralIsland::BuildCanyonGrayboxLandmarks()
             {
                 const FVector Foot = Ground + Right * (Side * 1050.f * S);
                 const float Height = Side < 0 ? 2200.f : 2900.f;
-                Box(FVector(Foot.X, Foot.Y, CanyonLayout.HeightAt(Foot.X, Foot.Y) + Height * S * 0.5f),
+                Box(FVector(Foot.X, Foot.Y, CanyonLayout.SurfaceHeightAt(Foot.X, Foot.Y) + Height * S * 0.5f),
                     FVector(440.f, 440.f, Height), FRotator(0.f, 0.f, Side * 7.f));
             }
             break;
         case ECanyonGrayboxLandmark::SplitPeak:
         {
             const FVector Foot = Ground + Right * (1300.f * S);
-            const float BaseZ = CanyonLayout.HeightAt(Foot.X, Foot.Y);
+            const float BaseZ = CanyonLayout.SurfaceHeightAt(Foot.X, Foot.Y);
             Box(FVector(Foot.X, Foot.Y, BaseZ + 360.f * S), FVector(900.f, 850.f, 720.f));
             Box(FVector(Foot.X, Foot.Y, BaseZ + 1400.f * S) + Right * (380.f * S),
                 FVector(420.f, 430.f, 2100.f), FRotator(0.f, 0.f, 22.f));
@@ -1365,7 +1366,7 @@ void AProceduralIsland::BuildCanyonGrayboxLandmarks()
             for (int32 Side : { -1, 1 })
             {
                 const FVector Foot = Ground + Right * (Side * 1250.f * S);
-                Box(FVector(Foot.X, Foot.Y, CanyonLayout.HeightAt(Foot.X, Foot.Y) + 900.f * S),
+                Box(FVector(Foot.X, Foot.Y, CanyonLayout.SurfaceHeightAt(Foot.X, Foot.Y) + 900.f * S),
                     FVector(450.f, 480.f, 1800.f));
                 Box(Ground + Right * (Side * 760.f * S) + FVector(0.f, 0.f, 1800.f * S),
                     FVector(950.f, 500.f, 330.f), Across);
@@ -1375,7 +1376,7 @@ void AProceduralIsland::BuildCanyonGrayboxLandmarks()
         case ECanyonGrayboxLandmark::Needle:
         {
             const FVector Foot = Ground + Right * (1350.f * S);
-            const float BaseZ = CanyonLayout.HeightAt(Foot.X, Foot.Y);
+            const float BaseZ = CanyonLayout.SurfaceHeightAt(Foot.X, Foot.Y);
             Cylinder(FVector(Foot.X, Foot.Y, BaseZ + 1450.f * S), 480.f, 2900.f);
             break;
         }
@@ -1386,7 +1387,7 @@ void AProceduralIsland::BuildCanyonGrayboxLandmarks()
             {
                 const float Angle = I * PI / 3.f;
                 const FVector Foot = Center + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.f) * (500.f * S);
-                Cylinder(FVector(Foot.X, Foot.Y, CanyonLayout.HeightAt(Foot.X, Foot.Y) + 360.f * S), 240.f, 720.f);
+                Cylinder(FVector(Foot.X, Foot.Y, CanyonLayout.SurfaceHeightAt(Foot.X, Foot.Y) + 360.f * S), 240.f, 720.f);
             }
             break;
         }
@@ -1396,7 +1397,7 @@ void AProceduralIsland::BuildCanyonGrayboxLandmarks()
             {
                 const FVector Foot = Ground + Right * (Side * 1100.f * S);
                 Cylinder(FVector(Foot.X, Foot.Y,
-                    CanyonLayout.HeightAt(Foot.X, Foot.Y) + 700.f * S), 260.f, 1400.f);
+                    CanyonLayout.SurfaceHeightAt(Foot.X, Foot.Y) + 700.f * S), 260.f, 1400.f);
             }
             Box(Ground - Approach * (650.f * S) + FVector(0.f, 0.f, 720.f * S),
                 FVector(350.f, 350.f, 1440.f), FRotator(0.f, 0.f, 13.f));
@@ -1409,7 +1410,7 @@ void AProceduralIsland::BuildCanyonGrayboxLandmarks()
 
 void AProceduralIsland::BuildCanyonCaves()
 {
-    if (CanyonLayout.CavePathNodes.Num() != 4) return;
+    if (CanyonLayout.CavePathNodes.Num() < 4) return;
 
     const float Half = (GridSize - 1) * CellSize * 0.5f;
     FCanyonSolidBounds Bounds;
@@ -1417,7 +1418,11 @@ void AProceduralIsland::BuildCanyonCaves()
         CanyonCavePatchCells.Min.Y * CellSize - Half);
     Bounds.Max = FVector2D(CanyonCavePatchCells.Max.X * CellSize - Half,
         CanyonCavePatchCells.Max.Y * CellSize - Half);
-    Bounds.BottomZ = 600.f - 400.f * CanyonLayout.LengthScale;
+    float LowestFloor = 600.f;
+    for (const int32 Index : CanyonLayout.CavePathNodes)
+        LowestFloor = FMath::Min(LowestFloor,
+            600.f + CanyonLayout.Nodes[Index].Position.Z);
+    Bounds.BottomZ = LowestFloor - 250.f;
     Bounds.StepXY = CellSize;
     Bounds.StepZ = FMath::Max(45.f, 60.f * CanyonLayout.LengthScale);
     BuildCanyonSolidMesh(CanyonCaveMesh, Bounds, [&](float X, float Y)

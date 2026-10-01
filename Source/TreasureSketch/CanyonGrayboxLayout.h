@@ -15,7 +15,7 @@ enum class ECanyonGrayboxLandmark : uint8
 
 enum class ECanyonRouteLayer : uint8 { Lower, Ramp, Upper };
 enum class ECanyonUpperPattern : uint8 { Lookout, Traverse, SplitTraverse };
-enum class ECanyonCavePattern : uint8 { ThroughShortcut, ThreeMouthHall, PillarChamber, FissureHall, TreasureAlcove };
+enum class ECanyonCavePattern : uint8 { ThroughShortcut, LongWindingThrough, ThreeMouthHall, PillarChamber, FissureHall, TreasureAlcove };
 
 struct FCanyonGrayboxNode
 {
