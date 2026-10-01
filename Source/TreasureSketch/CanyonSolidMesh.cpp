@@ -13,7 +13,7 @@ void BuildCanyonSolidMesh(UProceduralMeshComponent* Mesh, const FCanyonSolidBoun
     const int32 StrideZ = (NX + 1) * (NY + 1);
     auto ColumnIndex = [&](int32 X, int32 Y) { return Y * StrideY + X; };
     TArray<FCanyonSolidColumn> Columns;
-    Columns.SetNumUninitialized(StrideZ);
+    Columns.SetNum(StrideZ);
     float Highest = Bounds.BottomZ + Bounds.StepZ;
     for (int32 Y = 0; Y <= NY; ++Y)
         for (int32 X = 0; X <= NX; ++X)
@@ -32,11 +32,29 @@ void BuildCanyonSolidMesh(UProceduralMeshComponent* Mesh, const FCanyonSolidBoun
         Bounds.Min.Y + Y * Bounds.StepXY, Bounds.BottomZ + Z * Bounds.StepZ); };
     auto Solid = [&](const FCanyonSolidColumn& Column, float Z)
     {
-        const float Q = FMath::Clamp((Z - Column.FloorZ) / Column.Clearance, 0.f, 1.f);
-        const float ArchWidth = Column.HalfWidth
-            * FMath::Sqrt(FMath::Max(0.f, 1.f - Q * Q));
-        const float Void = FMath::Min(FMath::Min(ArchWidth - FMath::Abs(Column.Lateral),
-            Z - Column.FloorZ), Column.FloorZ + Column.Clearance - Z);
+        auto TunnelVoid = [Z](float FloorZ, float Lateral, float HalfWidth, float Clearance)
+        {
+            if (HalfWidth <= 0.f || Clearance <= 0.f) return -TNumericLimits<float>::Max();
+            const float Q = FMath::Clamp((Z - FloorZ) / Clearance, 0.f, 1.f);
+            const float ArchWidth = HalfWidth * FMath::Sqrt(FMath::Max(0.f, 1.f - Q * Q));
+            return FMath::Min(FMath::Min(ArchWidth - FMath::Abs(Lateral),
+                Z - FloorZ), FloorZ + Clearance - Z);
+        };
+        float Void = TunnelVoid(Column.FloorZ, Column.Lateral,
+            Column.HalfWidth, Column.Clearance);
+        for (const FCanyonSolidTunnel& Tunnel : Column.AdditionalTunnels)
+            Void = FMath::Max(Void, TunnelVoid(Tunnel.FloorZ, Tunnel.Lateral,
+                Tunnel.HalfWidth, Tunnel.Clearance));
+        if (Column.ChamberRadius > 0.f)
+        {
+            const float HallQ = FMath::Clamp((Z - Column.ChamberFloorZ)
+                / Column.ChamberClearance, 0.f, 1.f);
+            const float HallWidth = Column.ChamberRadius
+                * FMath::Sqrt(FMath::Max(0.f, 1.f - HallQ * HallQ));
+            const float HallVoid = FMath::Min(FMath::Min(HallWidth - Column.ChamberDistance,
+                Z - Column.ChamberFloorZ), Column.ChamberFloorZ + Column.ChamberClearance - Z);
+            Void = FMath::Max(Void, HallVoid);
+        }
         return FMath::Min(FMath::Min(Column.SurfaceZ - Z,
             Z - Bounds.BottomZ + Bounds.StepZ), -Void);
     };

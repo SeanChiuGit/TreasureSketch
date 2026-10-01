@@ -2,7 +2,7 @@
 
 This branch runs an asset-free Canyon map inside Unreal. The lower paths, steep canyon walls, ramps, and upper wall-top paths are generated from a route graph. Some lower passages narrow to roughly three character widths. Stone arch, pillars, split peak, broken bridge, needle, and stone ring are temporary geometric placeholders. The independent Blender landmark work is not required for this test.
 
-Each seed currently generates **one through-mountain cave**. The two openings sit on opposite sides of a rock mass; the interior bends and changes width and height. A surface route remains available around the mountain. Fixed seed **1000** previews the original shorter shortcut. Fixed seed **1001 at 1× area** previews the second type: a roughly 150 m long winding route that descends beneath surface paths and climbs back to its exit. This long route takes more travel than the nearby surface option; whether that journey is worthwhile is for the playtest. The long cave is reserved for this fixed preview until review; other settings use the shorter type. The cave is still graybox geometry rather than final rock art.
+Fixed seed **1000** previews the original shorter two-mouth shortcut. Fixed seed **1001 at 1× area** previews a roughly 150 m winding cave that descends beneath surface paths and climbs back to its exit. Fixed seed **1002 at 1× area** previews three cave mouths converging on one hall. Its passages take roughly 50–100 m to reach the hall, with one longer winding approach. The two new cave layouts are reserved for these fixed previews until review; other settings use the shorter type. All cave voids, floors, walls, and ceilings are generated within one terrain solid. A surface route remains available around the mountain. The rock is still graybox geometry rather than final art.
 
 The upper level now alternates between a branching dead-end lookout, a through route, and a through route with another choice. Surface detours are placed on different edges rather than repeatedly near the first fork, and 1× maps gain an outer fork. Increasing the room's area setting adds more outer branches and crossings: at 2× there is one extra region beyond 1×, rising to four extra at 5×. Compare the same seed at 1× and 5× to judge whether the added travel and decisions feel worthwhile.
 
@@ -11,7 +11,7 @@ At 1× map area the Canyon terrain spans **125.4 × 125.4 m**, matching Beach's 
 ## Start
 
 - Double-click `Scripts/PlayCanyonGraybox.cmd` for a random Canyon seed.
-- To replay an exact map, run `Scripts/PlayCanyonGraybox.cmd -IslandSeed=1000` from a terminal, or enter the seed beside **单人测试 → 测试峡谷路线灰盒** in the game's menu.
+- To replay an exact map, run `Scripts/PlayCanyonGraybox.cmd -IslandSeed=1002` from a terminal, or enter the seed beside **单人测试 → 测试峡谷路线灰盒** in the game's menu.
 - In the map, movement is **5×** speed. Press **V** to toggle flying; while flying, **Space** climbs and **Left Ctrl** descends. Press **V** again to walk. Press **R** for a new random seed. The displayed seed identifies the map you just tried. **Esc** opens the normal pause menu.
 - The standard solo map test shows the treasure marker so the route can be inspected. The `-CanyonGrayboxPreview` launch flag starts directly in this mode.
 

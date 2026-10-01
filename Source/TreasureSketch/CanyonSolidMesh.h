@@ -4,6 +4,14 @@
 
 class UProceduralMeshComponent;
 
+struct FCanyonSolidTunnel
+{
+    float FloorZ = 0.f;
+    float Lateral = 0.f;
+    float HalfWidth = 0.f;
+    float Clearance = 0.f;
+};
+
 struct FCanyonSolidColumn
 {
     float SurfaceZ = 0.f;
@@ -11,6 +19,12 @@ struct FCanyonSolidColumn
     float Lateral = 0.f;
     float HalfWidth = 0.f;
     float Clearance = 0.f;
+    TArray<FCanyonSolidTunnel, TInlineAllocator<4>> AdditionalTunnels;
+    // Optional chamber void in the same solid field as the tunnel network.
+    float ChamberDistance = 0.f;
+    float ChamberRadius = 0.f;
+    float ChamberFloorZ = 0.f;
+    float ChamberClearance = 0.f;
 };
 
 struct FCanyonSolidBounds

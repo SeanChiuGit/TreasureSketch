@@ -21,9 +21,15 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
         UpperPatterns.Add(Layout.UpperPattern);
         int32 CaveEdges = 0;
         for (const FCanyonGrayboxEdge& Edge : Layout.Edges) CaveEdges += Edge.bCave;
-        TestTrue(TEXT("One continuous through-cave joins two surface mouths"),
-            CaveEdges == Layout.CavePathNodes.Num() - 1
-            && Layout.CaveMouthNodes.Num() == 2 && Layout.CavePathNodes.Num() >= 4);
+        const bool bThreeMouth = Layout.CavePattern == ECanyonCavePattern::ThreeMouthHall;
+        TestTrue(TEXT("Cave route graph matches its entrances and halls"),
+            bThreeMouth
+                ? CaveEdges == 12 && Layout.CaveMouthNodes.Num() == 3
+                    && Layout.CaveBranches.Num() == 3 && Layout.CaveHalls.Num() == 1
+                    && Layout.CavePathNodes.Num() == 9
+                : CaveEdges == Layout.CavePathNodes.Num() - 1
+                    && Layout.CaveMouthNodes.Num() == 2
+                    && Layout.CavePathNodes.Num() >= 4);
         if (Seed < 1005 && Layout.CavePathNodes.Num() >= 4)
         {
             const int32 Entrance = Layout.CaveMouthNodes[0], Exit = Layout.CaveMouthNodes[1];
@@ -50,6 +56,15 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
             if (Layout.CavePattern == ECanyonCavePattern::LongWindingThrough)
                 TestTrue(TEXT("Long cave has six bends and substantial route length"),
                     Layout.CavePathNodes.Num() == 8 && CaveLength > 6500.f);
+            if (bThreeMouth)
+                for (int32 Branch = 0; Branch < 3; ++Branch)
+                {
+                    FVector HallPoint, Along;
+                    TestTrue(TEXT("Each cave mouth reaches the same hall"),
+                        Layout.SampleCaveBranch(Branch, 1.f, HallPoint, Along)
+                        && FVector::Dist2D(HallPoint,
+                            Layout.Nodes[Layout.CaveHalls[0].Node].Position) < 1.f);
+                }
         }
         for (const FCanyonGrayboxNode& Node : Layout.Nodes)
             TestTrue(FString::Printf(TEXT("Seed %d route stays inside terrain"), Seed),
@@ -85,18 +100,35 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
                         Scaled.IsCaveVoid(CaveCenter.X, CaveCenter.Y)
                         && Scaled.SurfaceHeightAt(CaveCenter.X, CaveCenter.Y)
                             - Scaled.HeightAt(CaveCenter.X, CaveCenter.Y) > 380.f);
-                    const float WideT = Scaled.CavePattern == ECanyonCavePattern::LongWindingThrough
-                        ? 0.25f : 0.5f;
-                    TestTrue(TEXT("Tunnel varies in width and height"),
-                        Scaled.CaveHalfWidth(WideT) > Scaled.CaveHalfWidth(0.05f) + 45.f
-                        && Scaled.CaveClearance(WideT) > Scaled.CaveClearance(0.05f) + 50.f);
+                    if (Scaled.CavePattern == ECanyonCavePattern::ThreeMouthHall)
+                        TestTrue(TEXT("Central hall opens wider and higher than its branches"),
+                            Scaled.CaveHalls[0].Radius > Scaled.CaveHalfWidth(0.5f) * 2.f
+                            && Scaled.CaveHalls[0].Clearance > Scaled.CaveClearance(0.5f) + 100.f);
+                    else
+                    {
+                        const float WideT = Scaled.CavePattern == ECanyonCavePattern::LongWindingThrough
+                            ? 0.25f : 0.5f;
+                        TestTrue(TEXT("Tunnel varies in width and height"),
+                            Scaled.CaveHalfWidth(WideT) > Scaled.CaveHalfWidth(0.05f) + 45.f
+                            && Scaled.CaveClearance(WideT) > Scaled.CaveClearance(0.05f) + 50.f);
+                    }
                 }
-                if (Scale >= 2.f)
+                if (Scale >= 2.f && Layout.CavePattern == Scaled.CavePattern)
+                {
+                    auto CoreCounts = [](const FCanyonGrayboxLayout& Plan)
+                    {
+                        int32 Interior = 0, CaveEdges = 0;
+                        for (const FCanyonGrayboxNode& Node : Plan.Nodes)
+                            Interior += Node.bCaveInterior;
+                        for (const FCanyonGrayboxEdge& Edge : Plan.Edges)
+                            CaveEdges += Edge.bCave;
+                        return FIntPoint(Plan.Nodes.Num() - Interior,
+                            Plan.Edges.Num() - CaveEdges);
+                    };
+                    const FIntPoint Large = CoreCounts(Scaled), Base = CoreCounts(Layout);
                     TestTrue(TEXT("Larger maps add route nodes and choices"),
-                        Scaled.Nodes.Num() - Scaled.CavePathNodes.Num()
-                            > Layout.Nodes.Num() - Layout.CavePathNodes.Num()
-                        && Scaled.Edges.Num() - Scaled.CavePathNodes.Num()
-                            > Layout.Edges.Num() - Layout.CavePathNodes.Num());
+                        Large.X > Base.X && Large.Y > Base.Y);
+                }
                 const float TerrainHalf = 6270.f * FMath::Sqrt(Scale);
                 for (const FCanyonGrayboxNode& Node : Scaled.Nodes)
                     TestTrue(TEXT("Scaled route leaves room for banks at terrain edge"),
@@ -150,7 +182,7 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
         }
     }
     TestEqual(TEXT("All six navigation problems occur in 100 seeds"), Problems.Num(), 6);
-    TestEqual(TEXT("Short cave and fixed long-cave preview are generated"), Caves.Num(), 2);
+    TestEqual(TEXT("Two through caves and the fixed three-mouth preview are generated"), Caves.Num(), 3);
     TestEqual(TEXT("All three upper route forms occur in 100 seeds"), UpperPatterns.Num(), 3);
     return true;
 }

@@ -1195,13 +1195,17 @@ void AProceduralIsland::BuildCanyonGrayboxTerrain()
     {
         FVector2D Minimum(TNumericLimits<float>::Max(), TNumericLimits<float>::Max());
         FVector2D Maximum(-TNumericLimits<float>::Max(), -TNumericLimits<float>::Max());
-        for (const int32 NodeIndex : CanyonLayout.CavePathNodes)
+        for (const FCanyonGrayboxEdge& Edge : CanyonLayout.Edges)
         {
-            const FVector& Point = CanyonLayout.Nodes[NodeIndex].Position;
-            Minimum.X = FMath::Min(Minimum.X, Point.X);
-            Minimum.Y = FMath::Min(Minimum.Y, Point.Y);
-            Maximum.X = FMath::Max(Maximum.X, Point.X);
-            Maximum.Y = FMath::Max(Maximum.Y, Point.Y);
+            if (!Edge.bCave) continue;
+            for (const int32 NodeIndex : { Edge.A, Edge.B })
+            {
+                const FVector& Point = CanyonLayout.Nodes[NodeIndex].Position;
+                Minimum.X = FMath::Min(Minimum.X, Point.X);
+                Minimum.Y = FMath::Min(Minimum.Y, Point.Y);
+                Maximum.X = FMath::Max(Maximum.X, Point.X);
+                Maximum.Y = FMath::Max(Maximum.Y, Point.Y);
+            }
         }
         const float Padding = FMath::Max(900.f, 1100.f * CanyonLayout.LengthScale);
         const float GridHalf = (GridSize - 1) * CellSize * 0.5f;
@@ -1419,9 +1423,11 @@ void AProceduralIsland::BuildCanyonCaves()
     Bounds.Max = FVector2D(CanyonCavePatchCells.Max.X * CellSize - Half,
         CanyonCavePatchCells.Max.Y * CellSize - Half);
     float LowestFloor = 600.f;
-    for (const int32 Index : CanyonLayout.CavePathNodes)
-        LowestFloor = FMath::Min(LowestFloor,
-            600.f + CanyonLayout.Nodes[Index].Position.Z);
+    for (const FCanyonGrayboxEdge& Edge : CanyonLayout.Edges)
+        if (Edge.bCave)
+            for (const int32 Index : { Edge.A, Edge.B })
+                LowestFloor = FMath::Min(LowestFloor,
+                    600.f + CanyonLayout.Nodes[Index].Position.Z);
     Bounds.BottomZ = LowestFloor - 250.f;
     Bounds.StepXY = CellSize;
     Bounds.StepZ = FMath::Max(45.f, 60.f * CanyonLayout.LengthScale);
@@ -1434,6 +1440,37 @@ void AProceduralIsland::BuildCanyonCaves()
         Column.FloorZ = 600.f + Floor;
         Column.HalfWidth = CanyonLayout.CaveHalfWidth(T);
         Column.Clearance = CanyonLayout.CaveClearance(T);
+        if (CanyonLayout.CavePattern == ECanyonCavePattern::ThreeMouthHall)
+        {
+            // Keep every branch in the same solid field. Choosing just the
+            // nearest XY centerline closes a tunnel where passages cross at
+            // different elevations.
+            Column.HalfWidth = 0.f;
+            const FVector2D Point(X, Y);
+            for (const FCanyonGrayboxEdge& Edge : CanyonLayout.Edges)
+            {
+                if (!Edge.bCave) continue;
+                const FVector& A = CanyonLayout.Nodes[Edge.A].Position;
+                const FVector& B = CanyonLayout.Nodes[Edge.B].Position;
+                const FVector2D Start(A.X, A.Y), Delta(B.X - A.X, B.Y - A.Y);
+                const float Fraction = FMath::Clamp(FVector2D::DotProduct(Point - Start, Delta)
+                    / Delta.SizeSquared(), 0.f, 1.f);
+                const float Distance = FVector2D::Distance(Point, Start + Delta * Fraction);
+                if (Distance > 330.f + Bounds.StepXY) continue;
+                Column.AdditionalTunnels.Add({ static_cast<float>(600.f + FMath::Lerp(A.Z, B.Z, Fraction)),
+                    Distance, 275.f, 430.f });
+            }
+        }
+        if (!CanyonLayout.CaveHalls.IsEmpty())
+        {
+            const FCanyonCaveHall& Hall = CanyonLayout.CaveHalls[0];
+            const FVector& Center = CanyonLayout.Nodes[Hall.Node].Position;
+            Column.ChamberDistance = FVector2D::Distance(FVector2D(X, Y),
+                FVector2D(Center.X, Center.Y));
+            Column.ChamberRadius = Hall.Radius;
+            Column.ChamberFloorZ = 600.f + Center.Z;
+            Column.ChamberClearance = Hall.Clearance;
+        }
         return Column;
     });
     CanyonCaveMesh->ContainsPhysicsTriMeshData(true);
@@ -1465,7 +1502,47 @@ void AProceduralIsland::BuildCanyonCaves()
         Lamp->SetCastShadows(false);
         Lamp->RegisterComponent();
         Lamp->SetRelativeLocation(FVector(Point.X, Point.Y,
-            CanyonLayout.HeightAt(Point.X, Point.Y) + 260.f));
+            600.f + Point.Z + 260.f));
+        CanyonFillLights.Add(Lamp);
+    }
+    if (CanyonLayout.CavePattern == ECanyonCavePattern::ThreeMouthHall)
+    {
+        float BranchLength = 0.f;
+        const TArray<int32>& Branch = CanyonLayout.CaveBranches[2];
+        for (int32 I = 1; I < Branch.Num(); ++I)
+            BranchLength += FVector::Dist2D(CanyonLayout.Nodes[Branch[I - 1]].Position,
+                CanyonLayout.Nodes[Branch[I]].Position);
+        const int32 BranchLights = FMath::Max(2, FMath::CeilToInt(BranchLength / 650.f));
+        for (int32 I = 1; I <= BranchLights; ++I)
+        {
+            FVector Point, Along;
+            CanyonLayout.SampleCaveBranch(2, I / static_cast<float>(BranchLights + 1),
+                Point, Along);
+            UPointLightComponent* Lamp = NewObject<UPointLightComponent>(this);
+            Lamp->SetupAttachment(RootComponent);
+            Lamp->SetMobility(EComponentMobility::Movable);
+            Lamp->SetIntensity(14500.f);
+            Lamp->SetAttenuationRadius(850.f);
+            Lamp->SetLightColor(FLinearColor(0.86f, 0.69f, 0.49f));
+            Lamp->SetCastShadows(false);
+            Lamp->RegisterComponent();
+            Lamp->SetRelativeLocation(FVector(Point.X, Point.Y, 600.f + Point.Z + 260.f));
+            CanyonFillLights.Add(Lamp);
+        }
+    }
+    for (const FCanyonCaveHall& Hall : CanyonLayout.CaveHalls)
+    {
+        const FVector& Center = CanyonLayout.Nodes[Hall.Node].Position;
+        UPointLightComponent* Lamp = NewObject<UPointLightComponent>(this);
+        Lamp->SetupAttachment(RootComponent);
+        Lamp->SetMobility(EComponentMobility::Movable);
+        Lamp->SetIntensity(28000.f);
+        Lamp->SetAttenuationRadius(Hall.Radius * 2.f);
+        Lamp->SetLightColor(FLinearColor(0.90f, 0.74f, 0.53f));
+        Lamp->SetCastShadows(false);
+        Lamp->RegisterComponent();
+        Lamp->SetRelativeLocation(FVector(Center.X, Center.Y,
+            600.f + Center.Z + Hall.Clearance * 0.65f));
         CanyonFillLights.Add(Lamp);
     }
 }

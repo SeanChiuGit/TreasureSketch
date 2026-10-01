@@ -34,6 +34,13 @@ struct FCanyonGrayboxEdge
     bool bCave = false;
 };
 
+struct FCanyonCaveHall
+{
+    int32 Node = INDEX_NONE;
+    float Radius = 650.f;
+    float Clearance = 560.f;
+};
+
 struct FCanyonGrayboxLayout
 {
     int32 Seed = 0;
@@ -44,7 +51,9 @@ struct FCanyonGrayboxLayout
     TArray<FCanyonGrayboxNode> Nodes;
     TArray<FCanyonGrayboxEdge> Edges;
     TArray<int32> CaveMouthNodes;
-    TArray<int32> CavePathNodes; // Ordered entrance, curved interior, exit.
+    TArray<int32> CavePathNodes; // Ordered main route between the first two mouths.
+    TArray<TArray<int32>> CaveBranches; // Each ordered from a mouth to its shared hall.
+    TArray<FCanyonCaveHall> CaveHalls;
     int32 SpawnNode = INDEX_NONE;
     int32 TreasureNode = INDEX_NONE;
 
@@ -54,6 +63,7 @@ struct FCanyonGrayboxLayout
     const TCHAR* CaveName() const;
     bool Validate() const;
     bool SampleCave(float T, FVector& Position, FVector& Tangent) const;
+    bool SampleCaveBranch(int32 Branch, float T, FVector& Position, FVector& Tangent) const;
     bool ProjectCave(float X, float Y, float& T, float& Lateral, float& FloorZ) const;
     float CaveHalfWidth(float T) const;
     float CaveClearance(float T) const;
