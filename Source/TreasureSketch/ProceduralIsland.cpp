@@ -1227,7 +1227,8 @@ void AProceduralIsland::BuildWater()
 void AProceduralIsland::BuildCanyonGrayboxTerrain()
 {
     CanyonLayout = FCanyonGrayboxLayout::Generate(Seed, MapScale,
-        FParse::Param(FCommandLine::Get(), TEXT("CanyonHallPreview")));
+        FParse::Param(FCommandLine::Get(), TEXT("CanyonHallPreview")),
+        FParse::Param(FCommandLine::Get(), TEXT("CanyonLoopPreview")));
     CanyonLayout.ScaleForMap(MapScale);
     const bool bValid = CanyonLayout.Validate();
     UE_LOG(LogTemp, Display, TEXT("CANYON_CAVE_NETWORKS Seed=%d Count=%d Types=%s"),
@@ -1523,6 +1524,7 @@ void AProceduralIsland::BuildCanyonCaves()
         Column.Clearance = CanyonLayout.CaveClearance(T, Network);
         if (CanyonLayout.CavePattern == ECanyonCavePattern::ThreeMouthHall
             || CanyonLayout.CavePattern == ECanyonCavePattern::LongWindingThrough
+            || CanyonLayout.CavePattern == ECanyonCavePattern::LongLoop
             || CanyonLayout.CaveNetworks.Num() > 1)
         {
             // Keep every branch in the same solid field. Choosing just the
@@ -1596,7 +1598,8 @@ void AProceduralIsland::BuildCanyonCaves()
             600.f + Point.Z + 260.f));
         CanyonFillLights.Add(Lamp);
     }
-    if (CanyonLayout.CavePattern == ECanyonCavePattern::ThreeMouthHall)
+    if (CanyonLayout.CavePattern == ECanyonCavePattern::ThreeMouthHall
+        || CanyonLayout.CavePattern == ECanyonCavePattern::LongLoop)
     {
         float BranchLength = 0.f;
         const TArray<int32>& Branch = CanyonLayout.CaveBranches[2];

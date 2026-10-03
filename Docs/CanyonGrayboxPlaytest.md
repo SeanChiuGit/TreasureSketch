@@ -10,7 +10,9 @@ At 1× map area the Canyon terrain spans **125.4 × 125.4 m**, matching Beach's 
 
 ## Start
 
-Ordinary random Canyon maps use the shorter through cave, long winding through cave, and three-branch hall. A 1× map attempts to place two different types; maps at 2× and above attempt all three. Each network uses a different mountain site. Placement rejects nearby surface roads with incompatible elevations and may reduce the cave count if no safe site remains. Seeds 1000–1003 and the dedicated hall preview retain one cave for comparison. Try ordinary seeds **1004**, **1008**, and **1009**, then press **R** to explore other mixtures. Hall branches independently retain the seeded open/enclosed third-endpoint variation.
+The fourth cave type is a **long loop**: two mouths lead through winding approach passages to a fork and merge, with two separated long arms between them. Both arms remain inside one terrain solid, with rock between them. Seed **1010** isolates this type; each arm is about **68 m at 1×**, excluding the approach passages. Launch `Scripts/PlayCanyonLoop.cmd` to start there. In this dedicated preview, **R** changes the seed while retaining the loop type. Ordinary random Canyon maps can also mix loop caves with the other types. At 1× they attempt two types, at 2× three, and at 4× or above four, subject to safe placement.
+
+Each cave network uses a different mountain site. Placement rejects nearby surface roads with incompatible elevations and may reduce the cave count if no safe site remains. Seeds 1000–1003 and 1010 retain one cave for comparison. Try ordinary seeds **1004**, **1008**, and **1006**, then press **R** to explore other mixtures. Hall branches retain the seeded open/enclosed third-endpoint variation.
 
 - Double-click `Scripts/PlayCanyonGraybox.cmd` for a random Canyon seed.
 - To replay an exact map, run `Scripts/PlayCanyonGraybox.cmd -IslandSeed=1002` from a terminal, or enter the seed beside **单人测试 → 测试峡谷路线灰盒** in the game's menu.

@@ -15,7 +15,7 @@ enum class ECanyonGrayboxLandmark : uint8
 
 enum class ECanyonRouteLayer : uint8 { Lower, Ramp, Upper };
 enum class ECanyonUpperPattern : uint8 { Lookout, Traverse, SplitTraverse };
-enum class ECanyonCavePattern : uint8 { ThroughShortcut, LongWindingThrough, ThreeMouthHall, PillarChamber, FissureHall, TreasureAlcove };
+enum class ECanyonCavePattern : uint8 { ThroughShortcut, LongWindingThrough, ThreeMouthHall, LongLoop, PillarChamber, FissureHall, TreasureAlcove };
 
 struct FCanyonGrayboxNode
 {
@@ -62,7 +62,7 @@ struct FCanyonGrayboxLayout
     TArray<FCanyonGrayboxEdge> Edges;
     TArray<int32> CaveMouthNodes; // Actual exterior openings only.
     TArray<int32> CavePathNodes; // Ordered main route between the first two mouths.
-    TArray<TArray<int32>> CaveBranches; // Each ordered from an endpoint to its shared hall.
+    TArray<TArray<int32>> CaveBranches; // Continuous paths: hall legs, or loop stems and arms.
     TArray<bool> CaveBranchOpen; // True: exterior mouth. False: enclosed dead end.
     TArray<FCanyonCaveHall> CaveHalls;
     TArray<FCanyonCaveNetwork> CaveNetworks;
@@ -72,7 +72,7 @@ struct FCanyonGrayboxLayout
     int32 TreasureNode = INDEX_NONE;
 
     static FCanyonGrayboxLayout Generate(int32 Seed, float MapScale = 1.f,
-        bool bHallPreview = false);
+        bool bHallPreview = false, bool bLoopPreview = false);
     void ScaleForMap(float Scale);
     const TCHAR* ProblemName() const;
     const TCHAR* CaveName(int32 NetworkIndex = INDEX_NONE) const;
