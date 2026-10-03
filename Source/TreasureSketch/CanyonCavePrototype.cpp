@@ -7,8 +7,8 @@
 
 namespace
 {
-constexpr float MinX = -5000.f, MaxX = 5000.f;
-constexpr float MinY = -3100.f, MaxY = 3100.f;
+constexpr float PrototypeMinX = -5000.f, PrototypeMaxX = 5000.f;
+constexpr float PrototypeMinY = -3100.f, PrototypeMaxY = 3100.f;
 constexpr float BottomZ = -350.f;
 constexpr float GridStep = 80.f;
 constexpr float TunnelHalfWidth = 320.f;
@@ -56,8 +56,8 @@ void ACanyonCavePrototype::OnConstruction(const FTransform& Transform)
 {
     Super::OnConstruction(Transform);
     FCanyonSolidBounds Bounds;
-    Bounds.Min = FVector2D(MinX, MinY);
-    Bounds.Max = FVector2D(MaxX, MaxY);
+    Bounds.Min = FVector2D(PrototypeMinX, PrototypeMinY);
+    Bounds.Max = FVector2D(PrototypeMaxX, PrototypeMaxY);
     Bounds.BottomZ = BottomZ;
     Bounds.StepXY = GridStep;
     Bounds.StepZ = GridStep;

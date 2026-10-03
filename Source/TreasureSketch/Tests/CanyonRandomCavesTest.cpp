@@ -16,7 +16,7 @@ bool FCanyonRandomCavesTest::RunTest(const FString& Parameters)
             || Context.WorldType == EWorldType::Game)) { World = Context.World(); break; }
     if (!TestNotNull(TEXT("A collision world exists"), World)) return false;
     TSet<ECanyonCavePattern> Patterns;
-    for (const int32 Seed : { 1001, 1008, 1006, 1010, 1020 })
+    for (const int32 Seed : { 1001, 1008, 1006, 1010, 1020, 1030, 1040 })
     {
         AProceduralIsland* Island = World->SpawnActor<AProceduralIsland>();
         if (!TestNotNull(TEXT("Random canyon actor exists"), Island)) return false;
@@ -31,7 +31,15 @@ bool FCanyonRandomCavesTest::RunTest(const FString& Parameters)
                     >= Island->GetFallRecoveryLimitZ() + 599.f);
         TestTrue(FString::Printf(TEXT("Random seed %d has a valid graph"), Seed), Layout.Validate());
         TestTrue(TEXT("Random map contains cave networks"),
-            Layout.CaveNetworks.Num() >= (Seed == 1001 || Seed == 1010 || Seed == 1020 ? 1 : 2));
+            Layout.CaveNetworks.Num() >= (Seed == 1001 || Seed == 1010 || Seed == 1020 || Seed == 1030 || Seed == 1040 ? 1 : 2));
+        if (Seed == 1030 || Seed == 1040)
+        {
+            TestTrue(TEXT("Hall and loop comparisons contain optional dead ends"), !Layout.CaveDeadEnds.IsEmpty());
+            UE_LOG(LogTemp, Display, TEXT("CANYON_DECORATED_CAVE Seed=%d Type=%s Additions=%d"),
+                Seed, Layout.CaveName(), Layout.CaveDeadEnds.Num());
+            TestEqual(TEXT("Decoration preserves the base cave branch count"), Layout.CaveBranches.Num(), Seed == 1030 ? 3 : 4);
+            TestEqual(TEXT("Decoration preserves the central hall count"), Layout.CaveHalls.Num(), Seed == 1030 ? 1 : 0);
+        }
         if (Seed == 1020)
         {
             TestTrue(TEXT("Dead ends decorate the existing long cave"), Layout.CavePattern == ECanyonCavePattern::LongWindingThrough);

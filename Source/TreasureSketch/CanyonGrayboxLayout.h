@@ -48,6 +48,7 @@ struct FCanyonDeadEnd
     ECanyonDeadEndKind Kind = ECanyonDeadEndKind::ShortAlcove;
     TArray<TArray<int32>> Paths;
     TArray<int32> EndNodes;
+    TArray<FCanyonCaveHall> Rooms;
 };
 
 struct FCanyonCaveNetwork

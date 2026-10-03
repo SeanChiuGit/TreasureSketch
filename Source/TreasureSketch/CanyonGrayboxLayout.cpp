@@ -143,9 +143,12 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
     else if (InSeed == 1000) Plan.CavePattern = ECanyonCavePattern::ThroughShortcut;
     if (bLoopPreview || InSeed == 1010) Plan.CavePattern = ECanyonCavePattern::LongLoop;
     if (bBranchPreview || InSeed == 1020) Plan.CavePattern = ECanyonCavePattern::LongWindingThrough;
+    if (InSeed == 1030) Plan.CavePattern = ECanyonCavePattern::ThreeMouthHall;
+    if (InSeed == 1040) Plan.CavePattern = ECanyonCavePattern::LongLoop;
     const float Area = FMath::IsFinite(MapScale) ? FMath::Clamp(MapScale, 0.5f, 5.f) : 1.f;
     // The comparison seeds share geometry; ordinary hall seeds vary the whole map.
-    const int32 LayoutSeed = InSeed == 1003 ? 1002 : InSeed == 1020 ? 1001 : InSeed;
+    const int32 LayoutSeed = InSeed == 1003 || InSeed == 1030 ? 1002
+        : InSeed == 1020 ? 1001 : InSeed == 1040 ? 1010 : InSeed;
     FRandomStream R(LayoutSeed ^ 0x4C7A21);
     const int32 UpperRoll = R.RandRange(0, 4);
     Plan.UpperPattern = UpperRoll < 2 ? ECanyonUpperPattern::Lookout
@@ -446,7 +449,8 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
     TArray<FCanyonGrayboxEdge> CaveCandidates;
     for (const int32 Index : CandidateEdges) CaveCandidates.Add(Plan.Edges[Index]);
     TArray<ECanyonCavePattern> CaveTypes = { Plan.CavePattern };
-    if (!bHallPreview && !bLoopPreview && !bBranchPreview && InSeed != 1010 && InSeed != 1020 && (InSeed < 1000 || InSeed > 1003))
+    if (!bHallPreview && !bLoopPreview && !bBranchPreview && InSeed != 1010 && InSeed != 1020
+        && InSeed != 1030 && InSeed != 1040 && (InSeed < 1000 || InSeed > 1003))
     {
         const ECanyonCavePattern Second = Plan.CavePattern == ECanyonCavePattern::ThroughShortcut
             ? static_cast<ECanyonCavePattern>(CaveTypeRandom.RandRange(1, 3))
@@ -685,7 +689,7 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
                 if (Addition.Kind != ECanyonDeadEndKind::LongWinding)
                 {
                     for (int32 I = 0; I < DeadEnd.EndNodes.Num(); ++I)
-                        Plan.CaveHalls.Add({ DeadEnd.EndNodes[I], Addition.Kind == ECanyonDeadEndKind::ShortAlcove
+                        DeadEnd.Rooms.Add({ DeadEnd.EndNodes[I], Addition.Kind == ECanyonDeadEndKind::ShortAlcove
                             ? 280.f : 350.f + I * 70.f, 440.f });
                 }
                 Plan.CaveDeadEnds.Add(MoveTemp(DeadEnd));
@@ -844,6 +848,110 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
             Plan.Edges.Last().HalfWidth = 480.f;
         }
         }
+        // Decorate the completed base graph. The same additions work on hall
+        // legs and loop arms without changing their mouth/hall/cycle structure.
+        if ((Plan.CavePattern == ECanyonCavePattern::ThreeMouthHall
+                || Plan.CavePattern == ECanyonCavePattern::LongLoop)
+            && InSeed != 1002 && InSeed != 1003 && InSeed != 1010)
+        {
+            FRandomStream Additions(InSeed ^ (0x4445434F + CaveIndex));
+            const bool bComparison = InSeed == 1030 || InSeed == 1040;
+            const int32 Wanted = bComparison ? 3 : Additions.FRand() < 0.6f ? Additions.RandRange(1, 3) : 0;
+            TArray<FCanyonGrayboxEdge> Sites;
+            for (const auto& Edge : Plan.Edges)
+                if (Edge.bCave && Plan.Nodes[Edge.A].bCaveInterior && Plan.Nodes[Edge.B].bCaveInterior
+                    && (Plan.CavePathNodes.Contains(Edge.A) || Plan.CaveBranches.ContainsByPredicate(
+                        [&](const TArray<int32>& Path) { return Path.Contains(Edge.A); }))
+                    && FVector::Dist2D(Plan.Nodes[Edge.A].Position, Plan.Nodes[Edge.B].Position) > 4000.f)
+                    Sites.Add(Edge);
+            for (int32 I = Sites.Num() - 1; I > 0; --I) Sites.Swap(I, Additions.RandRange(0, I));
+            TArray<ECanyonDeadEndKind> Kinds = { ECanyonDeadEndKind::ShortAlcove, ECanyonDeadEndKind::LongWinding, ECanyonDeadEndKind::Forked };
+            if (!bComparison)
+                for (int32 I = 2; I > 0; --I) Kinds.Swap(I, Additions.RandRange(0, I));
+            for (int32 AdditionIndex = 0; AdditionIndex < Wanted; ++AdditionIndex)
+            {
+                bool bPlaced = false;
+                for (const auto& Site : Sites)
+                {
+                    int32 EdgeIndex = Plan.Edges.IndexOfByPredicate([&](const FCanyonGrayboxEdge& Edge)
+                        { return Edge.A == Site.A && Edge.B == Site.B && Edge.bCave; });
+                    if (EdgeIndex == INDEX_NONE) continue;
+                    const FVector P = Plan.Nodes[Site.A].Position, Q = Plan.Nodes[Site.B].Position;
+                    const FVector AdditionAlong = (Q - P).GetSafeNormal2D();
+                    const FVector AdditionSide(-AdditionAlong.Y, AdditionAlong.X, 0.f);
+                    for (float Fraction : { 0.5f, 0.3f, 0.7f })
+                    {
+                        const FVector Junction = FMath::Lerp(P, Q, Fraction);
+                        for (int32 Sign : { -1, 1 })
+                        {
+                            FDeadEndShape Shape = MakeDeadEnd(Junction, AdditionAlong, AdditionSide * Sign, Kinds[AdditionIndex], Additions);
+                            bool bClear = true;
+                            for (const auto& Path : Shape.Paths)
+                                for (int32 Segment = 1; Segment < Path.Num(); ++Segment)
+                                    for (int32 Sample = 0; Sample <= 12; ++Sample)
+                                    {
+                                        const FVector Probe = FMath::Lerp(Path[Segment - 1], Path[Segment], Sample / 12.f);
+                                        for (int32 Other = 0; Other < Plan.Edges.Num(); ++Other)
+                                        {
+                                            const auto& Edge = Plan.Edges[Other];
+                                            if (!Edge.bCave || Other == EdgeIndex) continue;
+                                            const FVector U = Plan.Nodes[Edge.A].Position, V = Plan.Nodes[Edge.B].Position;
+                                            const FVector2D Delta(V.X - U.X, V.Y - U.Y);
+                                            const float T = FMath::Clamp(FVector2D::DotProduct(
+                                                FVector2D(Probe.X - U.X, Probe.Y - U.Y), Delta) / Delta.SizeSquared(), 0.f, 1.f);
+                                            const FVector Nearest = FMath::Lerp(U, V, T);
+                                            const float Margin = FVector::Dist2D(Probe, Junction) < 1000.f ? 1400.f : 2300.f;
+                                            if (FVector::Dist2D(Probe, Nearest) < Margin
+                                                && FMath::Abs(Probe.Z - Nearest.Z) < 2200.f) bClear = false;
+                                        }
+                                    }
+                            if (!bClear) continue;
+                            const int32 Root = Add(Junction.X, Junction.Y, Junction.Z);
+                            Plan.Nodes[Root].bCaveInterior = true;
+                            Plan.Edges.RemoveAt(EdgeIndex);
+                            Link(Site.A, Root); Plan.Edges.Last().bCave = true; Plan.Edges.Last().HalfWidth = Site.HalfWidth;
+                            Link(Root, Site.B); Plan.Edges.Last().bCave = true; Plan.Edges.Last().HalfWidth = Site.HalfWidth;
+                            auto SplitPath = [&](TArray<int32>& Path)
+                            {
+                                for (int32 I = 1; I < Path.Num(); ++I)
+                                    if ((Path[I - 1] == Site.A && Path[I] == Site.B)
+                                        || (Path[I - 1] == Site.B && Path[I] == Site.A))
+                                    { Path.Insert(Root, I); break; }
+                            };
+                            SplitPath(Plan.CavePathNodes);
+                            for (auto& Path : Plan.CaveBranches) SplitPath(Path);
+                            TMap<FVector, int32> Points;
+                            Points.Add(Junction, Root);
+                            auto PointIndex = [&](const FVector& Point)
+                            {
+                                if (const int32* Existing = Points.Find(Point)) return *Existing;
+                                const int32 Index = Add(Point.X, Point.Y, Point.Z);
+                                Plan.Nodes[Index].bCaveInterior = true; Points.Add(Point, Index); return Index;
+                            };
+                            FCanyonDeadEnd DeadEnd;
+                            DeadEnd.Kind = Shape.Kind;
+                            for (const auto& RawPath : Shape.Paths)
+                            {
+                                TArray<int32> Path;
+                                for (const FVector& Point : RawPath) Path.Add(PointIndex(Point));
+                                for (int32 I = 1; I < Path.Num(); ++I)
+                                { Link(Path[I - 1], Path[I]); Plan.Edges.Last().bCave = true; Plan.Edges.Last().HalfWidth = 480.f; }
+                                DeadEnd.Paths.Add(MoveTemp(Path));
+                            }
+                            for (const FVector& Point : Shape.Ends) DeadEnd.EndNodes.Add(PointIndex(Point));
+                            if (Shape.Kind != ECanyonDeadEndKind::LongWinding)
+                                for (int32 I = 0; I < DeadEnd.EndNodes.Num(); ++I)
+                                    DeadEnd.Rooms.Add({ DeadEnd.EndNodes[I], Shape.Kind == ECanyonDeadEndKind::ShortAlcove ? 280.f : 350.f + I * 70.f, 440.f });
+                            Plan.CaveDeadEnds.Add(MoveTemp(DeadEnd));
+                            bPlaced = true;
+                            break;
+                        }
+                        if (bPlaced) break;
+                    }
+                    if (bPlaced) break;
+                }
+            }
+        }
         FCanyonCaveNetwork Network;
         Network.Pattern = Plan.CavePattern;
         Network.MouthNodes = Plan.CaveMouthNodes;
@@ -854,6 +962,7 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
         Network.DeadEnds = Plan.CaveDeadEnds;
         Plan.AllCaveMouthNodes.Append(Network.MouthNodes);
         Plan.AllCaveHalls.Append(Network.Halls);
+        for (const auto& DeadEnd : Network.DeadEnds) Plan.AllCaveHalls.Append(DeadEnd.Rooms);
         Plan.CaveNetworks.Add(MoveTemp(Network));
         if (CaveIndex > 0)
         {
@@ -987,7 +1096,9 @@ bool FCanyonGrayboxLayout::Validate() const
         for (const FCanyonDeadEnd& DeadEnd : Network.DeadEnds)
         {
             if (DeadEnd.Paths.IsEmpty() || DeadEnd.EndNodes.IsEmpty()
-                || !Network.PathNodes.Contains(DeadEnd.Paths[0][0])) return false;
+                || (!Network.PathNodes.Contains(DeadEnd.Paths[0][0])
+                    && !Network.Branches.ContainsByPredicate([&](const TArray<int32>& Path)
+                        { return Path.Contains(DeadEnd.Paths[0][0]); }))) return false;
             for (const auto& Path : DeadEnd.Paths)
             {
                 if (Path.Num() < 2) return false;
