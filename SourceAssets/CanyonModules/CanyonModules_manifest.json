@@ -1,0 +1,136 @@
+{
+  "format_version": 1,
+  "coordinate_system": "Blender metres; +X forward, +Y left, +Z up",
+  "tile_length_m": 24.0,
+  "end_floor_halfwidth_m": 9.7,
+  "end_wall_height_m": 92.0,
+  "tile_variants": [
+    {
+      "id": "Straight_A",
+      "wall_left": "SM_CanyonWall_L_Straight_A.glb",
+      "wall_right": "SM_CanyonWall_R_Straight_A.glb",
+      "floor": "SM_CanyonFloor_Straight_A.glb",
+      "entry_socket_m": [
+        0,
+        0,
+        0
+      ],
+      "exit_socket_m": [
+        24.0,
+        0,
+        0.0
+      ],
+      "entry_width_m": 19.4,
+      "exit_width_m": 19.4,
+      "rise_m": 0.0,
+      "recommended_use": "straight or gently curved route; join sockets, then rotate the full tile"
+    },
+    {
+      "id": "Straight_B_Wide",
+      "wall_left": "SM_CanyonWall_L_Straight_B_Wide.glb",
+      "wall_right": "SM_CanyonWall_R_Straight_B_Wide.glb",
+      "floor": "SM_CanyonFloor_Straight_B_Wide.glb",
+      "entry_socket_m": [
+        0,
+        0,
+        0
+      ],
+      "exit_socket_m": [
+        24.0,
+        0,
+        0.0
+      ],
+      "entry_width_m": 19.4,
+      "exit_width_m": 19.4,
+      "rise_m": 0.0,
+      "recommended_use": "straight or gently curved route; join sockets, then rotate the full tile"
+    },
+    {
+      "id": "Straight_C_Narrow",
+      "wall_left": "SM_CanyonWall_L_Straight_C_Narrow.glb",
+      "wall_right": "SM_CanyonWall_R_Straight_C_Narrow.glb",
+      "floor": "SM_CanyonFloor_Straight_C_Narrow.glb",
+      "entry_socket_m": [
+        0,
+        0,
+        0
+      ],
+      "exit_socket_m": [
+        24.0,
+        0,
+        0.0
+      ],
+      "entry_width_m": 19.4,
+      "exit_width_m": 19.4,
+      "rise_m": 0.0,
+      "recommended_use": "straight or gently curved route; join sockets, then rotate the full tile"
+    },
+    {
+      "id": "Rise_3m",
+      "wall_left": "SM_CanyonWall_L_Rise_3m.glb",
+      "wall_right": "SM_CanyonWall_R_Rise_3m.glb",
+      "floor": "SM_CanyonFloor_Rise_3m.glb",
+      "entry_socket_m": [
+        0,
+        0,
+        0
+      ],
+      "exit_socket_m": [
+        24.0,
+        0,
+        3.0
+      ],
+      "entry_width_m": 19.4,
+      "exit_width_m": 19.4,
+      "rise_m": 3.0,
+      "recommended_use": "straight or gently curved route; join sockets, then rotate the full tile"
+    },
+    {
+      "id": "Fall_3m",
+      "wall_left": "SM_CanyonWall_L_Fall_3m.glb",
+      "wall_right": "SM_CanyonWall_R_Fall_3m.glb",
+      "floor": "SM_CanyonFloor_Fall_3m.glb",
+      "entry_socket_m": [
+        0,
+        0,
+        0
+      ],
+      "exit_socket_m": [
+        24.0,
+        0,
+        -3.0
+      ],
+      "entry_width_m": 19.4,
+      "exit_width_m": 19.4,
+      "rise_m": -3.0,
+      "recommended_use": "straight or gently curved route; join sockets, then rotate the full tile"
+    }
+  ],
+  "dressing": [
+    {
+      "id": "Talus_1",
+      "file": "SM_CanyonTalus_01.glb",
+      "placement": "along wall feet or hide connector seams"
+    },
+    {
+      "id": "Talus_2",
+      "file": "SM_CanyonTalus_02.glb",
+      "placement": "along wall feet or hide connector seams"
+    },
+    {
+      "id": "Talus_3",
+      "file": "SM_CanyonTalus_03.glb",
+      "placement": "along wall feet or hide connector seams"
+    }
+  ],
+  "notes": [
+    "Each tile is three separate GLB meshes. Place all three at the same actor transform.",
+    "Connect the exit socket of one tile to the entry socket of the next.",
+    "Side wall inner faces point toward the floor; floor has a walkable upward surface.",
+    "The wall silhouette, floor width and material bands match at both 24 m connectors.",
+    "For prototype collision, use complex collision on the floor and wall static meshes.",
+    "Use an authoritative seed or replicate the generated route graph in multiplayer.",
+    "Do not use large nonuniform wall scaling: it visibly stretches geologic layers.",
+    "Forks need a junction transition or terrain fill; the five assets here validate route and height generation."
+  ]
+}
