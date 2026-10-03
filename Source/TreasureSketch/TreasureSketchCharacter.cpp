@@ -164,7 +164,7 @@ void ATreasureSketchCharacter::BeginPlay()
 {
     Super::BeginPlay();
     if (const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>())
-        SetMovementSpeedMultiplier(GS->MovementSpeedMultiplier);
+        SetMovementSpeedMultiplier(GS->GetMovementSpeedFor(this));
     const auto ColorPart = [](UStaticMeshComponent* Part, const FLinearColor& Color)
     {
         if (UMaterialInstanceDynamic* Material = Part->CreateAndSetMaterialInstanceDynamic(0))
@@ -246,6 +246,10 @@ void ATreasureSketchCharacter::BeginPlay()
 void ATreasureSketchCharacter::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    // Role and room settings may replicate in either order, and roles swap on replay.
+    if (!bCanyonTestMode)
+        if (const auto* GS = GetWorld()->GetGameState<ATreasureSketchGameState>())
+            SetMovementSpeedMultiplier(GS->GetMovementSpeedFor(this));
     if (IsPropDisguised()) HideNormalDisguiseParts();
     if (!GetMesh()->GetSkeletalMeshAsset() || !GetWorld()) return;
 
@@ -489,7 +493,7 @@ void ATreasureSketchCharacter::SetWaterSlowed(bool bSlowed)
 void ATreasureSketchCharacter::OnRep_WaterSlowed()
 {
     const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
-    SetMovementSpeedMultiplier(GS ? GS->MovementSpeedMultiplier : 1.f);
+    SetMovementSpeedMultiplier(GS ? GS->GetMovementSpeedFor(this) : 1.f);
 }
 
 void ATreasureSketchCharacter::OnRep_ShoveWindingUp()
@@ -521,7 +525,7 @@ void ATreasureSketchCharacter::SetCanyonTestMode(bool bEnabled)
 {
     bCanyonTestMode = bEnabled;
     const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
-    const float Scale = bEnabled ? 5.f : GS ? GS->MovementSpeedMultiplier : 1.f;
+    const float Scale = bEnabled ? 5.f : GS ? GS->GetMovementSpeedFor(this) : 1.f;
     SetMovementSpeedMultiplier(Scale);
     GetCharacterMovement()->MaxFlySpeed = 520.f * Scale;
     GetCharacterMovement()->BrakingDecelerationFlying = 2048.f * Scale;

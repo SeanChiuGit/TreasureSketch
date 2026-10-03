@@ -47,6 +47,7 @@ public:
     void NormalizeRoomRoles(APlayerState* Excluded = nullptr, ATreasureSketchPlayerState* PreferredSinglePlayer = nullptr);
     void AdjustRoomSetting(FName Setting, int32 Direction);
     bool SetRoomMapScale(float Scale);
+    bool SetRoleMovementSpeed(FName Setting, float Multiplier);
     void ReturnToSetup();
     void StartSoloTest(int32 ThemeChoice, bool bForceNewSeed = false);
     bool RefreshSoloMap();

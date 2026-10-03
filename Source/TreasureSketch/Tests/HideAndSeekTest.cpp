@@ -53,7 +53,17 @@ bool FHideAndSeekFlowTest::RunTest(const FString& Parameters)
     GS->bCanyonInMapPool = false;
     GS->bForestInMapPool = false;
     GS->RoomMapScale = 0.5f;
+    TestTrue(TEXT("Host can enter a precise hider speed"), GM->SetRoleMovementSpeed(TEXT("HiderSpeed"), 1.05f));
+    GM->AdjustRoomSetting(TEXT("HiderSpeed"), 1);
+    TestTrue(TEXT("Hider speed button increments by 0.05"), FMath::IsNearlyEqual(GS->HiderSpeedMultiplier, 1.10f));
+    GM->AdjustRoomSetting(TEXT("HiderSpeed"), -1);
+    TestTrue(TEXT("Host can enter an independent catcher speed"), GM->SetRoleMovementSpeed(TEXT("CatcherSpeed"), 1.10f));
+    TestFalse(TEXT("Out of range speed is rejected"), GM->SetRoleMovementSpeed(TEXT("HiderSpeed"), 0.1f));
+    TestFalse(TEXT("Unknown speed setting is rejected"), GM->SetRoleMovementSpeed(TEXT("OtherSpeed"), 1.f));
     GM->StartHostedRound();
+    TestFalse(TEXT("Speed input locks when play starts"), GM->SetRoleMovementSpeed(TEXT("HiderSpeed"), 2.f));
+    GM->AdjustRoomSetting(TEXT("CatcherSpeed"), 1);
+    TestTrue(TEXT("Speed buttons also lock during play"), FMath::IsNearlyEqual(GS->CatcherSpeedMultiplier, 1.10f));
     TestTrue(TEXT("Two players start"), GS->bGameStarted);
     TestEqual(TEXT("Drawing is skipped"), GS->Phase, ETreasureRoundPhase::HunterSearching);
     TestEqual(TEXT("Three treasures are generated"), GS->HideTreasures.Num(), 3);
@@ -80,12 +90,29 @@ bool FHideAndSeekFlowTest::RunTest(const FString& Parameters)
     auto* Hider = World->SpawnActor<ATreasureSketchCharacter>();
     Controllers[0]->Possess(Catcher);
     Controllers[1]->Possess(Hider);
+    GS->ApplyMovementSpeed();
+    TestTrue(TEXT("Catcher uses its own speed"), FMath::IsNearlyEqual(Catcher->GetCharacterMovement()->MaxWalkSpeed, 572.f));
+    TestTrue(TEXT("Hider uses its own precise speed"), FMath::IsNearlyEqual(Hider->GetCharacterMovement()->MaxWalkSpeed, 546.f));
+    Hider->SetWaterSlowed(true);
+    TestTrue(FString::Printf(TEXT("Water slowdown retains the hider speed baseline (actual %.6f)"),
+        Hider->GetCharacterMovement()->MaxWalkSpeed), FMath::IsNearlyEqual(Hider->GetCharacterMovement()->MaxWalkSpeed, 409.5f, 0.001f));
+    Hider->SetWaterSlowed(false);
+    TestTrue(TEXT("Leaving water restores the hider speed"), FMath::IsNearlyEqual(Hider->GetCharacterMovement()->MaxWalkSpeed, 546.f));
+    GS->RoomMode = ETreasureRoomMode::OneMapmaker;
+    GS->MovementSpeedMultiplier = 1.25f;
+    GS->ApplyMovementSpeed();
+    TestTrue(TEXT("Other modes keep their shared speed"), FMath::IsNearlyEqual(Hider->GetCharacterMovement()->MaxWalkSpeed, 650.f)
+        && FMath::IsNearlyEqual(Catcher->GetCharacterMovement()->MaxWalkSpeed, 650.f));
+    GS->RoomMode = ETreasureRoomMode::HideAndSeek;
+    GS->MovementSpeedMultiplier = 1.f;
+    GS->ApplyMovementSpeed();
     Catcher->SetActorLocation(FVector(0.f, 0.f, 5000.f));
     Hider->SetActorLocation(FVector(150.f, 0.f, 5000.f));
     Hider->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
     FPropDisguise Form;
     Form.Mesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
     Hider->SetPropDisguise(Form);
+    TestTrue(TEXT("Prop disguise keeps the hider speed"), FMath::IsNearlyEqual(Hider->GetCharacterMovement()->MaxWalkSpeed, 546.f));
     TestFalse(TEXT("Catcher cannot dig"), GM->StartHeldDig(Controllers[0]));
     TestFalse(TEXT("Hider cannot catch"), GM->TryShove(Controllers[1]));
     TestTrue(TEXT("Hider begins held dig"), GM->StartHeldDig(Controllers[1]));
@@ -122,6 +149,10 @@ bool FHideAndSeekFlowTest::RunTest(const FString& Parameters)
     GS->RoomMapScale = 1.f;
     GM->StartNewRound(true);
     TestEqual(TEXT("Roles can swap"), Players[0]->PlayerRole, ETreasurePlayerRole::Hunter);
+    Catcher->Tick(0.f);
+    Hider->Tick(0.f);
+    TestTrue(TEXT("Role swap applies hider speed to the new hider"), FMath::IsNearlyEqual(Catcher->GetCharacterMovement()->MaxWalkSpeed, 546.f));
+    TestTrue(TEXT("Role swap applies catcher speed to the new catcher"), FMath::IsNearlyEqual(Hider->GetCharacterMovement()->MaxWalkSpeed, 572.f));
     TestEqual(TEXT("Replay skips drawing"), GS->Phase, ETreasureRoundPhase::HunterSearching);
     TestEqual(TEXT("Replay resets treasure count"), GS->HideTreasureCount, 0);
     TestFalse(TEXT("New round removes old prop disguise"), Hider->IsPropDisguised());

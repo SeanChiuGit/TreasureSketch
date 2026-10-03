@@ -2,6 +2,7 @@
 
 #include "Net/UnrealNetwork.h"
 #include "TreasureSketchCharacter.h"
+#include "TreasureSketchPlayerState.h"
 #include "EngineUtils.h"
 
 ATreasureSketchGameState::ATreasureSketchGameState()
@@ -31,6 +32,8 @@ void ATreasureSketchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProper
     DOREPLIFETIME(ATreasureSketchGameState, InkLimit);
     DOREPLIFETIME(ATreasureSketchGameState, RoomMapScale);
     DOREPLIFETIME(ATreasureSketchGameState, MovementSpeedMultiplier);
+    DOREPLIFETIME(ATreasureSketchGameState, HiderSpeedMultiplier);
+    DOREPLIFETIME(ATreasureSketchGameState, CatcherSpeedMultiplier);
     DOREPLIFETIME(ATreasureSketchGameState, DrawingDurationSeconds);
     DOREPLIFETIME(ATreasureSketchGameState, SearchingDurationSeconds);
     DOREPLIFETIME(ATreasureSketchGameState, DigCooldownSeconds);
@@ -49,7 +52,18 @@ void ATreasureSketchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProper
 void ATreasureSketchGameState::ApplyMovementSpeed()
 {
     for (TActorIterator<ATreasureSketchCharacter> It(GetWorld()); It; ++It)
-        It->SetMovementSpeedMultiplier(MovementSpeedMultiplier);
+        It->SetMovementSpeedMultiplier(GetMovementSpeedFor(*It));
+}
+
+float ATreasureSketchGameState::GetMovementSpeedFor(const APawn* Pawn) const
+{
+    const auto* PS = Pawn ? Pawn->GetPlayerState<ATreasureSketchPlayerState>() : nullptr;
+    if (RoomMode == ETreasureRoomMode::HideAndSeek && PS)
+    {
+        if (PS->PlayerRole == ETreasurePlayerRole::Hunter) return HiderSpeedMultiplier;
+        if (PS->PlayerRole == ETreasurePlayerRole::Scout) return CatcherSpeedMultiplier;
+    }
+    return MovementSpeedMultiplier;
 }
 
 int32 ATreasureSketchGameState::GetSecondsRemaining() const

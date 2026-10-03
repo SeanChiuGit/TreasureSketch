@@ -454,6 +454,20 @@ bool ATreasureSketchGameMode::SetRoomMapScale(float Scale)
     return true;
 }
 
+bool ATreasureSketchGameMode::SetRoleMovementSpeed(FName Setting, float Multiplier)
+{
+    auto* GS = GetGameState<ATreasureSketchGameState>();
+    if (!HasAuthority() || !GS || GS->bGameStarted || GetNetMode() == NM_DedicatedServer
+        || GS->RoomMode != ETreasureRoomMode::HideAndSeek || !FMath::IsFinite(Multiplier)
+        || Multiplier < GS->MinMovementSpeed || Multiplier > GS->MaxMovementSpeed) return false;
+    if (Setting == TEXT("HiderSpeed")) GS->HiderSpeedMultiplier = Multiplier;
+    else if (Setting == TEXT("CatcherSpeed")) GS->CatcherSpeedMultiplier = Multiplier;
+    else return false;
+    GS->ApplyMovementSpeed();
+    GS->ForceNetUpdate();
+    return true;
+}
+
 void ATreasureSketchGameMode::AdjustRoomSetting(FName Setting, int32 Direction)
 {
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
@@ -462,6 +476,12 @@ void ATreasureSketchGameMode::AdjustRoomSetting(FName Setting, int32 Direction)
     if (Setting == TEXT("MapSize"))
     {
         SetRoomMapScale(FMath::Clamp(GS->RoomMapScale + Direction * 0.25f, GS->MinMapScale, GS->MaxMapScale));
+    }
+    else if (Setting == TEXT("HiderSpeed") || Setting == TEXT("CatcherSpeed"))
+    {
+        const float Current = Setting == TEXT("HiderSpeed") ? GS->HiderSpeedMultiplier : GS->CatcherSpeedMultiplier;
+        SetRoleMovementSpeed(Setting, FMath::Clamp(FMath::RoundToFloat((Current + Direction * 0.05f) * 100.f) / 100.f,
+            GS->MinMovementSpeed, GS->MaxMovementSpeed));
     }
     else if (Setting == TEXT("MovementSpeed"))
     {

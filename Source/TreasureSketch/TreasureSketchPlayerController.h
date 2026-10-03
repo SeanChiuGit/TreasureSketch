@@ -43,7 +43,8 @@ public:
     virtual bool InputKey(const FInputKeyEventArgs& Params) override;
     FString GetTestSeedText() const { return TestSeedText; }
     bool IsTestSeedEditing() const { return bTestSeedEditing; }
-    bool IsMapScaleEditing() const { return bMapScaleEditing; }
+    bool IsMapScaleEditing() const { return bMapScaleEditing && RoomNumericSetting == TEXT("MapSize"); }
+    bool IsRoleSpeedEditing(FName Setting) const { return bMapScaleEditing && RoomNumericSetting == Setting; }
     FString GetMapScaleText() const { return MapScaleText; }
     int32 GetTestSeed() const;
 
@@ -166,6 +167,7 @@ private:
     bool bMapScaleEditing = false;
     bool bReplaceMapScaleText = false;
     FString MapScaleText;
+    FName RoomNumericSetting = TEXT("MapSize");
     bool CommitMapScale();
     bool bSprayCursorMode = false;
     bool bLookInputLocked = false;

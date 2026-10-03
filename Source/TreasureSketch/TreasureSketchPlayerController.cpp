@@ -138,7 +138,9 @@ bool ATreasureSketchPlayerController::CommitMapScale()
     if (!bMapScaleEditing) return true;
     float Scale = 0.f;
     ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>();
-    if (!GM || !LexTryParseString(Scale, *MapScaleText) || !GM->SetRoomMapScale(Scale)) return false;
+    if (!GM || !LexTryParseString(Scale, *MapScaleText)) return false;
+    if (!(RoomNumericSetting == TEXT("MapSize") ? GM->SetRoomMapScale(Scale)
+        : GM->SetRoleMovementSpeed(RoomNumericSetting, Scale))) return false;
     bMapScaleEditing = false;
     return true;
 }
@@ -753,13 +755,19 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
             ServerClaimSingleRoomRole();
         return;
     }
-    if (ActionName == TEXT("MapScaleInput"))
+    if (ActionName == TEXT("MapScaleInput") || ActionName == TEXT("HiderSpeedInput") || ActionName == TEXT("CatcherSpeedInput"))
     {
         if (!IsLocalController() || (FrontEndPage != EFrontEndPage::RoomLobby && FrontEndPage != EFrontEndPage::SoloTest)
             || !GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) return;
         const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
         if (!GS || GS->bGameStarted) return;
-        MapScaleText = FString::Printf(TEXT("%.6g"), GS->RoomMapScale);
+        if (!CommitMapScale()) return;
+        RoomNumericSetting = ActionName == TEXT("MapScaleInput") ? TEXT("MapSize")
+            : ActionName == TEXT("HiderSpeedInput") ? TEXT("HiderSpeed") : TEXT("CatcherSpeed");
+        if (RoomNumericSetting != TEXT("MapSize") && GS->RoomMode != ETreasureRoomMode::HideAndSeek) return;
+        const float Value = RoomNumericSetting == TEXT("MapSize") ? GS->RoomMapScale
+            : RoomNumericSetting == TEXT("HiderSpeed") ? GS->HiderSpeedMultiplier : GS->CatcherSpeedMultiplier;
+        MapScaleText = FString::Printf(TEXT("%.6g"), Value);
         bMapScaleEditing = true;
         bReplaceMapScaleText = true;
         bTestSeedEditing = false;
@@ -890,12 +898,22 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
         || ActionName == TEXT("RoomSearchingLess") || ActionName == TEXT("RoomSearchingMore")
         || ActionName == TEXT("RoomDigCooldownLess") || ActionName == TEXT("RoomDigCooldownMore")
         || ActionName == TEXT("RoomSpeedLess") || ActionName == TEXT("RoomSpeedMore")
+        || ActionName == TEXT("HiderSpeedLess") || ActionName == TEXT("HiderSpeedMore")
+        || ActionName == TEXT("CatcherSpeedLess") || ActionName == TEXT("CatcherSpeedMore")
         || ActionName == TEXT("RoomInkLess") || ActionName == TEXT("RoomInkMore"))
     {
         if (!IsLocalController() || (FrontEndPage != EFrontEndPage::RoomLobby
             && FrontEndPage != EFrontEndPage::RoomDrawingRules && FrontEndPage != EFrontEndPage::SoloTest)) return;
         if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
         {
+            if (ActionName == TEXT("HiderSpeedLess") || ActionName == TEXT("HiderSpeedMore")
+                || ActionName == TEXT("CatcherSpeedLess") || ActionName == TEXT("CatcherSpeedMore"))
+            {
+                const bool bHider = ActionName == TEXT("HiderSpeedLess") || ActionName == TEXT("HiderSpeedMore");
+                const bool bMore = ActionName == TEXT("HiderSpeedMore") || ActionName == TEXT("CatcherSpeedMore");
+                GM->AdjustRoomSetting(bHider ? TEXT("HiderSpeed") : TEXT("CatcherSpeed"), bMore ? 1 : -1);
+                return;
+            }
             const bool bMap = ActionName == TEXT("RoomMapSmaller") || ActionName == TEXT("RoomMapLarger");
             const bool bDrawing = ActionName == TEXT("RoomDrawingLess") || ActionName == TEXT("RoomDrawingMore");
             const bool bDigCooldown = ActionName == TEXT("RoomDigCooldownLess") || ActionName == TEXT("RoomDigCooldownMore");

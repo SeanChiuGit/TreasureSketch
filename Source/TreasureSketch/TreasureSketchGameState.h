@@ -141,6 +141,14 @@ public:
     UPROPERTY(ReplicatedUsing=ApplyMovementSpeed, BlueprintReadOnly)
     float MovementSpeedMultiplier = 1.f;
 
+    UPROPERTY(ReplicatedUsing=ApplyMovementSpeed, BlueprintReadOnly)
+    float HiderSpeedMultiplier = 1.f;
+
+    UPROPERTY(ReplicatedUsing=ApplyMovementSpeed, BlueprintReadOnly)
+    float CatcherSpeedMultiplier = 1.f;
+
+    float GetMovementSpeedFor(const APawn* Pawn) const;
+
     static constexpr float MinMovementSpeed = 0.5f;
     static constexpr float MaxMovementSpeed = 5.f;
     UFUNCTION()

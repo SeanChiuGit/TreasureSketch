@@ -177,13 +177,35 @@ void ATreasureSketchHUD::DrawHUD()
             DrawText(ScaleText + (bEditingScale ? TEXT("_") : TEXT(" 倍")), bValidScale ? FLinearColor::White : FLinearColor(1.f, 0.4f, 0.3f),
                 InputX + 9.f, SettingsY + 9.f, BodyFont, 0.9f);
             if (bCanAdjustSettings) AddHitBox(FVector2D(InputX, SettingsY + 3.f), FVector2D(InputW, 32.f), TEXT("MapScaleInput"), true, 10);
-            DrawRoomSetting(FString::Printf(TEXT("绘图时间：%d 秒"), GS->DrawingDurationSeconds), SettingsY + 40.f, TEXT("RoomDrawingLess"), TEXT("RoomDrawingMore"), GS->DrawingDurationSeconds > GS->MinPhaseSeconds, GS->DrawingDurationSeconds < GS->MaxPhaseSeconds);
+            const bool bHide = GS->RoomMode == ETreasureRoomMode::HideAndSeek;
+            if (!bHide) DrawRoomSetting(FString::Printf(TEXT("绘图时间：%d 秒"), GS->DrawingDurationSeconds), SettingsY + 40.f, TEXT("RoomDrawingLess"), TEXT("RoomDrawingMore"), GS->DrawingDurationSeconds > GS->MinPhaseSeconds, GS->DrawingDurationSeconds < GS->MaxPhaseSeconds);
             DrawRoomSetting(FString::Printf(TEXT("%s：%d 秒"), GS->RoomMode == ETreasureRoomMode::HideAndSeek
-                ? TEXT("对局时间") : TEXT("寻宝时间"), GS->SearchingDurationSeconds), SettingsY + 80.f, TEXT("RoomSearchingLess"), TEXT("RoomSearchingMore"), GS->SearchingDurationSeconds > GS->MinPhaseSeconds, GS->SearchingDurationSeconds < GS->MaxPhaseSeconds);
-            DrawRoomSetting(FString::Printf(TEXT("挖掘冷却：%d 秒"), GS->DigCooldownSeconds), SettingsY + 120.f,
+                ? TEXT("对局时间") : TEXT("寻宝时间"), GS->SearchingDurationSeconds), SettingsY + (bHide ? 40.f : 80.f), TEXT("RoomSearchingLess"), TEXT("RoomSearchingMore"), GS->SearchingDurationSeconds > GS->MinPhaseSeconds, GS->SearchingDurationSeconds < GS->MaxPhaseSeconds);
+            DrawRoomSetting(FString::Printf(TEXT("挖掘冷却：%d 秒"), GS->DigCooldownSeconds), SettingsY + (bHide ? 80.f : 120.f),
                 TEXT("RoomDigCooldownLess"), TEXT("RoomDigCooldownMore"),
                 GS->DigCooldownSeconds > GS->MinDigCooldownSeconds, GS->DigCooldownSeconds < GS->MaxDigCooldownSeconds);
-            DrawRoomSetting(FString::Printf(TEXT("移动速度：%.2f 倍"), GS->MovementSpeedMultiplier), SettingsY + 160.f, TEXT("RoomSpeedLess"), TEXT("RoomSpeedMore"), GS->MovementSpeedMultiplier > GS->MinMovementSpeed, GS->MovementSpeedMultiplier < GS->MaxMovementSpeed);
+            if (bHide)
+            {
+                auto DrawRoleSpeed = [&](const TCHAR* Label, FName Setting, float Value, float Y,
+                    FName Input, FName Less, FName More)
+                {
+                    DrawRoomSetting(Label, Y, Less, More, Value > GS->MinMovementSpeed, Value < GS->MaxMovementSpeed);
+                    const bool bEditing = PC->IsRoleSpeedEditing(Setting);
+                    const FString ValueText = bEditing ? PC->GetMapScaleText() : FString::Printf(TEXT("%.6g"), Value);
+                    float ParsedValue = 0.f;
+                    const bool bValid = LexTryParseString(ParsedValue, *ValueText) && FMath::IsFinite(ParsedValue)
+                        && ParsedValue >= GS->MinMovementSpeed && ParsedValue <= GS->MaxMovementSpeed;
+                    DrawRect(bEditing ? FLinearColor(0.15f, 0.30f, 0.30f) : FLinearColor(0.08f, 0.12f, 0.13f), InputX, Y + 3.f, InputW, 32.f);
+                    DrawText(ValueText + (bEditing ? TEXT("_") : TEXT(" 倍")), bValid ? FLinearColor::White : FLinearColor(1.f, 0.4f, 0.3f),
+                        InputX + 9.f, Y + 9.f, BodyFont, 0.9f);
+                    if (bCanAdjustSettings) AddHitBox(FVector2D(InputX, Y + 3.f), FVector2D(InputW, 32.f), Input, true, 10);
+                };
+                DrawRoleSpeed(TEXT("逃生者速度："), TEXT("HiderSpeed"), GS->HiderSpeedMultiplier, SettingsY + 120.f,
+                    TEXT("HiderSpeedInput"), TEXT("HiderSpeedLess"), TEXT("HiderSpeedMore"));
+                DrawRoleSpeed(TEXT("抓捕者速度："), TEXT("CatcherSpeed"), GS->CatcherSpeedMultiplier, SettingsY + 160.f,
+                    TEXT("CatcherSpeedInput"), TEXT("CatcherSpeedLess"), TEXT("CatcherSpeedMore"));
+            }
+            else DrawRoomSetting(FString::Printf(TEXT("移动速度：%.2f 倍"), GS->MovementSpeedMultiplier), SettingsY + 160.f, TEXT("RoomSpeedLess"), TEXT("RoomSpeedMore"), GS->MovementSpeedMultiplier > GS->MinMovementSpeed, GS->MovementSpeedMultiplier < GS->MaxMovementSpeed);
             auto DrawRoomToggle = [&](FName Name, const FString& Label, float Y)
             {
                 DrawRect(bCanAdjustSettings ? FLinearColor(0.13f, 0.28f, 0.27f) : FLinearColor(0.07f, 0.105f, 0.11f), SettingsX, Y, SettingsW, 38.f);
