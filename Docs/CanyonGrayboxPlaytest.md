@@ -31,6 +31,12 @@ Each cave network uses a different mountain site. Placement rejects nearby surfa
 
 ## What to judge
 
+### Ground-level uphill caves
+
+Seed **1050** reuses the long winding cave's horizontal layout, with a ground-level entrance and a gradual climb to a higher exterior exit. Double-click `Scripts/PlayCanyonUphill.cmd`, or enter 1050 in the Canyon test menu. Seed **1051** is the level comparison on the same layout. R returns to the ordinary random map pool; movement and flight controls are unchanged.
+
+Ordinary maps retain the first cave's existing descending profile. Additional short, long and loop caves try a seeded elevation profile: 30% ascending, 15% level, 55% descending. Sites whose altered exterior roads fail the slope check revert to their original descending cave. Optional side passages retain their local height differences relative to their junction. Existing comparison seeds 1000–1040 retain their profiles. Three-mouth halls retain their existing heights because the third leg crosses other passages using vertical separation. Uphill exit height is limited by the slope of its exterior connecting road; the bypass wraps around the mountain and rises with the exit. Ground-level profiles mirror the underground layout's inward excursion outward to avoid running through existing surface roads.
+
 Canyon treasure selection has a 40% chance to try an interior cave point, including passages, halls, and enclosed branches. Candidates require an actual cave floor, overhead rock, and player capsule clearance; if none qualifies, treasure stays on the surface. This applies to normal rounds and the solo preview. Seeded selection is repeatable when the collision scene is unchanged.
 
 1. At the first decision, do the routes create an interesting choice or only extra walking?

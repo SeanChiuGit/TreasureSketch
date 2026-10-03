@@ -13,7 +13,7 @@ enum class ECanyonGrayboxLandmark : uint8
     None, Arch, TwinPillars, SplitPeak, BrokenBridge, Needle, StoneRing, CaveBeacon
 };
 
-enum class ECanyonRouteLayer : uint8 { Lower, Ramp, Upper };
+enum class ECanyonRouteLayer : uint8 { Lower, Ramp, Upper, CaveAccess };
 enum class ECanyonUpperPattern : uint8 { Lookout, Traverse, SplitTraverse };
 enum class ECanyonCavePattern : uint8 { ThroughShortcut, LongWindingThrough, ThreeMouthHall, LongLoop, BranchedThrough, PillarChamber, FissureHall, TreasureAlcove };
 
@@ -42,6 +42,7 @@ struct FCanyonCaveHall
 };
 
 enum class ECanyonDeadEndKind : uint8 { ShortAlcove, LongWinding, Forked };
+enum class ECanyonCaveElevation : uint8 { Descending, Ascending, Level };
 
 struct FCanyonDeadEnd
 {
@@ -54,6 +55,7 @@ struct FCanyonDeadEnd
 struct FCanyonCaveNetwork
 {
     ECanyonCavePattern Pattern = ECanyonCavePattern::ThroughShortcut;
+    ECanyonCaveElevation Elevation = ECanyonCaveElevation::Descending;
     TArray<int32> MouthNodes;
     TArray<int32> PathNodes;
     TArray<TArray<int32>> Branches;

@@ -145,10 +145,11 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
     if (bBranchPreview || InSeed == 1020) Plan.CavePattern = ECanyonCavePattern::LongWindingThrough;
     if (InSeed == 1030) Plan.CavePattern = ECanyonCavePattern::ThreeMouthHall;
     if (InSeed == 1040) Plan.CavePattern = ECanyonCavePattern::LongLoop;
+    if (InSeed == 1050 || InSeed == 1051) Plan.CavePattern = ECanyonCavePattern::LongWindingThrough;
     const float Area = FMath::IsFinite(MapScale) ? FMath::Clamp(MapScale, 0.5f, 5.f) : 1.f;
     // The comparison seeds share geometry; ordinary hall seeds vary the whole map.
     const int32 LayoutSeed = InSeed == 1003 || InSeed == 1030 ? 1002
-        : InSeed == 1020 ? 1001 : InSeed == 1040 ? 1010 : InSeed;
+        : InSeed == 1020 || InSeed == 1050 || InSeed == 1051 ? 1001 : InSeed == 1040 ? 1010 : InSeed;
     FRandomStream R(LayoutSeed ^ 0x4C7A21);
     const int32 UpperRoll = R.RandRange(0, 4);
     Plan.UpperPattern = UpperRoll < 2 ? ECanyonUpperPattern::Lookout
@@ -450,7 +451,8 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
     for (const int32 Index : CandidateEdges) CaveCandidates.Add(Plan.Edges[Index]);
     TArray<ECanyonCavePattern> CaveTypes = { Plan.CavePattern };
     if (!bHallPreview && !bLoopPreview && !bBranchPreview && InSeed != 1010 && InSeed != 1020
-        && InSeed != 1030 && InSeed != 1040 && (InSeed < 1000 || InSeed > 1003))
+        && InSeed != 1030 && InSeed != 1040 && InSeed != 1050 && InSeed != 1051
+        && (InSeed < 1000 || InSeed > 1003))
     {
         const ECanyonCavePattern Second = Plan.CavePattern == ECanyonCavePattern::ThroughShortcut
             ? static_cast<ECanyonCavePattern>(CaveTypeRandom.RandRange(1, 3))
@@ -654,7 +656,8 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
             500.f + 0.22f * (FVector::Dist2D(A, B) + 1500.f) - FMath::Abs(A.Z - B.Z));
         if (Plan.CavePattern == ECanyonCavePattern::LongWindingThrough)
         {
-            const auto Shape = MakeLongCave(MouthA, MouthB, Outward, InSeed, bBranchPreview || InSeed == 1020);
+            const auto Shape = MakeLongCave(MouthA, MouthB, Outward,
+                InSeed == 1050 || InSeed == 1051 ? 1001 : InSeed, bBranchPreview || InSeed == 1020);
             TMap<FVector, int32> Points;
             Points.Add(MouthA, MouthAIndex);
             Points.Add(MouthB, MouthBIndex);
@@ -952,36 +955,208 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
                 }
             }
         }
-        FCanyonCaveNetwork Network;
-        Network.Pattern = Plan.CavePattern;
-        Network.MouthNodes = Plan.CaveMouthNodes;
-        Network.PathNodes = Plan.CavePathNodes;
-        Network.Branches = Plan.CaveBranches;
-        Network.BranchOpen = Plan.CaveBranchOpen;
-        Network.Halls = Plan.CaveHalls;
-        Network.DeadEnds = Plan.CaveDeadEnds;
-        Plan.AllCaveMouthNodes.Append(Network.MouthNodes);
-        Plan.AllCaveHalls.Append(Network.Halls);
-        for (const auto& DeadEnd : Network.DeadEnds) Plan.AllCaveHalls.Append(DeadEnd.Rooms);
-        Plan.CaveNetworks.Add(MoveTemp(Network));
-        if (CaveIndex > 0)
+        // Elevation is independent of topology. Keep comparison maps unchanged,
+        // and reuse the same tunnels/rooms for level and uphill variants.
+        const FCanyonGrayboxLayout BeforeElevation = Plan;
+        FRandomStream ElevationRandom(InSeed ^ (0x454C4556 + CaveIndex * 7919));
+        const float ElevationRoll = ElevationRandom.FRand();
+        ECanyonCaveElevation Elevation = ECanyonCaveElevation::Descending;
+        if (InSeed == 1050) Elevation = ECanyonCaveElevation::Ascending;
+        else if (InSeed == 1051) Elevation = ECanyonCaveElevation::Level;
+        else if (CaveIndex > 0 && (InSeed < 1000 || InSeed > 1040)
+            && !bHallPreview && !bLoopPreview && !bBranchPreview)
+            Elevation = ElevationRoll < 0.3f ? ECanyonCaveElevation::Ascending
+                : ElevationRoll < 0.45f ? ECanyonCaveElevation::Level : ECanyonCaveElevation::Descending;
+        // The hall's third leg crosses other passages at a different elevation.
+        // Retain that separation until an uphill hall has its own crossing plan.
+        if (Plan.CavePattern == ECanyonCavePattern::ThreeMouthHall)
+            Elevation = ECanyonCaveElevation::Descending;
+        if (Elevation != ECanyonCaveElevation::Descending)
+        {
+            TMap<int32, float> OriginalHeights;
+            for (int32 Node = BeforeCave.Nodes.Num(); Node < Plan.Nodes.Num(); ++Node)
+                OriginalHeights.Add(Node, Plan.Nodes[Node].Position.Z);
+            TSet<int32> CaveNodes;
+            TArray<FCanyonGrayboxEdge> ElevationEdges;
+            for (const auto& Edge : Plan.Edges)
+                if (Edge.bCave && (Edge.A >= BeforeCave.Nodes.Num() || Edge.B >= BeforeCave.Nodes.Num()))
+                {
+                    CaveNodes.Add(Edge.A);
+                    CaveNodes.Add(Edge.B);
+                    ElevationEdges.Add(Edge);
+                }
+            const float EntryZ = Plan.Nodes[MouthAIndex].Position.Z;
+            // The uphill exit connects back to the existing surface road by a
+            // walkable ramp; its height is capped by that approach's length.
+            const float Rise = Elevation == ECanyonCaveElevation::Ascending
+                ? FMath::Clamp(B.Z - EntryZ + FVector::Dist2D(B, MouthB) * 0.16f, 0.f, 1200.f) : 0.f;
+            TMap<int32, float> FixedHeights;
+            FixedHeights.Add(MouthAIndex, EntryZ);
+            FixedHeights.Add(MouthBIndex, EntryZ + Rise);
+            for (int32 Mouth : Plan.CaveMouthNodes)
+                if (!FixedHeights.Contains(Mouth)) FixedHeights.Add(Mouth, EntryZ + Rise * 0.6f);
+            for (int32 Node : CaveNodes) Plan.Nodes[Node].Position.Z = EntryZ + Rise * 0.5f;
+            // Downhill passages can run under existing roads. At ground level,
+            // mirror that excursion into the outer mountain instead.
+            for (int32 Node : CaveNodes)
+                if (Plan.Nodes[Node].bCaveInterior)
+                {
+                    FVector& Point = Plan.Nodes[Node].Position;
+                    Point -= Outward * (2.f * FVector::DotProduct(Point - MouthA, Outward));
+                }
+            for (const auto& Fixed : FixedHeights) Plan.Nodes[Fixed.Key].Position.Z = Fixed.Value;
+            // Weighted relaxation shares one height at every junction, including
+            // both loop arms and halls. Dead ends settle at their root height.
+            for (int32 Iteration = 0; Iteration < 512; ++Iteration)
+            {
+                float MaxChange = 0.f;
+                for (int32 Node : CaveNodes)
+                {
+                    if (FixedHeights.Contains(Node)) continue;
+                    double WeightedZ = 0., WeightSum = 0.;
+                    for (const auto& Edge : ElevationEdges)
+                    {
+                        const int32 Other = Edge.A == Node ? Edge.B : Edge.B == Node ? Edge.A : INDEX_NONE;
+                        if (Other == INDEX_NONE) continue;
+                        const double Weight = 1. / FMath::Max(1., FVector::Dist2D(
+                            Plan.Nodes[Node].Position, Plan.Nodes[Other].Position));
+                        WeightedZ += Plan.Nodes[Other].Position.Z * Weight;
+                        WeightSum += Weight;
+                    }
+                    if (WeightSum <= 0.) continue;
+                    const float Height = WeightedZ / WeightSum;
+                    MaxChange = FMath::Max(MaxChange, FMath::Abs(Height - Plan.Nodes[Node].Position.Z));
+                    Plan.Nodes[Node].Position.Z = Height;
+                }
+                if (MaxChange < 0.01f) break;
+            }
+            // Preserve each optional addition's local height differences relative
+            // to its junction, including separation from nearby main passages.
+            for (const auto& DeadEnd : Plan.CaveDeadEnds)
+            {
+                const int32 Root = DeadEnd.Paths[0][0];
+                const float Offset = Plan.Nodes[Root].Position.Z - OriginalHeights[Root];
+                TSet<int32> Shifted;
+                for (const auto& Path : DeadEnd.Paths)
+                    for (int32 Node : Path)
+                        if (Node != Root && !Shifted.Contains(Node))
+                        {
+                            Plan.Nodes[Node].Position.Z = OriginalHeights[Node] + Offset;
+                            Shifted.Add(Node);
+                        }
+            }
+            Plan.Nodes[SurfaceBendIndex].Position.Z = EntryZ + Rise * 0.5f;
+            // Wrap around the outside of the uphill mountain. The old triangular
+            // bypass crossed the long winding passage in plan, safe only below it.
+            const FVector AlongCave = (MouthB - MouthA).GetSafeNormal2D();
+            float LeftExtent = 0.f, RightExtent = FVector::Dist2D(MouthA, MouthB), DepthExtent = 0.f;
+            for (int32 Node : CaveNodes)
+            {
+                const FVector Offset = Plan.Nodes[Node].Position - MouthA;
+                LeftExtent = FMath::Min(LeftExtent, static_cast<float>(FVector::DotProduct(Offset, AlongCave)));
+                RightExtent = FMath::Max(RightExtent, static_cast<float>(FVector::DotProduct(Offset, AlongCave)));
+                DepthExtent = FMath::Max(DepthExtent, static_cast<float>(FVector::DotProduct(Offset, Outward)));
+            }
+            const FVector OuterLeft = MouthA + AlongCave * (LeftExtent - 2500.f);
+            const FVector OuterRight = MouthA + AlongCave * (RightExtent + 2500.f);
+            const float OuterDepth = DepthExtent + 2500.f;
+            FVector& OuterCenter = Plan.Nodes[SurfaceBendIndex].Position;
+            OuterCenter += Outward * (OuterDepth - FVector::DotProduct(OuterCenter - MouthA, Outward));
+            const int32 LeftFoot = Add(OuterLeft.X, OuterLeft.Y, EntryZ);
+            const int32 LeftTop = Add(OuterLeft.X + Outward.X * OuterDepth,
+                OuterLeft.Y + Outward.Y * OuterDepth, EntryZ + Rise * 0.25f);
+            const int32 RightTop = Add(OuterRight.X + Outward.X * OuterDepth,
+                OuterRight.Y + Outward.Y * OuterDepth, EntryZ + Rise * 0.75f);
+            const int32 RightFoot = Add(OuterRight.X, OuterRight.Y, EntryZ + Rise);
+            Plan.Edges.RemoveAll([&](const FCanyonGrayboxEdge& Edge)
+                { return !Edge.bCave && (Edge.A == SurfaceBendIndex || Edge.B == SurfaceBendIndex); });
+            const TArray<int32> Bypass = { MouthAIndex, LeftFoot, LeftTop,
+                SurfaceBendIndex, RightTop, RightFoot, MouthBIndex };
+            for (int32 I = 1; I < Bypass.Num(); ++I) Link(Bypass[I - 1], Bypass[I]);
+            if (Rise > 0.f)
+            {
+                for (int32 Node : Bypass)
+                    if (Node != MouthAIndex) Plan.Nodes[Node].Layer = ECanyonRouteLayer::CaveAccess;
+                for (auto& Edge : Plan.Edges)
+                    if (!Edge.bCave && (Edge.A == MouthBIndex || Edge.B == MouthBIndex
+                        || Bypass.Contains(Edge.A) && Bypass.Contains(Edge.B)))
+                    {
+                        Edge.Layer = ECanyonRouteLayer::CaveAccess;
+                    }
+            }
+        }
+        auto RegisterNetwork = [&]()
+        {
+            FCanyonCaveNetwork Network;
+            Network.Pattern = Plan.CavePattern;
+            Network.Elevation = Elevation;
+            Network.MouthNodes = Plan.CaveMouthNodes;
+            Network.PathNodes = Plan.CavePathNodes;
+            Network.Branches = Plan.CaveBranches;
+            Network.BranchOpen = Plan.CaveBranchOpen;
+            Network.Halls = Plan.CaveHalls;
+            Network.DeadEnds = Plan.CaveDeadEnds;
+            Plan.AllCaveMouthNodes.Append(Network.MouthNodes);
+            Plan.AllCaveHalls.Append(Network.Halls);
+            for (const auto& DeadEnd : Network.DeadEnds) Plan.AllCaveHalls.Append(DeadEnd.Rooms);
+            Plan.CaveNetworks.Add(MoveTemp(Network));
+        };
+        RegisterNetwork();
+        if (CaveIndex > 0 || Elevation != ECanyonCaveElevation::Descending)
         {
             // Placement must preserve existing surface travel after terrain
             // ownership and room cover are combined, not just avoid crossings.
-            bool bSurfaceSafe = true;
-            for (const FCanyonGrayboxEdge& Road : Plan.Edges)
+            auto SurfaceSafe = [&]()
             {
-                if (Road.bCave) continue;
-                const FVector P = Plan.Nodes[Road.A].Position, Q = Plan.Nodes[Road.B].Position;
-                const float Run = FVector::Dist2D(P, Q) / 24.f;
-                float Previous = Plan.SurfaceHeightAt(P.X, P.Y);
-                for (int32 Step = 1; Step <= 24; ++Step)
+                if (Elevation != ECanyonCaveElevation::Descending)
+                    for (const auto& Added : Plan.Edges)
+                    {
+                        if (Added.A < BeforeCave.Nodes.Num() && Added.B < BeforeCave.Nodes.Num()) continue;
+                        const FVector A0 = Plan.Nodes[Added.A].Position, B0 = Plan.Nodes[Added.B].Position;
+                        const int32 Steps = FMath::Max(1, FMath::CeilToInt(FVector::Dist2D(A0, B0) / 350.f));
+                        for (const auto& Existing : BeforeCave.Edges)
+                        {
+                            if (!Existing.bCave) continue;
+                            const FVector P = BeforeCave.Nodes[Existing.A].Position;
+                            const FVector Q = BeforeCave.Nodes[Existing.B].Position;
+                            const FVector2D Start(P.X, P.Y), Delta(Q.X - P.X, Q.Y - P.Y);
+                            for (int32 Step = 0; Step <= Steps; ++Step)
+                            {
+                                const FVector Probe = FMath::Lerp(A0, B0, Step / static_cast<float>(Steps));
+                                const float T = FMath::Clamp(FVector2D::DotProduct(
+                                    FVector2D(Probe.X, Probe.Y) - Start, Delta) / Delta.SizeSquared(), 0.f, 1.f);
+                                const FVector Nearest = FMath::Lerp(P, Q, T);
+                                if (FVector::Dist2D(Probe, Nearest) < 2200.f
+                                    && FMath::Abs(Probe.Z - Nearest.Z) < 2200.f) return false;
+                            }
+                        }
+                    }
+                for (const FCanyonGrayboxEdge& Road : Plan.Edges)
                 {
-                    const FVector Point = FMath::Lerp(P, Q, Step / 24.f);
-                    const float Height = Plan.SurfaceHeightAt(Point.X, Point.Y);
-                    if (FMath::Abs(Height - Previous) > Run * 0.4f) bSurfaceSafe = false;
-                    Previous = Height;
+                    if (Road.bCave) continue;
+                    const FVector P = Plan.Nodes[Road.A].Position, Q = Plan.Nodes[Road.B].Position;
+                    const float Run = FVector::Dist2D(P, Q) / 24.f;
+                    float Previous = Plan.SurfaceHeightAt(P.X, P.Y);
+                    for (int32 Step = 1; Step <= 24; ++Step)
+                    {
+                        const FVector Point = FMath::Lerp(P, Q, Step / 24.f);
+                        const float Height = Plan.SurfaceHeightAt(Point.X, Point.Y);
+                        if (FMath::Abs(Height - Previous) > Run * 0.4f) return false;
+                        Previous = Height;
+                    }
                 }
+                return true;
+            };
+            bool bSurfaceSafe = SurfaceSafe();
+            if (!bSurfaceSafe && Elevation != ECanyonCaveElevation::Descending
+                && InSeed != 1050 && InSeed != 1051)
+            {
+                // An unsuitable uphill site keeps its original descending cave,
+                // rather than losing a cave type from the map.
+                Plan = BeforeElevation;
+                Elevation = ECanyonCaveElevation::Descending;
+                RegisterNetwork();
+                bSurfaceSafe = SurfaceSafe();
             }
             if (!bSurfaceSafe)
             {
@@ -1364,10 +1539,10 @@ float FCanyonGrayboxLayout::SurfaceHeightAt(float X, float Y, float* DistanceFro
     ECanyonRouteLayer* SurfaceLayer) const
 {
     const FVector2D Point(X, Y);
-    float LayerHeight[3] = { TNumericLimits<float>::Max(), TNumericLimits<float>::Max(),
-        TNumericLimits<float>::Max() };
-    float LayerDistance[3] = { TNumericLimits<float>::Max(), TNumericLimits<float>::Max(),
-        TNumericLimits<float>::Max() };
+    float LayerHeight[4] = { TNumericLimits<float>::Max(), TNumericLimits<float>::Max(),
+        TNumericLimits<float>::Max(), TNumericLimits<float>::Max() };
+    float LayerDistance[4] = { TNumericLimits<float>::Max(), TNumericLimits<float>::Max(),
+        TNumericLimits<float>::Max(), TNumericLimits<float>::Max() };
     float CaveT = 0.f, CaveLateral = 0.f, CaveFloor = 0.f;
     int32 CaveNetwork = INDEX_NONE;
     const bool bNearCave = ProjectCave(X, Y, CaveT, CaveLateral, CaveFloor, &CaveNetwork);
@@ -1397,7 +1572,7 @@ float FCanyonGrayboxLayout::SurfaceHeightAt(float X, float Y, float* DistanceFro
     }
     for (const FCanyonGrayboxNode& Node : Nodes)
     {
-        if (Node.bCaveInterior) continue;
+        if (Node.bCaveInterior || Node.Layer == ECanyonRouteLayer::CaveAccess) continue;
         const float Distance = FVector2D::Distance(Point, FVector2D(Node.Position.X, Node.Position.Y));
         Consider(Distance * 0.72f,
             (Node.Layer == ECanyonRouteLayer::Upper ? 480.f : 440.f) * LengthScale,
@@ -1407,7 +1582,7 @@ float FCanyonGrayboxLayout::SurfaceHeightAt(float X, float Y, float* DistanceFro
             Node.Layer);
     }
     int32 BestIndex = 0;
-    for (int32 Index = 1; Index < 3; ++Index)
+    for (int32 Index = 1; Index < 4; ++Index)
         if (LayerHeight[Index] < LayerHeight[BestIndex]) BestIndex = Index;
     const float BestDistance = LayerDistance[BestIndex];
     if (DistanceFromRoute) *DistanceFromRoute = BestDistance;
@@ -1435,8 +1610,12 @@ float FCanyonGrayboxLayout::SurfaceHeightAt(float X, float Y, float* DistanceFro
                 FVector2D::Distance(Point, Start + Delta * U) - Edge.HalfWidth);
         }
         const float Avoidance = FMath::Clamp(OtherRouteMargin / 300.f, 0.f, 1.f);
+        const float Cover = 600.f + CaveFloor + 1120.f * EndFade * RadialFade;
         Height = FMath::Max(Height,
-            600.f + CaveFloor + 1120.f * EndFade * RadialFade * Avoidance);
+            CaveNetworks.IsValidIndex(CaveNetwork)
+                && CaveNetworks[CaveNetwork].Elevation != ECanyonCaveElevation::Descending
+                ? FMath::Lerp(Height, Cover, Avoidance)
+                : 600.f + CaveFloor + 1120.f * EndFade * RadialFade * Avoidance);
     }
     for (const FCanyonCaveHall& Hall : AllCaveHalls)
     {

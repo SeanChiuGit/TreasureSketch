@@ -16,7 +16,18 @@ bool FCanyonRandomCavesTest::RunTest(const FString& Parameters)
             || Context.WorldType == EWorldType::Game)) { World = Context.World(); break; }
     if (!TestNotNull(TEXT("A collision world exists"), World)) return false;
     TSet<ECanyonCavePattern> Patterns;
-    for (const int32 Seed : { 1001, 1008, 1006, 1010, 1020, 1030, 1040 })
+    TArray<int32> Seeds = { 1001, 1008, 1006, 1010, 1020, 1030, 1040, 1050, 1051 };
+    bool bFoundRandomUphill = false;
+    for (int32 Seed = 1100; Seed < 1300; ++Seed)
+        if (FCanyonGrayboxLayout::Generate(Seed).CaveNetworks.ContainsByPredicate(
+            [](const FCanyonCaveNetwork& Cave) { return Cave.Elevation == ECanyonCaveElevation::Ascending; }))
+        {
+            Seeds.Add(Seed);
+            bFoundRandomUphill = true;
+            break;
+        }
+    TestTrue(TEXT("Ordinary map pool can retain an uphill cave"), bFoundRandomUphill);
+    for (const int32 Seed : Seeds)
     {
         AProceduralIsland* Island = World->SpawnActor<AProceduralIsland>();
         if (!TestNotNull(TEXT("Random canyon actor exists"), Island)) return false;
@@ -30,8 +41,30 @@ bool FCanyonRandomCavesTest::RunTest(const FString& Parameters)
                 Island->GetActorTransform().TransformPosition(Node.Position + FVector(0.f, 0.f, 600.f)).Z
                     >= Island->GetFallRecoveryLimitZ() + 599.f);
         TestTrue(FString::Printf(TEXT("Random seed %d has a valid graph"), Seed), Layout.Validate());
+        if (Seed == 1050 || Seed == 1051)
+        {
+            const FVector Entry = Layout.Nodes[Layout.CaveMouthNodes[0]].Position;
+            const FVector Exit = Layout.Nodes[Layout.CaveMouthNodes[1]].Position;
+            TestTrue(TEXT("Ground-level entrance meets the exterior surface"),
+                FMath::Abs(Layout.SurfaceHeightAt(Entry.X, Entry.Y) - (600.f + Entry.Z)) < 15.f);
+            TestTrue(TEXT("Uphill exit rises while level comparison stays level"),
+                Seed == 1050 ? Exit.Z - Entry.Z > 250.f : FMath::Abs(Exit.Z - Entry.Z) < 1.f);
+            for (int32 I = 1; I < Layout.CavePathNodes.Num(); ++I)
+                TestTrue(TEXT("Main passage never descends from its ground-level entrance"),
+                    Layout.Nodes[Layout.CavePathNodes[I]].Position.Z + 1.f
+                        >= Layout.Nodes[Layout.CavePathNodes[I - 1]].Position.Z);
+            for (float T : { 0.2f, 0.4f, 0.6f, 0.8f })
+            {
+                FVector Point, Tangent;
+                Layout.SampleCave(T, Point, Tangent);
+                TestTrue(TEXT("Uphill passage remains covered by mountain rock"),
+                    Layout.SurfaceHeightAt(Point.X, Point.Y) > 600.f + Point.Z + Layout.CaveClearance(T));
+            }
+            UE_LOG(LogTemp, Display, TEXT("CANYON_ELEVATION Seed=%d RiseMeters=%.1f"), Seed, (Exit.Z - Entry.Z) / 100.f);
+        }
         TestTrue(TEXT("Random map contains cave networks"),
-            Layout.CaveNetworks.Num() >= (Seed == 1001 || Seed == 1010 || Seed == 1020 || Seed == 1030 || Seed == 1040 ? 1 : 2));
+            Layout.CaveNetworks.Num() >= (Seed == 1001 || Seed == 1010 || Seed == 1020
+                || Seed == 1030 || Seed == 1040 || Seed == 1050 || Seed == 1051 ? 1 : 2));
         if (Seed == 1030 || Seed == 1040)
         {
             TestTrue(TEXT("Hall and loop comparisons contain optional dead ends"), !Layout.CaveDeadEnds.IsEmpty());
@@ -114,6 +147,9 @@ bool FCanyonRandomCavesTest::RunTest(const FString& Parameters)
                         FCollisionShape::MakeCapsule(42.f, 92.f));
                     if (!bGround || bBlocked)
                     {
+                        UE_LOG(LogTemp, Warning, TEXT("CANYON_BLOCK Point=%s Hit=%s Normal=%s Component=%s"),
+                            *Center.ToString(), *Blocker.ImpactPoint.ToString(), *Blocker.ImpactNormal.ToString(),
+                            *GetNameSafe(Blocker.GetComponent()));
                         AddError(FString::Printf(TEXT("Seed %d %s branch%d segment%d step%d floor%d blocked%d"),
                             Seed, Layout.CaveName(), Branch, Segment, Step, bGround, bBlocked));
                         bFloor &= bGround;

@@ -94,9 +94,11 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
                             Layout.Nodes[Layout.CaveHalls[0].Node].Position) < 1.f);
                 }
         }
-        for (const FCanyonGrayboxNode& Node : Layout.Nodes)
+        FCanyonGrayboxLayout TerrainBounds = Layout;
+        TerrainBounds.ScaleForMap(1.f);
+        for (const FCanyonGrayboxNode& Node : TerrainBounds.Nodes)
             TestTrue(FString::Printf(TEXT("Seed %d route stays inside terrain"), Seed),
-                FMath::Abs(Node.Position.X) < 19000.f && FMath::Abs(Node.Position.Y) < 19000.f);
+                FMath::Abs(Node.Position.X) < 6270.f && FMath::Abs(Node.Position.Y) < 6270.f);
         TestTrue(TEXT("Graph adds several local route decisions"),
             Layout.Nodes.Num() >= 14 && Layout.Edges.Num() >= 19
             && Layout.Edges.Num() - Layout.Nodes.Num() + 1 >= 2);
@@ -204,8 +206,8 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
             {
                 const FVector Point = FMath::Lerp(A, B, Step / 24.f);
                 const float Height = EdgeHeight(Point.X, Point.Y);
-                TestTrue(FString::Printf(TEXT("Seed %d edge %d-%d layer %d step %d z %.1f->%.1f run %.1f remains walkable"),
-                    Seed, Edge.A, Edge.B, static_cast<int32>(Edge.Layer), Step, LastHeight, Height, StepLength),
+                TestTrue(FString::Printf(TEXT("Seed %d edge %d-%d layer %d endpoints %.1f/%.1f step %d z %.1f->%.1f run %.1f remains walkable"),
+                    Seed, Edge.A, Edge.B, static_cast<int32>(Edge.Layer), A.Z, B.Z, Step, LastHeight, Height, StepLength),
                     FMath::Abs(Height - LastHeight) / StepLength < 0.45f);
                 LastHeight = Height;
             }
