@@ -10,6 +10,8 @@ class ATreasureMarker;
 class ACameraActor;
 class ATreasureSketchCharacter;
 class APlayerState;
+class UStaticMeshComponent;
+class UMaterialInstanceDynamic;
 
 enum class EScoutSpectatorView : uint8
 {
@@ -58,6 +60,8 @@ public:
     bool HasTakenPhoto() const { return !LocalPhotoJpeg.IsEmpty(); }
     bool IsPhotoExpanded() const { return bPhotoExpanded; }
     bool IsCameraMode() const { return bCameraMode; }
+    bool IsPropSelectionMode() const { return bPropSelectionMode; }
+    bool HasPropSelectionTarget() const;
     uint8 GetActionFeedbackKind() const { return ActionFeedbackKind; }
     float GetActionFeedbackRemaining() const;
     int32 GetPaperRotationSteps() const { return PaperRotationSteps; }
@@ -90,6 +94,7 @@ public:
     void ClearSketch();
     void Shove();
     void TransformIntoProp();
+    void ReleasePropSelection();
     void RestoreHumanForm();
     UFUNCTION(Server, Reliable)
     void ServerTransformIntoProp(int32 RoundSerial, FVector_NetQuantize Origin, FVector_NetQuantizeNormal Direction, bool bRestore);
@@ -255,6 +260,18 @@ private:
     uint8 PaperRotationSteps = 0;
     bool bPhotoExpanded = false;
     bool bCameraMode = false;
+    bool bPropSelectionMode = false;
+    bool bPropButtonHeld = false;
+    float PropButtonHeldSeconds = 0.f;
+    int32 PropSelectionRoundSerial = 0;
+    FVector PropSelectionOrigin = FVector::ZeroVector;
+    FVector PropSelectionDirection = FVector::ForwardVector;
+    UPROPERTY(Transient) TObjectPtr<UStaticMeshComponent> PropSelectionHighlight;
+    UPROPERTY(Transient) TObjectPtr<UMaterialInstanceDynamic> PropHighlightMaterial;
+    bool CanSelectProp() const;
+    void UpdatePropSelection(float DeltaSeconds);
+    void UpdatePropSelectionTarget(const FVector& Origin, const FVector& Direction);
+    void CancelPropSelection();
     bool bWaitingSketchInputActive = false;
     bool bWasDrawing = false;
     bool bReplayInputActive = false;

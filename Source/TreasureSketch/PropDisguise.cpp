@@ -7,13 +7,16 @@
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
-bool PropDisguise::FindTarget(UWorld* World, const FVector& Origin, const FVector& Direction, FPropDisguise& Out)
+bool PropDisguise::FindTarget(UWorld* World, const FVector& Origin, const FVector& Direction, FPropDisguise& Out,
+    FTarget* OutTarget)
 {
+    if (OutTarget) *OutTarget = FTarget();
     if (!World || Origin.ContainsNaN() || Direction.ContainsNaN() || Direction.IsNearlyZero()) return false;
     const FVector End = Origin + Direction.GetSafeNormal() * WORLD_MAX;
     float BestTime = 1.f;
     UStaticMeshComponent* BestComponent = nullptr;
     FTransform BestTransform;
+    int32 BestInstanceIndex = INDEX_NONE;
     for (TActorIterator<AActor> It(World); It; ++It)
     {
         if (It->IsHidden() || It->IsA<APawn>()) continue;
@@ -21,7 +24,8 @@ bool PropDisguise::FindTarget(UWorld* World, const FVector& Origin, const FVecto
         It->GetComponents(Components);
         for (UStaticMeshComponent* Component : Components)
         {
-            if (!Component->IsVisible() || Component->bHiddenInGame || !Component->GetStaticMesh()) continue;
+            if (!Component->IsVisible() || Component->bHiddenInGame || !Component->GetStaticMesh()
+                || Component->ComponentHasTag(TEXT("PropSelectionHighlight"))) continue;
             auto* Instances = Cast<UInstancedStaticMeshComponent>(Component);
             const int32 Count = Instances ? Instances->GetInstanceCount() : 1;
             for (int32 Index = 0; Index < Count; ++Index)
@@ -40,10 +44,17 @@ bool PropDisguise::FindTarget(UWorld* World, const FVector& Origin, const FVecto
                 BestTime = Time;
                 BestComponent = Component;
                 BestTransform = Transform;
+                BestInstanceIndex = Instances ? Index : INDEX_NONE;
             }
         }
     }
     if (!BestComponent) return false;
+    if (OutTarget)
+    {
+        OutTarget->Component = BestComponent;
+        OutTarget->InstanceIndex = BestInstanceIndex;
+        OutTarget->Transform = BestTransform;
+    }
     Out = FPropDisguise();
     Out.Mesh = BestComponent->GetStaticMesh();
     Out.Scale = BestTransform.GetScale3D();

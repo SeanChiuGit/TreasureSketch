@@ -6,6 +6,7 @@
 class UStaticMesh;
 class UMaterialInterface;
 class UWorld;
+class UStaticMeshComponent;
 
 USTRUCT()
 struct FPropDisguise
@@ -20,5 +21,12 @@ struct FPropDisguise
 
 namespace PropDisguise
 {
-    bool FindTarget(UWorld* World, const FVector& Origin, const FVector& Direction, FPropDisguise& Out);
+    struct FTarget
+    {
+        TWeakObjectPtr<UStaticMeshComponent> Component;
+        int32 InstanceIndex = INDEX_NONE;
+        FTransform Transform;
+    };
+    bool FindTarget(UWorld* World, const FVector& Origin, const FVector& Direction, FPropDisguise& Out,
+        FTarget* OutTarget = nullptr);
 }

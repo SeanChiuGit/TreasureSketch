@@ -18,6 +18,8 @@
 #include "IImageWrapperModule.h"
 #include "InputKeyEventArgs.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -197,6 +199,11 @@ bool ATreasureSketchPlayerController::InputKey(const FInputKeyEventArgs& Params)
     }
     if (Params.Key == EKeys::Escape && Params.Event == IE_Pressed && !IsFrontEndVisible())
     {
+        if (bPropSelectionMode || bPropButtonHeld)
+        {
+            CancelPropSelection();
+            return true;
+        }
         if (bCameraMode)
         {
             bCameraMode = false;
@@ -255,6 +262,7 @@ void ATreasureSketchPlayerController::SetupInputComponent()
     InputComponent->BindAction("Dig", IE_Released, this, &ATreasureSketchPlayerController::StopDig);
     InputComponent->BindAction("Shove", IE_Pressed, this, &ATreasureSketchPlayerController::Shove);
     InputComponent->BindAction("PropDisguise", IE_Pressed, this, &ATreasureSketchPlayerController::TransformIntoProp);
+    InputComponent->BindAction("PropDisguise", IE_Released, this, &ATreasureSketchPlayerController::ReleasePropSelection);
     InputComponent->BindAction("RestoreHuman", IE_Pressed, this, &ATreasureSketchPlayerController::RestoreHumanForm);
     InputComponent->BindAction("TakePhoto", IE_Pressed, this, &ATreasureSketchPlayerController::TakePhoto);
     InputComponent->BindAction("ClearSketch", IE_Pressed, this, &ATreasureSketchPlayerController::ClearSketch);
@@ -282,6 +290,7 @@ void ATreasureSketchPlayerController::ToggleWeatherFog()
 
 void ATreasureSketchPlayerController::ResetRoundPhoto()
 {
+    CancelPropSelection();
     ServerPhotoJpeg.Reset();
     bServerDrawingOverheadView = false;
 }
@@ -448,6 +457,7 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
     Super::PlayerTick(DeltaTime);
     UpdateHideTreasureMarkers();
     UpdateFrontEnd();
+    UpdatePropSelection(DeltaTime);
     if (IsFrontEndVisible()) { bCameraMode = false; return; }
     const ATreasureSketchGameState* CursorGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (bLocalDigHeld && (bMapOpen || !CursorGS || CursorGS->Phase != ETreasureRoundPhase::HunterSearching
@@ -645,6 +655,7 @@ void ATreasureSketchPlayerController::SetPauseMenuOpen(bool bOpen)
     bPauseMenuOpen = bOpen;
     if (bOpen)
     {
+        CancelPropSelection();
         ServerCancelDig();
         bLocalDigHeld = false;
         bCameraMode = false;
@@ -1229,6 +1240,7 @@ void ATreasureSketchPlayerController::ToggleMap()
     SetSprayCursorMode(false);
     bCameraMode = false;
     ServerCancelDig();
+    CancelPropSelection();
     bLocalDigHeld = false;
     bMapOpen = !bMapOpen;
     if (bMapOpen)
@@ -1441,22 +1453,139 @@ void ATreasureSketchPlayerController::ServerSpraySurface_Implementation(FVector_
     if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) GM->SpraySurface(Hit);
 }
 
-void ATreasureSketchPlayerController::TransformIntoProp()
+bool ATreasureSketchPlayerController::CanSelectProp() const
 {
     const auto* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     const auto* PS = GetPlayerState<ATreasureSketchPlayerState>();
-    if (!GS || !PS || bPauseMenuOpen || bMapOpen || !GS->bGameStarted || GS->IsRoundOver()
-        || GS->RoomMode != ETreasureRoomMode::HideAndSeek || PS->PlayerRole != ETreasurePlayerRole::Hunter) return;
+    return GS && PS && GetPawn() && !bPauseMenuOpen && !bMapOpen && !IsFrontEndVisible()
+        && GS->bGameStarted && GS->Phase == ETreasureRoundPhase::HunterSearching
+        && GS->RoomMode == ETreasureRoomMode::HideAndSeek && PS->PlayerRole == ETreasurePlayerRole::Hunter;
+}
+
+bool ATreasureSketchPlayerController::HasPropSelectionTarget() const
+{
+    return bPropSelectionMode && PropSelectionHighlight && PropSelectionHighlight->IsVisible()
+        && PropSelectionHighlight->GetStaticMesh();
+}
+
+void ATreasureSketchPlayerController::CancelPropSelection()
+{
+    bPropSelectionMode = false;
+    bPropButtonHeld = false;
+    PropButtonHeldSeconds = 0.f;
+    PropSelectionRoundSerial = 0;
+    if (PropSelectionHighlight)
+    {
+        PropSelectionHighlight->SetVisibility(false);
+        PropSelectionHighlight->SetHiddenInGame(true);
+    }
+}
+
+void ATreasureSketchPlayerController::ReleasePropSelection()
+{
+    bPropButtonHeld = false;
+    PropButtonHeldSeconds = 0.f;
+}
+
+void ATreasureSketchPlayerController::UpdatePropSelectionTarget(const FVector& Origin, const FVector& Direction)
+{
+    PropSelectionOrigin = Origin;
+    PropSelectionDirection = Direction;
+    FPropDisguise Form;
+    PropDisguise::FTarget Target;
+    if (!PropDisguise::FindTarget(GetWorld(), Origin, Direction, Form, &Target))
+    {
+        if (PropSelectionHighlight)
+        {
+            PropSelectionHighlight->SetVisibility(false);
+            PropSelectionHighlight->SetHiddenInGame(true);
+        }
+        return;
+    }
+    if (!PropSelectionHighlight)
+    {
+        // This unreplicated overlay colors only the selected instance, leaving
+        // the source prop and the other player's view unchanged.
+        PropSelectionHighlight = NewObject<UStaticMeshComponent>(this, TEXT("PropSelectionHighlight"));
+        PropSelectionHighlight->ComponentTags.Add(TEXT("PropSelectionHighlight"));
+        PropSelectionHighlight->SetIsReplicated(false);
+        PropSelectionHighlight->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        PropSelectionHighlight->SetGenerateOverlapEvents(false);
+        PropSelectionHighlight->SetCastShadow(false);
+        PropSelectionHighlight->SetMobility(EComponentMobility::Movable);
+        PropSelectionHighlight->RegisterComponentWithWorld(GetWorld());
+        auto* Base = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+        PropHighlightMaterial = UMaterialInstanceDynamic::Create(Base, this);
+        PropHighlightMaterial->SetVectorParameterValue(TEXT("Color"), FLinearColor(2.f, 1.4f, 0.05f));
+    }
+    PropSelectionHighlight->SetStaticMesh(Form.Mesh);
+    FTransform OverlayTransform = Target.Transform;
+    OverlayTransform.SetScale3D(OverlayTransform.GetScale3D() * 1.01f);
+    PropSelectionHighlight->SetWorldTransform(OverlayTransform);
+    for (int32 Slot = 0; Slot < PropSelectionHighlight->GetNumMaterials(); ++Slot)
+        PropSelectionHighlight->SetMaterial(Slot, PropHighlightMaterial);
+    PropSelectionHighlight->SetVisibility(true);
+    PropSelectionHighlight->SetHiddenInGame(false);
+}
+
+void ATreasureSketchPlayerController::UpdatePropSelection(float DeltaSeconds)
+{
+    if (!IsLocalController()) return;
+    const auto* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (!CanSelectProp() || ((bPropSelectionMode || bPropButtonHeld) && GS->RoundSerial != PropSelectionRoundSerial))
+    {
+        CancelPropSelection();
+        return;
+    }
+    if (bPropButtonHeld && !bPropSelectionMode)
+    {
+        PropButtonHeldSeconds += DeltaSeconds;
+        if (PropButtonHeldSeconds >= 0.4f)
+        {
+            bPropSelectionMode = true;
+            bCameraMode = false;
+        }
+    }
+    if (!bPropSelectionMode) return;
     FVector Origin;
     FRotator Rotation;
     GetPlayerViewPoint(Origin, Rotation);
-    ServerTransformIntoProp(GS->RoundSerial, Origin, Rotation.Vector(), false);
+    UpdatePropSelectionTarget(Origin, Rotation.Vector());
+}
+
+void ATreasureSketchPlayerController::TransformIntoProp()
+{
+    if (!CanSelectProp()) { CancelPropSelection(); return; }
+    const auto* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if ((bPropSelectionMode || bPropButtonHeld) && GS->RoundSerial != PropSelectionRoundSerial) CancelPropSelection();
+    if (bPropButtonHeld) return;
+    bPropButtonHeld = true;
+    if (bPropSelectionMode)
+    {
+        // Confirm the last highlighted ray, not a new camera pose that has not
+        // been drawn yet. The server independently resolves this same ray.
+        UpdatePropSelectionTarget(PropSelectionOrigin, PropSelectionDirection);
+        if (!HasPropSelectionTarget())
+        {
+            StatusMessage = TEXT("未选中物品；移动准星，对准高亮物品后点击左键。");
+            StatusUntil = GetWorld()->GetTimeSeconds() + 3.f;
+            return;
+        }
+        const FVector Origin = PropSelectionOrigin;
+        const FVector Direction = PropSelectionDirection;
+        CancelPropSelection();
+        ServerTransformIntoProp(GS->RoundSerial, Origin, Direction, false);
+        return;
+    }
+    PropButtonHeldSeconds = 0.f;
+    PropSelectionRoundSerial = GS->RoundSerial;
 }
 
 void ATreasureSketchPlayerController::RestoreHumanForm()
 {
     const auto* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (!GS || bPauseMenuOpen || bMapOpen) return;
+    CancelPropSelection();
     ServerTransformIntoProp(GS->RoundSerial, FVector::ZeroVector, FVector::ForwardVector, true);
 }
 
@@ -1487,8 +1616,8 @@ void ATreasureSketchPlayerController::ServerTransformIntoProp_Implementation(int
 
 void ATreasureSketchPlayerController::ClientPropDisguiseFeedback_Implementation(bool bFound, bool bRestore)
 {
-    StatusMessage = bRestore ? TEXT("已恢复人形。") : bFound ? TEXT("已变形；左键可再次换物品，Q 恢复人形。")
-        : TEXT("未瞄准物品；对准场景中的物品再按左键。");
+    StatusMessage = bRestore ? TEXT("已恢复人形。") : bFound ? TEXT("已变形；长按左键可重新选取物品，Q 恢复人形。")
+        : TEXT("未瞄准物品；长按左键打开取景框，选中高亮物品后点击确认。");
     StatusUntil = GetWorld()->GetTimeSeconds() + 3.f;
 }
 
@@ -1574,6 +1703,7 @@ void ATreasureSketchPlayerController::ClientTerrainFeedback_Implementation(uint8
 
 void ATreasureSketchPlayerController::ClientStartNewRound_Implementation(int32 NewRoundSerial)
 {
+    CancelPropSelection();
     bLocalDigHeld = false;
     bPauseMenuOpen = false;
     bDrawingOverheadView = false;
