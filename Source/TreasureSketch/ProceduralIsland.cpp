@@ -1480,12 +1480,92 @@ void AProceduralIsland::BuildCanyonCaves()
                     600.f + CanyonLayout.Nodes[Index].Position.Z);
     Bounds.BottomZ = LowestFloor - 250.f;
     Bounds.StepXY = CellSize;
-    Bounds.StepZ = FMath::Max(25.f, 30.f * CanyonLayout.LengthScale);
+    Bounds.StepZ = FMath::Max(45.f, 60.f * CanyonLayout.LengthScale);
+    struct FCarveSegment { FVector A, B; float Width, Clearance; int32 Group; };
+    TArray<FCarveSegment> CarveSegments;
+    int32 CarveGroups = 0;
+    for (int32 NetworkIndex = 0; NetworkIndex < CanyonLayout.CaveNetworks.Num(); ++NetworkIndex)
+    {
+        const FCanyonCaveNetwork& Network = CanyonLayout.CaveNetworks[NetworkIndex];
+        TArray<TArray<int32>> Paths = Network.Branches;
+        if (Paths.IsEmpty()) Paths.Add(Network.PathNodes);
+        for (const FCanyonDeadEnd& DeadEnd : Network.DeadEnds) Paths.Append(DeadEnd.Paths);
+        for (const TArray<int32>& Path : Paths)
+        {
+            float Total = 0.f, Along = 0.f;
+            for (int32 I = 1; I < Path.Num(); ++I)
+                Total += FVector::Dist2D(CanyonLayout.Nodes[Path[I - 1]].Position,
+                    CanyonLayout.Nodes[Path[I]].Position);
+            for (int32 I = 1; I < Path.Num(); ++I)
+            {
+                const FVector A = CanyonLayout.Nodes[Path[I - 1]].Position;
+                const FVector B = CanyonLayout.Nodes[Path[I]].Position;
+                const float Length = FVector::Dist2D(A, B);
+                const float T = (Along + Length * 0.5f) / Total;
+                CarveSegments.Add({ A, B,
+                    Network.Pattern == ECanyonCavePattern::ThreeMouthHall ? 275.f : CanyonLayout.CaveHalfWidth(T, NetworkIndex),
+                    Network.Pattern == ECanyonCavePattern::ThreeMouthHall ? 430.f : CanyonLayout.CaveClearance(T, NetworkIndex), CarveGroups });
+                Along += Length;
+            }
+            ++CarveGroups;
+        }
+        for (const FCanyonGrayboxEdge& Edge : CanyonLayout.Edges)
+            if (!Edge.bCave && (Network.MouthNodes.Contains(Edge.A) || Network.MouthNodes.Contains(Edge.B)))
+                CarveSegments.Add({ CanyonLayout.Nodes[Edge.A].Position, CanyonLayout.Nodes[Edge.B].Position,
+                    CanyonLayout.CaveHalfWidth(0.f, NetworkIndex), CanyonLayout.CaveClearance(0.f, NetworkIndex), CarveGroups++ });
+    }
     BuildCanyonSolidMesh(CanyonCaveMesh, Bounds, [&](float X, float Y)
     {
         FCanyonSolidColumn Column;
         Column.SurfaceZ = CanyonLayout.SurfaceHeightAt(X, Y);
-        CanyonLayout.SampleCaveTunnels(X, Y, Bounds.StepXY, Column.SurfaceZ, Column.AdditionalTunnels);
+        float T = 0.f, Floor = 0.f;
+        int32 Network = INDEX_NONE;
+        CanyonLayout.ProjectCave(X, Y, T, Column.Lateral, Floor, &Network);
+        Column.FloorZ = 600.f + Floor;
+        Column.HalfWidth = CanyonLayout.CaveHalfWidth(T, Network);
+        Column.Clearance = CanyonLayout.CaveClearance(T, Network);
+        if (CanyonLayout.CavePattern == ECanyonCavePattern::ThreeMouthHall
+            || CanyonLayout.CavePattern == ECanyonCavePattern::LongWindingThrough
+            || CanyonLayout.CavePattern == ECanyonCavePattern::LongLoop
+            || CanyonLayout.CavePattern == ECanyonCavePattern::BranchedThrough
+            || CanyonLayout.CaveNetworks.Num() > 1)
+        {
+            // Keep every branch in the same solid field. Choosing just the
+            // nearest XY centerline closes a tunnel where passages cross at
+            // different elevations.
+            Column.HalfWidth = 0.f;
+            const FVector2D Point(X, Y);
+            struct FNearestTunnel { float Distance = TNumericLimits<float>::Max(); FCanyonSolidTunnel Tunnel; };
+            TArray<FNearestTunnel, TInlineAllocator<12>> Nearest;
+            Nearest.SetNum(CarveGroups);
+            for (const FCarveSegment& Segment : CarveSegments)
+            {
+                const FVector& A = Segment.A;
+                const FVector& B = Segment.B;
+                const FVector2D Start(A.X, A.Y), Delta(B.X - A.X, B.Y - A.Y);
+                const float Fraction = FMath::Clamp(FVector2D::DotProduct(Point - Start, Delta)
+                    / Delta.SizeSquared(), 0.f, 1.f);
+                const float Distance = FVector2D::Distance(Point, Start + Delta * Fraction);
+                if (Distance > Segment.Width + Bounds.StepXY) continue;
+                if (Distance < Nearest[Segment.Group].Distance)
+                {
+                    Nearest[Segment.Group].Distance = Distance;
+                    Nearest[Segment.Group].Tunnel = { static_cast<float>(600.f + FMath::Lerp(A.Z, B.Z, Fraction)),
+                        Distance, Segment.Width, Segment.Clearance };
+                }
+            }
+            for (const FNearestTunnel& Tunnel : Nearest)
+                if (Tunnel.Distance < TNumericLimits<float>::Max()) Column.AdditionalTunnels.Add(Tunnel.Tunnel);
+        }
+        for (const FCanyonCaveHall& Hall : CanyonLayout.AllCaveHalls)
+        {
+            const FVector& Center = CanyonLayout.Nodes[Hall.Node].Position;
+            const float Distance = FVector2D::Distance(FVector2D(X, Y),
+                FVector2D(Center.X, Center.Y));
+            if (Distance <= Hall.Radius + Bounds.StepXY)
+                Column.AdditionalTunnels.Add({ static_cast<float>(600.f + Center.Z), Distance,
+                    Hall.Radius, Hall.Clearance });
+        }
         return Column;
     });
     CanyonCaveMesh->ContainsPhysicsTriMeshData(true);

@@ -30,30 +30,3 @@ The `CanyonSolidMesh` builder samples the same exterior height on those grid
 positions, then extracts the mountain exterior, entrances, tunnel surfaces,
 and floor from one solid field. The old separate shell and corner-based terrain
 deletion are removed. The surrounding terrain and route graph stay in place.
-
-## Cave cover constraints
-
-Canyon layout now builds one shared list of tunnel segments, rooms and actual
-portals. Both the mountain height envelope and solid-field void sampler use it.
-Interior columns reserve at least 200 cm of rock above the carved space (or a
-larger value at increased map scale). Descending passages retain at least
-260 cm of target headroom where terrain needs to rise. Ground-level and uphill
-passages request their full designed clearance from the same mountain envelope.
-
-Only actual exterior portals permit an opening through the envelope. Exterior
-road cuts stop before the protected interior; the transition has a buffer for
-mesh sampling. Uphill portal approaches have a longer height transition and the
-outside bypass leaves more space around the mountain. Raised exterior roads use
-shared junction heights and a 0.30 grade guide. Solid extraction uses a minimum
-25 cm vertical cell size to retain the reserved rock layer.
-
-The collision test checks passage floors and player capsule clearance, then
-samples center and side positions for ceiling and actual rock thickness. Seed
-1050 remains the uphill review scene; 1051 is its level comparison. These tests
-check geometry and collision, not the visual quality of the pictured location.
-Current verification: Editor build succeeds. CanyonCoverRelease.log records
-passing passage clearance, ceiling thickness, portal height and surface grade
-assertions for the sampled layouts, including 1050 and 1051. Both suites still
-report failure on cave-count assertions: the conservative placement filter
-rejects additional caves on some maps, lowering mixed-cave frequency. This
-placement-rate limitation is retained rather than bypassing safety checks.
