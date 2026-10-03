@@ -1489,6 +1489,7 @@ void AProceduralIsland::BuildCanyonCaves()
         const FCanyonCaveNetwork& Network = CanyonLayout.CaveNetworks[NetworkIndex];
         TArray<TArray<int32>> Paths = Network.Branches;
         if (Paths.IsEmpty()) Paths.Add(Network.PathNodes);
+        for (const FCanyonDeadEnd& DeadEnd : Network.DeadEnds) Paths.Append(DeadEnd.Paths);
         for (const TArray<int32>& Path : Paths)
         {
             float Total = 0.f, Along = 0.f;
@@ -1628,10 +1629,13 @@ void AProceduralIsland::BuildCanyonCaves()
     for (int32 NetworkIndex = 0; NetworkIndex < CanyonLayout.CaveNetworks.Num(); ++NetworkIndex)
     {
         const FCanyonCaveNetwork& Network = CanyonLayout.CaveNetworks[NetworkIndex];
-        if (NetworkIndex == 0 && Network.Pattern != ECanyonCavePattern::BranchedThrough) continue;
-        TArray<TArray<int32>> Paths = Network.Branches;
-        if (Paths.IsEmpty()) Paths.Add(Network.PathNodes);
-        if (NetworkIndex == 0) Paths.RemoveAt(0); // Main path already has lamps.
+        TArray<TArray<int32>> Paths;
+        if (NetworkIndex > 0)
+        {
+            Paths = Network.Branches;
+            if (Paths.IsEmpty()) Paths.Add(Network.PathNodes);
+        }
+        for (const FCanyonDeadEnd& DeadEnd : Network.DeadEnds) Paths.Append(DeadEnd.Paths);
         for (const TArray<int32>& Path : Paths)
             for (int32 Segment = 1; Segment < Path.Num(); ++Segment)
             {

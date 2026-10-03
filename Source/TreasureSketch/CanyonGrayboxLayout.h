@@ -41,6 +41,15 @@ struct FCanyonCaveHall
     float Clearance = 560.f;
 };
 
+enum class ECanyonDeadEndKind : uint8 { ShortAlcove, LongWinding, Forked };
+
+struct FCanyonDeadEnd
+{
+    ECanyonDeadEndKind Kind = ECanyonDeadEndKind::ShortAlcove;
+    TArray<TArray<int32>> Paths;
+    TArray<int32> EndNodes;
+};
+
 struct FCanyonCaveNetwork
 {
     ECanyonCavePattern Pattern = ECanyonCavePattern::ThroughShortcut;
@@ -49,6 +58,7 @@ struct FCanyonCaveNetwork
     TArray<TArray<int32>> Branches;
     TArray<bool> BranchOpen;
     TArray<FCanyonCaveHall> Halls;
+    TArray<FCanyonDeadEnd> DeadEnds; // Optional additions to the base cave topology.
 };
 
 struct FCanyonGrayboxLayout
@@ -65,6 +75,7 @@ struct FCanyonGrayboxLayout
     TArray<TArray<int32>> CaveBranches; // Continuous paths: hall legs, or loop stems and arms.
     TArray<bool> CaveBranchOpen; // True: exterior mouth. False: enclosed dead end.
     TArray<FCanyonCaveHall> CaveHalls;
+    TArray<FCanyonDeadEnd> CaveDeadEnds;
     TArray<FCanyonCaveNetwork> CaveNetworks;
     TArray<int32> AllCaveMouthNodes;
     TArray<FCanyonCaveHall> AllCaveHalls;

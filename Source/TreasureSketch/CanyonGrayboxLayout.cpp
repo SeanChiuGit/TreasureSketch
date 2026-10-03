@@ -29,8 +29,59 @@ TArray<TArray<FVector>> MakeLoopPaths(const FVector& MouthA, const FVector& Mout
     return Paths;
 }
 
-TArray<TArray<FVector>> MakeBranchedPaths(const FVector& MouthA, const FVector& MouthB,
-    const FVector& Outward, int32 Seed)
+struct FDeadEndShape
+{
+    ECanyonDeadEndKind Kind;
+    TArray<TArray<FVector>> Paths;
+    TArray<FVector> Ends;
+};
+
+struct FLongCaveShape
+{
+    TArray<FVector> Main;
+    TArray<FDeadEndShape> DeadEnds;
+};
+
+FDeadEndShape MakeDeadEnd(const FVector& Junction, const FVector& Direction,
+    const FVector& IntoRock, ECanyonDeadEndKind Kind, FRandomStream& Random)
+{
+    FDeadEndShape Shape;
+    Shape.Kind = Kind;
+    if (Kind == ECanyonDeadEndKind::ShortAlcove)
+    {
+        const FVector End = Junction + IntoRock * Random.FRandRange(1700.f, 2300.f)
+            - Direction * 250.f + FVector(0.f, 0.f, -100.f);
+        Shape.Paths.Add({ Junction, End });
+        Shape.Ends.Add(End);
+    }
+    else if (Kind == ECanyonDeadEndKind::LongWinding)
+    {
+        const float Stretch = Random.FRandRange(0.9f, 1.12f);
+        const FVector P1 = Junction + IntoRock * (2500.f * Stretch) - Direction * 1000.f + FVector(0.f, 0.f, -300.f);
+        const FVector P2 = Junction + IntoRock * (6000.f * Stretch) - Direction * 1400.f + FVector(0.f, 0.f, -650.f);
+        const FVector P3 = Junction + IntoRock * (8500.f * Stretch) + Direction * 1200.f + FVector(0.f, 0.f, -850.f);
+        const FVector End = Junction + IntoRock * (11000.f * Stretch) + Direction * 800.f + FVector(0.f, 0.f, -850.f);
+        Shape.Paths.Add({ Junction, P1, P2, P3, End });
+        Shape.Ends.Add(End);
+    }
+    else
+    {
+        const FVector Fork = Junction + IntoRock * 2700.f + Direction * 350.f + FVector(0.f, 0.f, -350.f);
+        Shape.Paths.Add({ Junction, Fork });
+        for (int32 Sign : { -1, 1 })
+        {
+            const FVector Bend = Fork + IntoRock * 1200.f + Direction * (Sign * 1700.f) + FVector(0.f, 0.f, -150.f);
+            const FVector End = Fork + IntoRock * Random.FRandRange(2400.f, 2900.f)
+                + Direction * (Sign * 2500.f) + FVector(0.f, 0.f, -150.f);
+            Shape.Paths.Add({ Fork, Bend, End });
+            Shape.Ends.Add(End);
+        }
+    }
+    return Shape;
+}
+
+FLongCaveShape MakeLongCave(const FVector& MouthA, const FVector& MouthB,
+    const FVector& Outward, int32 Seed, bool bPreview)
 {
     const FVector Direction = (MouthB - MouthA).GetSafeNormal2D();
     const float Drop = FMath::Min(2000.f, 500.f + 0.22f * (FVector::Dist2D(MouthA, MouthB) + 1500.f)
@@ -38,27 +89,45 @@ TArray<TArray<FVector>> MakeBranchedPaths(const FVector& MouthA, const FVector& 
     const FVector FirstPass = MouthA - Direction * 6500.f - Outward * 7000.f + FVector(0.f, 0.f, -2200.f);
     const FVector LastPass = MouthB + Direction * 2500.f - Outward * 7000.f + FVector(0.f, 0.f, -Drop - 900.f);
     FRandomStream Random(Seed ^ 0x4252414E);
-    const int32 Count = Random.RandRange(2, 4);
-    TArray<TArray<FVector>> Paths;
+    const int32 Count = bPreview ? 3 : (Seed != 1001 && Random.FRand() < 0.6f ? Random.RandRange(1, 3) : 0);
+    TArray<ECanyonDeadEndKind> Kinds = { ECanyonDeadEndKind::ShortAlcove, ECanyonDeadEndKind::LongWinding, ECanyonDeadEndKind::Forked };
+    if (!bPreview)
+        for (int32 I = 2; I > 0; --I) Kinds.Swap(I, Random.RandRange(0, I));
+    FLongCaveShape Shape;
     TArray<FVector> Main = { MouthA, FirstPass };
     for (int32 I = 0; I < Count; ++I)
     {
-        const FVector Junction = FMath::Lerp(FirstPass, LastPass, (I + 1.f) / (Count + 1.f));
+        const float PreviewFractions[] = { 0.14f, 0.48f, 0.84f };
+        const FVector Junction = FMath::Lerp(FirstPass, LastPass,
+            bPreview ? PreviewFractions[I] : (I + 1.f) / (Count + 1.f));
         Main.Add(Junction);
-        const float Depth = I % 2 == 0 ? Random.FRandRange(3500.f, 4500.f) : Random.FRandRange(6000.f, 7500.f);
-        const float Descent = Random.FRandRange(200.f, 450.f);
-        const float Bend = I % 2 == 0 ? 350.f : -350.f;
-        Paths.Add({ Junction,
-            Junction - Outward * (Depth * 0.55f) + Direction * Bend + FVector(0.f, 0.f, -Descent),
-            Junction - Outward * Depth + Direction * (Bend * 1.5f) + FVector(0.f, 0.f, -Descent) });
+        FDeadEndShape Addition = MakeDeadEnd(Junction, Direction, -Outward, Kinds[I], Random);
+        bool bSeparate = true;
+        for (const FDeadEndShape& Existing : Shape.DeadEnds)
+            for (const auto& Path : Addition.Paths)
+                for (int32 Segment = 1; Segment < Path.Num(); ++Segment)
+                    for (int32 Sample = 0; Sample <= 8; ++Sample)
+                    {
+                        const FVector Probe = FMath::Lerp(Path[Segment - 1], Path[Segment], Sample / 8.f);
+                        for (const auto& OtherPath : Existing.Paths)
+                            for (int32 Edge = 1; Edge < OtherPath.Num(); ++Edge)
+                            {
+                                const FVector P = OtherPath[Edge - 1], Q = OtherPath[Edge];
+                                const FVector2D Delta(Q.X - P.X, Q.Y - P.Y);
+                                const float T = FMath::Clamp(FVector2D::DotProduct(
+                                    FVector2D(Probe.X - P.X, Probe.Y - P.Y), Delta) / Delta.SizeSquared(), 0.f, 1.f);
+                                if (FVector::Dist2D(Probe, FMath::Lerp(P, Q, T)) < 1900.f) bSeparate = false;
+                            }
+                    }
+        if (bSeparate) Shape.DeadEnds.Add(MoveTemp(Addition));
     }
     Main.Append({ LastPass,
         MouthB + Direction * 2500.f - Outward * 5000.f + FVector(0.f, 0.f, -Drop - 900.f),
         MouthA - Direction * 1500.f - Outward * 5000.f + FVector(0.f, 0.f, -Drop + 300.f),
         MouthA - Direction * 1500.f - Outward * 3000.f + FVector(0.f, 0.f, -Drop),
         MouthB - Outward * 3000.f + FVector(0.f, 0.f, -700.f), MouthB });
-    Paths.Insert(MoveTemp(Main), 0);
-    return Paths;
+    Shape.Main = MoveTemp(Main);
+    return Shape;
 }
 }
 
@@ -67,13 +136,13 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
     FCanyonGrayboxLayout Plan;
     Plan.Seed = InSeed;
     FRandomStream CaveTypeRandom(InSeed ^ 0x54595045);
-    Plan.CavePattern = static_cast<ECanyonCavePattern>(CaveTypeRandom.RandRange(0, 4));
+    Plan.CavePattern = static_cast<ECanyonCavePattern>(CaveTypeRandom.RandRange(0, 3));
     if (bHallPreview || InSeed == 1002 || InSeed == 1003)
         Plan.CavePattern = ECanyonCavePattern::ThreeMouthHall;
     else if (InSeed == 1001) Plan.CavePattern = ECanyonCavePattern::LongWindingThrough;
     else if (InSeed == 1000) Plan.CavePattern = ECanyonCavePattern::ThroughShortcut;
     if (bLoopPreview || InSeed == 1010) Plan.CavePattern = ECanyonCavePattern::LongLoop;
-    if (bBranchPreview || InSeed == 1020) Plan.CavePattern = ECanyonCavePattern::BranchedThrough;
+    if (bBranchPreview || InSeed == 1020) Plan.CavePattern = ECanyonCavePattern::LongWindingThrough;
     const float Area = FMath::IsFinite(MapScale) ? FMath::Clamp(MapScale, 0.5f, 5.f) : 1.f;
     // The comparison seeds share geometry; ordinary hall seeds vary the whole map.
     const int32 LayoutSeed = InSeed == 1003 ? 1002 : InSeed == 1020 ? 1001 : InSeed;
@@ -380,11 +449,11 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
     if (!bHallPreview && !bLoopPreview && !bBranchPreview && InSeed != 1010 && InSeed != 1020 && (InSeed < 1000 || InSeed > 1003))
     {
         const ECanyonCavePattern Second = Plan.CavePattern == ECanyonCavePattern::ThroughShortcut
-            ? static_cast<ECanyonCavePattern>(CaveTypeRandom.RandRange(1, 4))
+            ? static_cast<ECanyonCavePattern>(CaveTypeRandom.RandRange(1, 3))
             : ECanyonCavePattern::ThroughShortcut;
         CaveTypes.Add(Second);
         if (Area >= 2.f)
-            for (int32 Type = 0; Type < 5 && CaveTypes.Num() < (Area >= 4.f ? 4 : 3); ++Type)
+            for (int32 Type = 0; Type < 4 && CaveTypes.Num() < (Area >= 4.f ? 4 : 3); ++Type)
                 if (!CaveTypes.Contains(static_cast<ECanyonCavePattern>(Type)))
                     CaveTypes.Add(static_cast<ECanyonCavePattern>(Type));
     }
@@ -397,6 +466,7 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
         Plan.CaveBranches.Reset();
         Plan.CaveBranchOpen.Reset();
         Plan.CaveHalls.Reset();
+        Plan.CaveDeadEnds.Reset();
         CandidateEdges.Reset();
         for (const FCanyonGrayboxEdge& Candidate : CaveCandidates)
             for (int32 Index = 0; Index < Plan.Edges.Num(); ++Index)
@@ -462,9 +532,9 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
                         if (bHeightConflict) continue;
                         const bool bExistingLoop = Plan.CaveNetworks.ContainsByPredicate(
                             [](const FCanyonCaveNetwork& Network) { return Network.Pattern == ECanyonCavePattern::LongLoop
-                                || Network.Pattern == ECanyonCavePattern::BranchedThrough; });
+                                || !Network.DeadEnds.IsEmpty(); });
                         if (Plan.CavePattern == ECanyonCavePattern::LongLoop
-                            || Plan.CavePattern == ECanyonCavePattern::BranchedThrough
+                            || Plan.CavePattern == ECanyonCavePattern::LongWindingThrough
                             || (bExistingLoop && Plan.CavePattern == ECanyonCavePattern::ThroughShortcut))
                         {
                             // Separate independent cave networks; overlapping voids can
@@ -472,8 +542,13 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
                             TArray<TArray<FVector>> ProposedCaves;
                             if (Plan.CavePattern == ECanyonCavePattern::LongLoop)
                                 ProposedCaves = MakeLoopPaths(FirstMouth, SecondMouth, NormalCandidate * Sign, InSeed);
-                            else if (Plan.CavePattern == ECanyonCavePattern::BranchedThrough)
-                                ProposedCaves = MakeBranchedPaths(FirstMouth, SecondMouth, NormalCandidate * Sign, InSeed);
+                            else if (Plan.CavePattern == ECanyonCavePattern::LongWindingThrough)
+                            {
+                                const auto Shape = MakeLongCave(FirstMouth, SecondMouth, NormalCandidate * Sign,
+                                    InSeed, bBranchPreview || InSeed == 1020);
+                                ProposedCaves.Add(Shape.Main);
+                                for (const auto& DeadEnd : Shape.DeadEnds) ProposedCaves.Append(DeadEnd.Paths);
+                            }
                             else ProposedCaves.Add({ FirstMouth,
                                 FMath::Lerp(FirstMouth, SecondMouth, 0.32f) - NormalCandidate * (Sign * 1250.f),
                                 FMath::Lerp(FirstMouth, SecondMouth, 0.68f) - NormalCandidate * (Sign * 1450.f), SecondMouth });
@@ -573,40 +648,48 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
         Plan.Edges.RemoveAt(ChosenEdge);
         const float PassDrop = FMath::Min(2000.f,
             500.f + 0.22f * (FVector::Dist2D(A, B) + 1500.f) - FMath::Abs(A.Z - B.Z));
-        if (Plan.CavePattern == ECanyonCavePattern::BranchedThrough)
+        if (Plan.CavePattern == ECanyonCavePattern::LongWindingThrough)
         {
-            const auto Paths = MakeBranchedPaths(MouthA, MouthB, Outward, InSeed);
-            Plan.CavePathNodes = { MouthAIndex };
-            for (int32 I = 1; I + 1 < Paths[0].Num(); ++I)
+            const auto Shape = MakeLongCave(MouthA, MouthB, Outward, InSeed, bBranchPreview || InSeed == 1020);
+            TMap<FVector, int32> Points;
+            Points.Add(MouthA, MouthAIndex);
+            Points.Add(MouthB, MouthBIndex);
+            auto PointIndex = [&](const FVector& Point)
             {
-                const FVector& Point = Paths[0][I];
+                if (const int32* Existing = Points.Find(Point)) return *Existing;
                 const int32 Index = Add(Point.X, Point.Y, Point.Z);
                 Plan.Nodes[Index].bCaveInterior = true;
-                Plan.CavePathNodes.Add(Index);
-            }
-            Plan.CavePathNodes.Add(MouthBIndex);
-            Plan.CaveBranches.Add(Plan.CavePathNodes);
-            for (int32 SideBranch = 1; SideBranch < Paths.Num(); ++SideBranch)
+                Points.Add(Point, Index);
+                return Index;
+            };
+            auto AddPath = [&](const TArray<FVector>& RawPath)
             {
-                TArray<int32> Leg = { Plan.CavePathNodes[SideBranch + 1] };
-                for (int32 I = 1; I < Paths[SideBranch].Num(); ++I)
-                {
-                    const FVector& Point = Paths[SideBranch][I];
-                    const int32 Index = Add(Point.X, Point.Y, Point.Z);
-                    Plan.Nodes[Index].bCaveInterior = true;
-                    Leg.Add(Index);
-                }
-                Plan.CaveHalls.Add({ Leg.Last(), 350.f + 60.f * ((SideBranch - 1) % 3), 440.f + 40.f * ((SideBranch - 1) % 3) });
-                Plan.CaveBranches.Add(MoveTemp(Leg));
-            }
-            Plan.CaveMouthNodes = { MouthAIndex, MouthBIndex };
-            for (const TArray<int32>& Path : Plan.CaveBranches)
+                TArray<int32> Path;
+                for (const FVector& Point : RawPath) Path.Add(PointIndex(Point));
                 for (int32 I = 1; I < Path.Num(); ++I)
                 {
                     Link(Path[I - 1], Path[I]);
                     Plan.Edges.Last().bCave = true;
                     Plan.Edges.Last().HalfWidth = 480.f;
                 }
+                return Path;
+            };
+            Plan.CavePathNodes = AddPath(Shape.Main);
+            Plan.CaveMouthNodes = { MouthAIndex, MouthBIndex };
+            for (const FDeadEndShape& Addition : Shape.DeadEnds)
+            {
+                FCanyonDeadEnd DeadEnd;
+                DeadEnd.Kind = Addition.Kind;
+                for (const auto& Path : Addition.Paths) DeadEnd.Paths.Add(AddPath(Path));
+                for (const FVector& End : Addition.Ends) DeadEnd.EndNodes.Add(PointIndex(End));
+                if (Addition.Kind != ECanyonDeadEndKind::LongWinding)
+                {
+                    for (int32 I = 0; I < DeadEnd.EndNodes.Num(); ++I)
+                        Plan.CaveHalls.Add({ DeadEnd.EndNodes[I], Addition.Kind == ECanyonDeadEndKind::ShortAlcove
+                            ? 280.f : 350.f + I * 70.f, 440.f });
+                }
+                Plan.CaveDeadEnds.Add(MoveTemp(DeadEnd));
+            }
         }
         else if (Plan.CavePattern == ECanyonCavePattern::LongLoop)
         {
@@ -768,6 +851,7 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
         Network.Branches = Plan.CaveBranches;
         Network.BranchOpen = Plan.CaveBranchOpen;
         Network.Halls = Plan.CaveHalls;
+        Network.DeadEnds = Plan.CaveDeadEnds;
         Plan.AllCaveMouthNodes.Append(Network.MouthNodes);
         Plan.AllCaveHalls.Append(Network.Halls);
         Plan.CaveNetworks.Add(MoveTemp(Network));
@@ -806,6 +890,7 @@ FCanyonGrayboxLayout FCanyonGrayboxLayout::Generate(int32 InSeed, float MapScale
         Plan.CaveBranches = Primary.Branches;
         Plan.CaveBranchOpen = Primary.BranchOpen;
         Plan.CaveHalls = Primary.Halls;
+        Plan.CaveDeadEnds = Primary.DeadEnds;
     }
     int32 NarrowCount = 0;
     for (const FCanyonGrayboxEdge& Edge : Plan.Edges)
@@ -899,6 +984,23 @@ bool FCanyonGrayboxLayout::Validate() const
             || Network.PathNodes.Last() != Network.MouthNodes[1]) return false;
         for (const int32 Mouth : Network.MouthNodes)
             if (!Nodes.IsValidIndex(Mouth) || Nodes[Mouth].bCaveInterior) return false;
+        for (const FCanyonDeadEnd& DeadEnd : Network.DeadEnds)
+        {
+            if (DeadEnd.Paths.IsEmpty() || DeadEnd.EndNodes.IsEmpty()
+                || !Network.PathNodes.Contains(DeadEnd.Paths[0][0])) return false;
+            for (const auto& Path : DeadEnd.Paths)
+            {
+                if (Path.Num() < 2) return false;
+                for (int32 Node : Path)
+                    if (!Nodes.IsValidIndex(Node) || !Nodes[Node].bCaveInterior) return false;
+            }
+            for (int32 End : DeadEnd.EndNodes)
+            {
+                int32 Connections = 0;
+                for (const auto& Edge : Edges) Connections += Edge.A == End || Edge.B == End;
+                if (Connections != 1) return false;
+            }
+        }
         if (Network.Pattern == ECanyonCavePattern::BranchedThrough)
         {
             if (Network.Branches.Num() < 3 || Network.Branches.Num() > 5
@@ -989,7 +1091,7 @@ bool FCanyonGrayboxLayout::Validate() const
             if (CaveBranches[I].Num() != 3 || !CavePathNodes.Contains(CaveBranches[I][0])
                 || CaveBranches[I].Last() != CaveHalls[I - 1].Node) return false;
     }
-    else if (!CaveBranches.IsEmpty() || !CaveHalls.IsEmpty() || !CaveBranchOpen.IsEmpty()) return false;
+    else if (!CaveBranches.IsEmpty() || (!CaveHalls.IsEmpty() && CaveDeadEnds.IsEmpty()) || !CaveBranchOpen.IsEmpty()) return false;
     for (int32 Mouth : CaveMouthNodes)
         if (!Nodes.IsValidIndex(Mouth)) return false;
     for (int32 Interior : CavePathNodes)
@@ -1096,6 +1198,8 @@ bool FCanyonGrayboxLayout::ProjectCave(float X, float Y, float& T, float& Latera
         const FCanyonCaveNetwork& Cave = CaveNetworks[Network];
         if (Cave.Branches.IsEmpty()) ScanPath(Cave.PathNodes, Network);
         else for (const TArray<int32>& Branch : Cave.Branches) ScanPath(Branch, Network);
+        for (const FCanyonDeadEnd& DeadEnd : Cave.DeadEnds)
+            for (const auto& Path : DeadEnd.Paths) ScanPath(Path, Network);
     }
     return BestDistance < TNumericLimits<float>::Max();
 }

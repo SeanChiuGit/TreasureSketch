@@ -34,15 +34,32 @@ bool FCanyonRandomCavesTest::RunTest(const FString& Parameters)
             Layout.CaveNetworks.Num() >= (Seed == 1001 || Seed == 1010 || Seed == 1020 ? 1 : 2));
         if (Seed == 1020)
         {
-            TestTrue(TEXT("Fixed preview contains a branched through cave"), Layout.CavePattern == ECanyonCavePattern::BranchedThrough);
-            TestTrue(TEXT("Main cave has two to four enclosed side passages"),
-                Layout.CaveBranches.Num() >= 3 && Layout.CaveBranches.Num() <= 5);
+            TestTrue(TEXT("Dead ends decorate the existing long cave"), Layout.CavePattern == ECanyonCavePattern::LongWindingThrough);
+            TestEqual(TEXT("Fixed preview has three different side passage structures"), Layout.CaveDeadEnds.Num(), 3);
+            TSet<ECanyonDeadEndKind> Kinds;
+            float ShortLength = 0.f, LongLength = 0.f;
+            for (const FCanyonDeadEnd& DeadEnd : Layout.CaveDeadEnds)
+            {
+                Kinds.Add(DeadEnd.Kind);
+                float SideLength = 0.f;
+                for (const auto& Path : DeadEnd.Paths)
+                    for (int32 I = 1; I < Path.Num(); ++I)
+                        SideLength += FVector::Dist2D(Layout.Nodes[Path[I - 1]].Position, Layout.Nodes[Path[I]].Position);
+                if (DeadEnd.Kind == ECanyonDeadEndKind::ShortAlcove) ShortLength = SideLength;
+                if (DeadEnd.Kind == ECanyonDeadEndKind::LongWinding) LongLength = SideLength;
+                if (DeadEnd.Kind == ECanyonDeadEndKind::Forked)
+                    TestEqual(TEXT("Forked dead end has two distinct terminal rooms"), DeadEnd.EndNodes.Num(), 2);
+                UE_LOG(LogTemp, Display, TEXT("CANYON_DEAD_END Kind=%d LengthMeters=%.1f Ends=%d"),
+                    static_cast<int32>(DeadEnd.Kind), SideLength / 100.f, DeadEnd.EndNodes.Num());
+            }
+            TestEqual(TEXT("Preview offers short, long and forked side passages"), Kinds.Num(), 3);
+            TestTrue(TEXT("Long side passage is substantially longer than the alcove"), LongLength > ShortLength * 3.f);
             float Length = 0.f;
             for (int32 I = 1; I < Layout.CavePathNodes.Num(); ++I)
                 Length += FVector::Dist2D(Layout.Nodes[Layout.CavePathNodes[I - 1]].Position,
                     Layout.Nodes[Layout.CavePathNodes[I]].Position);
             UE_LOG(LogTemp, Display, TEXT("CANYON_BRANCH_PREVIEW Seed=%d MainMeters=%.1f SidePassages=%d"),
-                Seed, Length / 100.f, Layout.CaveBranches.Num() - 1);
+                Seed, Length / 100.f, Layout.CaveDeadEnds.Num());
             TestTrue(TEXT("Branched cave retains a long main passage"), Length > 9000.f);
         }
         if (Seed == 1010)
@@ -64,6 +81,7 @@ bool FCanyonRandomCavesTest::RunTest(const FString& Parameters)
             Patterns.Add(Network.Pattern);
             if (Network.Branches.IsEmpty()) Paths.Add(Network.PathNodes);
             else Paths.Append(Network.Branches);
+            for (const FCanyonDeadEnd& DeadEnd : Network.DeadEnds) Paths.Append(DeadEnd.Paths);
         }
         for (int32 Branch = 0; Branch < Paths.Num(); ++Branch)
         {
@@ -128,7 +146,7 @@ bool FCanyonRandomCavesTest::RunTest(const FString& Parameters)
             UndergroundTreasures > 4 && UndergroundTreasures < 36);
         World->DestroyActor(Island);
     }
-    TestEqual(TEXT("Representative seeds exercise all five cave types"), Patterns.Num(), 5);
+    TestEqual(TEXT("Representative seeds exercise all four base cave types"), Patterns.Num(), 4);
     return true;
 }
 
