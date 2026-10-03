@@ -1,23 +1,30 @@
-## 躲猫猫角色速度（尚未发布）
+## v0.15.0 Windows 测试版已发布
+
+- Release：https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.15.0-prop-disguise-rc1 。源码与版本标签提交 `56d7567`，分支 `feature/hide-and-seek`；非 draft，prerelease。
+- 附件 `TreasureSketch-v0.15.0-prop-disguise-rc1-56d7567-Windows.zip`，394018816 字节，SHA-256 `1ebe4fe192625b2cb141dfbc24c0a660d8aa858f26f56f6426a4b795184c53b8`；GitHub 大小与 digest 均匹配。
+- 包含变形、角色速度微调、峡谷缩小及资源合并。Windows Development BuildCookRun、ZIP 完整性及 EXE/PAK/Steam DLL/字体核对通过；18 个新增模型已烘焙。NullRHI 无界面启动加载地图并正常退出；未进行实际双人 Steam 联机或画面交互测试。
+- 打包使用版本库配置，本机配置逐字节恢复。缓存采用 D 盘本地 FileSystem DDC，避免 C 盘 Zen 缓存空间不足。脚本及日志 `Saved/CodexRelease/package-v0.15.py`、`package-v0.15.log`、`smoke-v0.15.log`；本机包位于 `Builds/TreasureSketch-v0.15.0-prop-disguise-rc1-56d7567*`。
+
+## 躲猫猫角色速度（v0.15.0 已发布）
 
 - 大厅的躲猫猫规则提供逃生者、抓捕者各自的速度倍率，默认 1，范围 0.5–5。点击数值可直接输入 1.05 等小数，Enter 确认、Esc 取消；加减按钮以 0.05 微调。复用现有数值输入，不增加独立菜单；躲猫猫省去无用的绘图时间行，为第二个速度设置腾出空间。
 - 两个倍率通过 GameState 同步；房主仅能在开局前修改，重玩保留。按角色身份应用倍率，角色互换及客户端角色/设置不同到达顺序均会更新实际速度。变形不改变速度；涉水仍按该角色倍率乘 0.75。其他玩法继续使用原有共同速度设置。
-- 编辑器编译及六项 RoomSettings 自动测试通过，覆盖 1.05 精确输入、0.05 微调、独立角色速度、开局锁定、互换角色、变形、涉水及原玩法速度。记录 `Saved/Logs/RoleSpeedRegressionFinal.log`；尚未打包发布或进行实际双人联机 UI 试玩。
+- 编辑器编译及六项 RoomSettings 自动测试通过，覆盖 1.05 精确输入、0.05 微调、独立角色速度、开局锁定、互换角色、变形、涉水及原玩法速度。记录 `Saved/Logs/RoleSpeedRegressionFinal.log`；已包含在 v0.15.0，实际双人联机 UI 待试玩。
 
-## 峡谷资源合并与缩小（尚未发布）
+## 峡谷资源合并与缩小（v0.15.0 已发布）
 
 - 合并本地 `feature/gameplay-first-canyon` 的峡谷资源，合并提交 `27957fc`。保留当前 CanyonGraybox、洞穴和玩法实现，未引入分支中较早的地图生成算法。资源位于 `Content/IslandAssets/CanyonModules`，含 15 个谷底/左右岩壁模块和 3 个碎岩模型，以及材质、Blender/GLB 源文件及导入脚本。
 - 峡谷 1 倍生成范围从约 125.4 米边长缩为约 62.7 米，面积为旧基准的 0.25 倍；其他面积档位以新基准缩放。保留原岩壁高度，为固定通行高度的洞穴留出覆盖；沙滩和森林尺寸不变。
 - 编辑器编译通过；固定 IslandSeed=1001 的六项 RoomSettings、GrayboxRoutes 和 MergedAssetsAndScale 共八项自动测试全部通过。18 个资源模型可加载；100 个种子的峡谷路线在 0.5、1、2、5 倍档位通过检查。日志 `Saved/Logs/CanyonQuarterFinal2.log`。
 - 单独运行 Canyon.AllGameModes 也通过，覆盖三个原有玩法的地图尺寸、寻宝位置与洞内通行碰撞。日志 `Saved/Logs/CanyonQuarterGameModes.log`。
-- 用户明确暂缓种子 191959 的宝藏问题：没有保留该问题的放置逻辑改动。尚未打包发布或实际双人试玩。
+- 用户明确暂缓种子 191959 的宝藏问题：没有保留该问题的放置逻辑改动。资源与缩小已包含在 v0.15.0，实际双人试玩待验证。
 
-## 逃生者变形（尚未发布）
+## 逃生者变形（v0.15.0 已发布）
 
 - 在 `feature/hide-and-seek` 增加变形技能：逃生者瞄准地图物品按左键变形，Q 恢复人形。没有冷却、次数、持续时间、目标距离或大小限制；移动、跳跃和挖宝保持原有能力。
 - 支持静态网格与实例化物品，包括无碰撞的植被；复制目标模型、尺寸、旋转、材质及颜色，原物品保留。服务端选择目标并同步变形，相机根据物品尺寸调整。
 - 新局及返回大厅的统一重置流程恢复人形。HUD 增加准星、技能状态与操作说明。
-- 编辑器 Development 编译通过；固定 IslandSeed=1001 的六项 RoomSettings 自动测试全部通过，包含 PropDisguise 和 HideAndSeek 的变形、挖宝及重置断言。日志 `Saved/Logs/PropDisguiseRegressionFinal.log`。尚未验证实际双人联机或打包新下载版本。
+- 编辑器 Development 编译通过；固定 IslandSeed=1001 的六项 RoomSettings 自动测试全部通过，包含 PropDisguise 和 HideAndSeek 的变形、挖宝及重置断言。日志 `Saved/Logs/PropDisguiseRegressionFinal.log`。已包含在 v0.15.0，实际双人联机待验证。
 
 ## 躲猫猫模式与宝藏分离修复（v0.14.0 已发布）
 

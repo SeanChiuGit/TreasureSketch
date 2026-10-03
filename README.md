@@ -1,15 +1,15 @@
 # TreasureSketch
 
-## 最新 Windows 测试 Release：v0.14.0
+## 最新 Windows 测试 Release：v0.15.0
 
-- 已发布 `v0.14.0-hide-and-seek-rc1`：https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.14.0-hide-and-seek-rc1
-- 新增两人躲猫猫模式，三个宝藏同时分离生成，挖到后对应标记消失；包含宝藏重叠修复及已有峡谷生成性能优化。
-- 源码提交 `2e3b51c`，分支 `feature/hide-and-seek`。附件 `TreasureSketch-v0.14.0-hide-and-seek-rc1-2e3b51c-Windows.zip`，390795052 字节；SHA-256：`5c06a2f1cfcdc4c04ef7722f6b7b4fd80fc25e85194e9c2631b016547b999883`。GitHub 大小与摘要已核对，非 draft，prerelease。
-- UE 5.6 编辑器及 Windows Development BuildCookRun 通过；五项房间规则回归及三种主题的宝藏分离测试通过。ZIP 完整性、EXE、PAK、Steam DLL、字体与测试说明检查通过。真实双人 Steam 联机与手感仍需试玩。
+- 已发布 [v0.15.0-prop-disguise-rc1](https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.15.0-prop-disguise-rc1)。
+- 增加逃生者变形及两个角色各自的速度微调；峡谷标准地图缩为旧版的四分之一面积，并合入峡谷模块资源。当前峡谷继续沿用现有生成器。
+- 源码提交 `56d7567`，分支 `feature/hide-and-seek`。附件 `TreasureSketch-v0.15.0-prop-disguise-rc1-56d7567-Windows.zip`，394018816 字节；SHA-256：`1ebe4fe192625b2cb141dfbc24c0a660d8aa858f26f56f6426a4b795184c53b8`。GitHub 大小与摘要已核对，非 draft，prerelease。
+- 编辑器、Windows Development BuildCookRun 和六项房间规则回归通过；峡谷路线、原有玩法和 18 个资源加载检查通过。ZIP 完整性、EXE、PAK、Steam DLL、字体及无界面启动检查通过。真实双人 Steam 联机与画面手感仍需试玩。
 
 ## 躲猫猫模式
 
-### 逃生者变形（尚未包含在 v0.14.0 下载包）
+### 逃生者变形（v0.15.0）
 
 - 逃生者瞄准场景物品，按鼠标左键立即变成该物品；按 Q 恢复人形，可直接再瞄准其他物品换形。
 - 无冷却、次数、持续时间、目标距离或物品大小限制，保留目标模型、尺寸与地图材质颜色；支持没有碰撞的装饰物实例。
