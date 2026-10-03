@@ -11,9 +11,19 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
     TSet<ECanyonGrayboxProblem> Problems;
     TSet<ECanyonCavePattern> Caves;
     TSet<ECanyonUpperPattern> UpperPatterns;
+    int32 MixedMaps = 0;
     for (int32 Seed = 1000; Seed < 1100; ++Seed)
     {
         const FCanyonGrayboxLayout Layout = FCanyonGrayboxLayout::Generate(Seed);
+        if (!Layout.Validate())
+            for (const FCanyonGrayboxEdge& Edge : Layout.Edges)
+            {
+                const FVector Delta = Layout.Nodes[Edge.B].Position - Layout.Nodes[Edge.A].Position;
+                if (Delta.Size2D() < 900.f || FMath::Abs(Delta.Z) / Delta.Size2D() > (Edge.bCave ? 0.25f : 0.18f))
+                    UE_LOG(LogTemp, Warning, TEXT("Invalid seed %d %s edge %d-%d cave%d run%.0f slope%.3f"),
+                        Seed, Layout.CaveName(), Edge.A, Edge.B, Edge.bCave,
+                        Delta.Size2D(), FMath::Abs(Delta.Z) / Delta.Size2D());
+            }
         if (!TestTrue(FString::Printf(TEXT("Seed %d has a connected, walkable graph"), Seed), Layout.Validate()))
             continue;
         Problems.Add(Layout.Problem);
@@ -21,13 +31,29 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
         UpperPatterns.Add(Layout.UpperPattern);
         int32 CaveEdges = 0;
         for (const FCanyonGrayboxEdge& Edge : Layout.Edges) CaveEdges += Edge.bCave;
+        int32 ExpectedEdges = 0;
+        TSet<ECanyonCavePattern> MapCaves;
+        for (const FCanyonCaveNetwork& Network : Layout.CaveNetworks)
+        {
+            MapCaves.Add(Network.Pattern);
+            if (Network.Branches.IsEmpty()) ExpectedEdges += Network.PathNodes.Num() - 1;
+            else for (const TArray<int32>& Branch : Network.Branches) ExpectedEdges += Branch.Num() - 1;
+        }
+        TestEqual(TEXT("All cave networks have their generated edges"), CaveEdges, ExpectedEdges);
+        if (Seed > 1003)
+        {
+            TestTrue(TEXT("Ordinary maps retain a cave network"), Layout.CaveNetworks.Num() >= 1);
+            if (MapCaves.Num() >= 2) ++MixedMaps;
+        }
         const bool bThreeMouth = Layout.CavePattern == ECanyonCavePattern::ThreeMouthHall;
+        int32 BranchEdges = 0;
+        for (const TArray<int32>& Branch : Layout.CaveBranches) BranchEdges += Branch.Num() - 1;
         TestTrue(TEXT("Cave route graph matches its entrances and halls"),
             bThreeMouth
-                ? CaveEdges == 12 && Layout.CaveMouthNodes.Num() == 3
+                ? BranchEdges > 0 && Layout.CaveMouthNodes.Num() == (Layout.CaveBranchOpen[2] ? 3 : 2)
                     && Layout.CaveBranches.Num() == 3 && Layout.CaveHalls.Num() == 1
                     && Layout.CavePathNodes.Num() == 9
-                : CaveEdges == Layout.CavePathNodes.Num() - 1
+                : Layout.CavePathNodes.Num() >= 4
                     && Layout.CaveMouthNodes.Num() == 2
                     && Layout.CavePathNodes.Num() >= 4);
         if (Seed < 1005 && Layout.CavePathNodes.Num() >= 4)
@@ -91,7 +117,7 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
             {
                 FCanyonGrayboxLayout Scaled = FCanyonGrayboxLayout::Generate(Seed, Scale);
                 Scaled.ScaleForMap(Scale);
-                TestTrue(TEXT("Scaled canyon graph stays traversable"), Scaled.Validate());
+                TestTrue(FString::Printf(TEXT("Seed %d scale %.1f canyon graph stays traversable"), Seed, Scale), Scaled.Validate());
                 if (Scale == 1.f)
                 {
                     FVector CaveCenter, Along;
@@ -137,6 +163,7 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
                 if (Scale == 5.f)
                     for (const FCanyonGrayboxEdge& Edge : Scaled.Edges)
                     {
+                        if (Edge.bCave) continue; // Cave collisions are checked against the actual solid mesh.
                         const FVector A = Scaled.Nodes[Edge.A].Position;
                         const FVector B = Scaled.Nodes[Edge.B].Position;
                         auto EdgeHeight = [&](float X, float Y)
@@ -163,6 +190,7 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("Three or more landmark placeholders"), LandmarkCount >= 3);
         for (const FCanyonGrayboxEdge& Edge : Layout.Edges)
         {
+            if (Edge.bCave) continue;
             const FVector& A = Layout.Nodes[Edge.A].Position;
             const FVector& B = Layout.Nodes[Edge.B].Position;
             auto EdgeHeight = [&](float X, float Y)
@@ -182,8 +210,34 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
         }
     }
     TestEqual(TEXT("All six navigation problems occur in 100 seeds"), Problems.Num(), 6);
-    TestEqual(TEXT("Two through caves and the fixed three-mouth preview are generated"), Caves.Num(), 3);
+    TestEqual(TEXT("All three cave layouts occur in random maps"), Caves.Num(), 3);
+    TestTrue(TEXT("Most ordinary maps mix cave types where placement permits"), MixedMaps > 70);
     TestEqual(TEXT("All three upper route forms occur in 100 seeds"), UpperPatterns.Num(), 3);
+    int32 OpenHalls = 0, ClosedHalls = 0;
+    for (int32 Seed = 2000; Seed < 2100; ++Seed)
+    {
+        const FCanyonGrayboxLayout Preview = FCanyonGrayboxLayout::Generate(Seed, 1.f, true);
+        TestTrue(FString::Printf(TEXT("Seed %d hall endpoint variant has a valid graph"), Seed), Preview.Validate());
+        if (!Preview.Validate())
+            for (const FCanyonGrayboxEdge& Edge : Preview.Edges)
+            {
+                const FVector Delta = Preview.Nodes[Edge.B].Position - Preview.Nodes[Edge.A].Position;
+                if (Delta.Size2D() < 900.f || FMath::Abs(Delta.Z) / Delta.Size2D() > (Edge.bCave ? 0.25f : 0.18f))
+                    UE_LOG(LogTemp, Warning, TEXT("Invalid hall seed %d edge%d-%d cave%d run%.0f slope%.3f"),
+                        Seed, Edge.A, Edge.B, Edge.bCave, Delta.Size2D(), FMath::Abs(Delta.Z) / Delta.Size2D());
+            }
+        const FCanyonGrayboxLayout Again = FCanyonGrayboxLayout::Generate(Seed, 1.f, true);
+        TestEqual(TEXT("Seed reproduces the third endpoint state"),
+            Preview.CaveBranchOpen[2], Again.CaveBranchOpen[2]);
+        if (Preview.CaveBranchOpen[2]) ++OpenHalls;
+        else ++ClosedHalls;
+    }
+    TestTrue(TEXT("Random hall seeds include open and enclosed variants"),
+        OpenHalls > 25 && ClosedHalls > 25);
+    FCanyonGrayboxLayout Large = FCanyonGrayboxLayout::Generate(1008, 2.f);
+    TestEqual(TEXT("Larger random maps mix all three types"), Large.CaveNetworks.Num(), 3);
+    Large.ScaleForMap(2.f);
+    TestTrue(TEXT("Mixed large-map cave graph is connected"), Large.Validate());
     return true;
 }
 

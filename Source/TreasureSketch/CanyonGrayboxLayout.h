@@ -41,6 +41,16 @@ struct FCanyonCaveHall
     float Clearance = 560.f;
 };
 
+struct FCanyonCaveNetwork
+{
+    ECanyonCavePattern Pattern = ECanyonCavePattern::ThroughShortcut;
+    TArray<int32> MouthNodes;
+    TArray<int32> PathNodes;
+    TArray<TArray<int32>> Branches;
+    TArray<bool> BranchOpen;
+    TArray<FCanyonCaveHall> Halls;
+};
+
 struct FCanyonGrayboxLayout
 {
     int32 Seed = 0;
@@ -50,23 +60,29 @@ struct FCanyonGrayboxLayout
     ECanyonCavePattern CavePattern = ECanyonCavePattern::ThroughShortcut;
     TArray<FCanyonGrayboxNode> Nodes;
     TArray<FCanyonGrayboxEdge> Edges;
-    TArray<int32> CaveMouthNodes;
+    TArray<int32> CaveMouthNodes; // Actual exterior openings only.
     TArray<int32> CavePathNodes; // Ordered main route between the first two mouths.
-    TArray<TArray<int32>> CaveBranches; // Each ordered from a mouth to its shared hall.
+    TArray<TArray<int32>> CaveBranches; // Each ordered from an endpoint to its shared hall.
+    TArray<bool> CaveBranchOpen; // True: exterior mouth. False: enclosed dead end.
     TArray<FCanyonCaveHall> CaveHalls;
+    TArray<FCanyonCaveNetwork> CaveNetworks;
+    TArray<int32> AllCaveMouthNodes;
+    TArray<FCanyonCaveHall> AllCaveHalls;
     int32 SpawnNode = INDEX_NONE;
     int32 TreasureNode = INDEX_NONE;
 
-    static FCanyonGrayboxLayout Generate(int32 Seed, float MapScale = 1.f);
+    static FCanyonGrayboxLayout Generate(int32 Seed, float MapScale = 1.f,
+        bool bHallPreview = false);
     void ScaleForMap(float Scale);
     const TCHAR* ProblemName() const;
-    const TCHAR* CaveName() const;
+    const TCHAR* CaveName(int32 NetworkIndex = INDEX_NONE) const;
     bool Validate() const;
     bool SampleCave(float T, FVector& Position, FVector& Tangent) const;
     bool SampleCaveBranch(int32 Branch, float T, FVector& Position, FVector& Tangent) const;
-    bool ProjectCave(float X, float Y, float& T, float& Lateral, float& FloorZ) const;
-    float CaveHalfWidth(float T) const;
-    float CaveClearance(float T) const;
+    bool ProjectCave(float X, float Y, float& T, float& Lateral, float& FloorZ,
+        int32* NetworkIndex = nullptr) const;
+    float CaveHalfWidth(float T, int32 NetworkIndex = INDEX_NONE) const;
+    float CaveClearance(float T, int32 NetworkIndex = INDEX_NONE) const;
     bool IsCaveVoid(float X, float Y) const;
     float SurfaceHeightAt(float X, float Y, float* DistanceFromRoute = nullptr,
         ECanyonRouteLayer* SurfaceLayer = nullptr) const;

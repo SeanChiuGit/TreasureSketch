@@ -24,9 +24,11 @@ bool FCanyonThreeMouthTest::RunTest(const FString& Parameters)
             || Context.WorldType == EWorldType::Game)) { World = Context.World(); break; }
     if (!TestNotNull(TEXT("A renderable world is available"), World)) return false;
 
+    for (int32 PreviewSeed : { 1002, 1003 })
+    {
     AProceduralIsland* Island = World->SpawnActor<AProceduralIsland>();
     if (!TestNotNull(TEXT("Three-mouth preview actor exists"), Island)) return false;
-    Island->Seed = 1002;
+    Island->Seed = PreviewSeed;
     Island->Theme = EIslandTheme::CanyonGraybox;
     Island->MapScale = 1.f;
     Island->OnConstruction(Island->GetActorTransform());
@@ -42,9 +44,9 @@ bool FCanyonThreeMouthTest::RunTest(const FString& Parameters)
                 *Cave.Nodes[Edge.A].Position.ToString(), *Cave.Nodes[Edge.B].Position.ToString(),
                 Delta.Size2D(), FMath::Abs(Delta.Z) / Delta.Size2D());
     }
-    if (!TestTrue(TEXT("One hall joins three surface mouths"),
+    if (!TestTrue(TEXT("One hall joins three branches with the expected exterior mouths"),
         Cave.Validate() && Cave.CavePattern == ECanyonCavePattern::ThreeMouthHall
-        && Cave.CaveBranches.Num() == 3 && Cave.CaveMouthNodes.Num() == 3
+        && Cave.CaveBranches.Num() == 3 && Cave.CaveMouthNodes.Num() == (Cave.CaveBranchOpen[2] ? 3 : 2)
         && Cave.CaveHalls.Num() == 1))
     {
         World->DestroyActor(Island);
@@ -60,6 +62,48 @@ bool FCanyonThreeMouthTest::RunTest(const FString& Parameters)
 
     for (int32 Branch = 0; Branch < 3; ++Branch)
     {
+        const int32 Endpoint = Cave.CaveBranches[Branch][0];
+        const FVector End = Cave.Nodes[Endpoint].Position;
+        const FVector Center = Origin + End + FVector(0.f, 0.f, 730.f);
+        if (Cave.CaveBranchOpen[Branch])
+        {
+            bool bApproach = false;
+            for (const FCanyonGrayboxEdge& Edge : Cave.Edges)
+            {
+                if (Edge.bCave || (Edge.A != Endpoint && Edge.B != Endpoint)) continue;
+                const int32 Neighbor = Edge.A == Endpoint ? Edge.B : Edge.A;
+                const FVector Delta = Cave.Nodes[Neighbor].Position - End;
+                const FVector Outside = Center + Delta * FMath::Min(0.75f, 320.f / Delta.Size2D());
+                FHitResult Blocker, Ground, RoofHit;
+                const bool bClear = !World->SweepSingleByChannel(Blocker, Center, Outside,
+                    FQuat::Identity, ECC_Pawn, FCollisionShape::MakeCapsule(42.f, 92.f));
+                const bool bGround = World->LineTraceSingleByChannel(Ground,
+                    Outside + FVector(0.f, 0.f, 180.f), Outside - FVector(0.f, 0.f, 240.f),
+                    ECC_Visibility) && Ground.GetActor() == Island;
+                const bool bSky = !World->LineTraceSingleByChannel(RoofHit,
+                    Outside + FVector(0.f, 0.f, 180.f), Outside + FVector(0.f, 0.f, 2500.f),
+                    ECC_Visibility);
+                bApproach |= bClear && bGround && bSky;
+            }
+            TestTrue(FString::Printf(TEXT("Seed %d mouth %d reaches walkable exterior ground"),
+                PreviewSeed, Branch), bApproach);
+        }
+        else
+        {
+            FVector Point, Tangent;
+            Cave.SampleCaveBranch(Branch, 0.f, Point, Tangent);
+            FHitResult Cap, Cover;
+            TestTrue(TEXT("Enclosed endpoint has a rock cap"), World->SweepSingleByChannel(Cap,
+                Center, Center - Tangent * 600.f, FQuat::Identity, ECC_Pawn,
+                FCollisionShape::MakeCapsule(42.f, 92.f)) && Cap.GetActor() == Island);
+            TestTrue(TEXT("Enclosed endpoint stays underneath rock"), World->LineTraceSingleByChannel(Cover,
+                Center, Center + FVector(0.f, 0.f, 2000.f), ECC_Visibility)
+                && Cover.GetActor() == Island);
+        }
+    }
+
+    for (int32 Branch = 0; Branch < 3; ++Branch)
+    {
         FVector Previous = FVector::ZeroVector;
         bool bFloor = true, bClear = true;
         float RouteLength = 0.f;
@@ -69,17 +113,26 @@ bool FCanyonThreeMouthTest::RunTest(const FString& Parameters)
                 Cave.Nodes[Cave.CaveBranches[Branch][I]].Position);
         UE_LOG(LogTemp, Warning, TEXT("Three-mouth branch %d length %.0f cm"),
             Branch, RouteLength);
-        for (int32 Step = 0; Step <= 32; ++Step)
+        TArray<FVector> Samples;
+        for (int32 Segment = 1; Segment < Cave.CaveBranches[Branch].Num(); ++Segment)
         {
-            FVector Point, Tangent;
-            Cave.SampleCaveBranch(Branch, Step / 32.f, Point, Tangent);
-            const FVector Center = Origin + FVector(Point.X, Point.Y,
+            const FVector A = Cave.Nodes[Cave.CaveBranches[Branch][Segment - 1]].Position;
+            const FVector B = Cave.Nodes[Cave.CaveBranches[Branch][Segment]].Position;
+            const int32 Steps = FMath::Max(1, FMath::CeilToInt(FVector::Dist2D(A, B) / 75.f));
+            for (int32 Step = 0; Step <= Steps; ++Step)
+                Samples.Add(FMath::Lerp(A, B, Step / static_cast<float>(Steps)));
+        }
+        for (int32 Step = 0; Step < Samples.Num(); ++Step)
+        {
+            const FVector Point = Samples[Step];
+            FVector Center = Origin + FVector(Point.X, Point.Y,
                 600.f + Point.Z + 130.f);
             FHitResult Ground;
             const bool bGroundHit = World->LineTraceSingleByChannel(Ground,
-                Center + FVector(0.f, 0.f, 180.f),
-                Center - FVector(0.f, 0.f, 240.f), ECC_Visibility)
-                && Ground.GetActor() == Island;
+                Center + FVector(0.f, 0.f, 70.f),
+                Center - FVector(0.f, 0.f, 430.f), ECC_Visibility)
+                && Ground.GetActor() == Island && Ground.ImpactNormal.Z > 0.5f;
+            if (bGroundHit) Center.Z = Ground.ImpactPoint.Z + 130.f;
             if (!bGroundHit)
             {
                 FHitResult DeepGround;
@@ -154,31 +207,34 @@ bool FCanyonThreeMouthTest::RunTest(const FString& Parameters)
             Inside, InsideTangent);
         FVector Camera = Origin + FVector(Mouth.X, Mouth.Y,
             Cave.SurfaceHeightAt(Mouth.X, Mouth.Y) + 180.f) - Tangent * 550.f;
-        if (Branch == 2)
+        if (Branch == 2 && Cave.CaveBranchOpen[2])
             for (const FCanyonGrayboxEdge& Edge : Cave.Edges)
-                if (!Edge.bCave && (Edge.A == Cave.CaveMouthNodes[2]
-                    || Edge.B == Cave.CaveMouthNodes[2]))
+                if (!Edge.bCave && (Edge.A == Cave.CaveBranches[2][0]
+                    || Edge.B == Cave.CaveBranches[2][0]))
                 {
-                    const int32 Neighbor = Edge.A == Cave.CaveMouthNodes[2] ? Edge.B : Edge.A;
+                    const int32 Neighbor = Edge.A == Cave.CaveBranches[2][0] ? Edge.B : Edge.A;
                     const FVector Approach = (Cave.Nodes[Neighbor].Position - Mouth).GetSafeNormal2D();
                     Camera = Origin + FVector(Mouth.X, Mouth.Y,
                         Cave.SurfaceHeightAt(Mouth.X, Mouth.Y) + 180.f) + Approach * 320.f;
                     break;
                 }
+        if (!Cave.CaveBranchOpen[Branch])
+            Camera = Origin + Mouth + FVector(0.f, 0.f, 780.f);
         const FVector LookAt = Origin + FVector(Inside.X, Inside.Y,
             600.f + Inside.Z + 200.f);
         TestTrue(FString::Printf(TEXT("Mouth %d view saved"), Branch),
-            TakeView(FString::Printf(TEXT("seed1002_mouth%d"), Branch), Camera, LookAt));
+            TakeView(FString::Printf(TEXT("seed%d_endpoint%d"), PreviewSeed, Branch), Camera, LookAt));
     }
     FVector BranchPoint, BranchTangent;
     Cave.SampleCaveBranch(2, 0.55f, BranchPoint, BranchTangent);
-    TestTrue(TEXT("Hall view saved"), TakeView(TEXT("seed1002_hall"),
+    TestTrue(TEXT("Hall view saved"), TakeView(FString::Printf(TEXT("seed%d_hall"), PreviewSeed),
         Origin + FVector(HallPoint.X, HallPoint.Y,
             600.f + HallPoint.Z + 170.f),
         Origin + FVector(BranchPoint.X, BranchPoint.Y,
             600.f + BranchPoint.Z + 200.f)));
     Capture->DestroyComponent();
     World->DestroyActor(Island);
+    }
     return true;
 }
 
