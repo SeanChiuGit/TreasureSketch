@@ -1,3 +1,10 @@
+## 最新 Windows 测试 Release：v0.13.0
+
+- 已合并并发布 `v0.13.0-caves-controls-rc1`：https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.13.0-caves-controls-rc1
+- 标签对应合并提交 `679f455`，分支 `feature/ground-up-canyon`。附件 `TreasureSketch-v0.13.0-caves-controls-rc1-679f455-Windows.zip`，390701507 字节；SHA-256：`ea54d33760f2873986a61665d6bca5e196ad3ad51317785707462bca8b113ef9`。GitHub 大小与 digest 已核对；非 draft，prerelease。
+- 编辑器构建和 Windows Development BuildCookRun 均通过；ZIP 完整性、EXE、PAK、Steam DLL 与两种字体已核对。打包使用版本库配置，本机私有配置已逐字节恢复。
+- 本机包位于 `Builds/TreasureSketch-v0.13.0-caves-controls-rc1-679f455*`；日志 `Saved/CodexRelease/package-v0.13.log`。未打开游戏窗口，多人交互由用户负责试玩。
+- 已知洞顶缺口、地图复杂度以及部分随机峡谷出生点不足 30 米问题在发布说明中记录。此次发布没有恢复已回退的洞顶修复，也没有调整洞穴生成复杂度。
 ## 功能合并与 v0.13.0 发布准备
 
 - 合入 `codex/shove-terrain-dig` 的地图旋转、相机取景/房间开关、推人反馈和长按挖掘。冲突处理保留峡谷的动态掉落下限、现有字体 UI、读书与挖掘模型动画。
