@@ -1,5 +1,12 @@
 # TreasureSketch
 
+## 最新 Windows 测试 Release：v0.14.0
+
+- 已发布 `v0.14.0-hide-and-seek-rc1`：https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.14.0-hide-and-seek-rc1
+- 新增两人躲猫猫模式，三个宝藏同时分离生成，挖到后对应标记消失；包含宝藏重叠修复及已有峡谷生成性能优化。
+- 源码提交 `2e3b51c`，分支 `feature/hide-and-seek`。附件 `TreasureSketch-v0.14.0-hide-and-seek-rc1-2e3b51c-Windows.zip`，390795052 字节；SHA-256：`5c06a2f1cfcdc4c04ef7722f6b7b4fd80fc25e85194e9c2631b016547b999883`。GitHub 大小与摘要已核对，非 draft，prerelease。
+- UE 5.6 编辑器及 Windows Development BuildCookRun 通过；五项房间规则回归及三种主题的宝藏分离测试通过。ZIP 完整性、EXE、PAK、Steam DLL、字体与测试说明检查通过。真实双人 Steam 联机与手感仍需试玩。
+
 ## 躲猫猫模式
 
 - 房主在大厅选择“躲猫猫：一抓一躲”，恰好两名玩家才能开始；大厅可互换抓捕者与躲藏者。

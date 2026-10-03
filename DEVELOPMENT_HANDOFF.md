@@ -1,20 +1,25 @@
-## 躲猫猫模式与宝藏分离修复（v0.14.0 发布准备）
+## 躲猫猫模式与宝藏分离修复（v0.14.0 已发布）
+
+- Release：https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.14.0-hide-and-seek-rc1 。源码与标签提交 `2e3b51c`，分支 `feature/hide-and-seek`，非 draft，prerelease。
+- Windows 附件 `TreasureSketch-v0.14.0-hide-and-seek-rc1-2e3b51c-Windows.zip`，390795052 字节；SHA-256：`5c06a2f1cfcdc4c04ef7722f6b7b4fd80fc25e85194e9c2631b016547b999883`。GitHub 大小及 digest 与本机一致。
+- 编辑器与 Windows Development BuildCookRun 成功，ZIP 完整性、EXE、PAK、Steam DLL、字体与包内说明核对通过。使用版本库配置打包，本机配置逐字节恢复；未进行实际双人联机交互。
+- 本机归档 `Builds/TreasureSketch-v0.14.0-hide-and-seek-rc1-2e3b51c*`；打包脚本及日志 `Saved/CodexRelease/package-v0.14.*`，回归日志 `Saved/CodexRelease/tests-v0.14.log`。
 
 - 分支 `feature/hide-and-seek`，大厅新增恰好两人的躲猫猫模式。复用现有角色、计时、挖掘、出手动作与遮挡判定，跳过画图，抓捕者保留地面操作。
 - 抓捕者左键 / G 抓人，冷却 5 秒，抓到立即胜。躲藏者长按 E 3 秒挖宝，取消及冷却沿用已有规则。超时按躲藏者宝藏数判定：0 输、1 平、2 及以上赢；收集不会提前结束。
 - 三个宝藏同时公开生成，拿到一个后仅对应标记消失。新增陆地候选点枚举与分离选择，最小间距 950 cm，禁止将单宝藏随机函数的中心回退点反复用作新宝藏。
 - 躲猫猫取消对手姓名标签、地图师观战与看图入口。结算支持角色互换、重玩、复盘和返回大厅，历史保存宝藏数量与抓捕结果。
 - 编辑器构建通过；原有四项房间规则与躲猫猫测试通过。宝藏分离测试在种子 1050 的沙滩、森林、峡谷分别通过，含 0.5 倍地图、20 组位置选择以及无法放置时返回空集合。
-- 本轮目标为 Windows Development 预发布版 `v0.14.0-hide-and-seek-rc1`；真实 Steam 双人联机和手感仍需玩家试玩。
+- Windows Development 预发布版 `v0.14.0-hide-and-seek-rc1` 已发布；真实 Steam 双人联机和手感仍需玩家试玩。
 
 ## 峡谷生成性能优化
 
 - 不改变布局、随机规则、洞穴形状或采样精度；并行计算纯数据，按原顺序合并网格，跳过没有表面的体素，去除无用洞穴查询。四个地表材质区统一同步生成碰撞。
 - 本机一倍地图种子 1050：3.23 秒 → 2.11 秒；18232：4.05 秒 → 2.50 秒。完整网格 CRC 一致，非空网格区碰撞标记保留。详情 `Docs/CanyonGenerationPerformance.md`。
 - AllGameModes 随机种子 784343 的洞内胶囊通行检查失败；不能记为全玩法通过。该种子的批量/重复碰撞重建查询对比通过（`Saved/Logs/CanyonPerfCollision.log`），不在本次修改洞穴形状。
-- 当前下载包仍为以下 v0.13.0，不包含性能优化。
+- 性能优化已包含在 v0.14.0 躲猫猫测试版中。
 
-## 最新 Windows 测试 Release：v0.13.0
+## 上一版 Windows 测试 Release：v0.13.0
 
 - 已合并并发布 `v0.13.0-caves-controls-rc1`：https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.13.0-caves-controls-rc1
 - 标签对应合并提交 `679f455`，分支 `feature/ground-up-canyon`。附件 `TreasureSketch-v0.13.0-caves-controls-rc1-679f455-Windows.zip`，390701507 字节；SHA-256：`ea54d33760f2873986a61665d6bca5e196ad3ad51317785707462bca8b113ef9`。GitHub 大小与 digest 已核对；非 draft，prerelease。
