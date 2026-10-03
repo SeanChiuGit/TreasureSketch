@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "CanyonSolidMesh.h"
 
 // Canyon navigation is generated independently from the Island terrain and asset pools.
 enum class ECanyonGrayboxProblem : uint8
@@ -64,6 +65,18 @@ struct FCanyonCaveNetwork
     TArray<FCanyonDeadEnd> DeadEnds; // Optional additions to the base cave topology.
 };
 
+struct FCanyonCaveSegment
+{
+    FVector A, B;
+    float Width = 0.f, Clearance = 0.f;
+    int32 Group = 0;
+    bool bExterior = false;
+    bool bPortalA = false, bPortalB = false;
+    bool bMountainCover = false;
+};
+
+struct FCanyonSurfaceGuide { TArray<float> Heights; };
+
 struct FCanyonGrayboxLayout
 {
     int32 Seed = 0;
@@ -80,6 +93,11 @@ struct FCanyonGrayboxLayout
     TArray<FCanyonCaveHall> CaveHalls;
     TArray<FCanyonDeadEnd> CaveDeadEnds;
     TArray<FCanyonCaveNetwork> CaveNetworks;
+    TArray<FCanyonCaveSegment> CaveSegments;
+    int32 CaveSegmentGroups = 0;
+    TArray<FCanyonSurfaceGuide> SurfaceGuides;
+    TArray<float> SurfaceNodeHeights;
+    bool bBuildingSurfaceGuides = false;
     TArray<int32> AllCaveMouthNodes;
     TArray<FCanyonCaveHall> AllCaveHalls;
     int32 SpawnNode = INDEX_NONE;
@@ -88,6 +106,12 @@ struct FCanyonGrayboxLayout
     static FCanyonGrayboxLayout Generate(int32 Seed, float MapScale = 1.f,
         bool bHallPreview = false, bool bLoopPreview = false, bool bBranchPreview = false);
     void ScaleForMap(float Scale);
+    void RebuildCaveSegments();
+    void RebuildSurfaceGuides();
+    void SampleCaveTunnels(float X, float Y, float Margin, float SurfaceZ,
+        TArray<FCanyonSolidTunnel, TInlineAllocator<4>>& Tunnels) const;
+    float RequiredCaveCover(float X, float Y, float SurfaceZ) const;
+    float CavePortalWeight(float X, float Y) const;
     const TCHAR* ProblemName() const;
     const TCHAR* CaveName(int32 NetworkIndex = INDEX_NONE) const;
     bool Validate() const;

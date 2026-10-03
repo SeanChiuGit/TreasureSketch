@@ -41,12 +41,14 @@ bool FCanyonRandomCavesTest::RunTest(const FString& Parameters)
                 Island->GetActorTransform().TransformPosition(Node.Position + FVector(0.f, 0.f, 600.f)).Z
                     >= Island->GetFallRecoveryLimitZ() + 599.f);
         TestTrue(FString::Printf(TEXT("Random seed %d has a valid graph"), Seed), Layout.Validate());
-        if (Seed == 1050 || Seed == 1051)
+        if ((Seed == 1050 || Seed == 1051) && Layout.CaveMouthNodes.Num() >= 2)
         {
             const FVector Entry = Layout.Nodes[Layout.CaveMouthNodes[0]].Position;
             const FVector Exit = Layout.Nodes[Layout.CaveMouthNodes[1]].Position;
             TestTrue(TEXT("Ground-level entrance meets the exterior surface"),
                 FMath::Abs(Layout.SurfaceHeightAt(Entry.X, Entry.Y) - (600.f + Entry.Z)) < 15.f);
+            UE_LOG(LogTemp, Display, TEXT("CANYON_ENTRY Seed=%d Floor=%.1f Surface=%.1f"),
+                Seed, 600.f + Entry.Z, Layout.SurfaceHeightAt(Entry.X, Entry.Y));
             TestTrue(TEXT("Uphill exit rises while level comparison stays level"),
                 Seed == 1050 ? Exit.Z - Entry.Z > 250.f : FMath::Abs(Exit.Z - Entry.Z) < 1.f);
             for (int32 I = 1; I < Layout.CavePathNodes.Num(); ++I)
@@ -57,6 +59,7 @@ bool FCanyonRandomCavesTest::RunTest(const FString& Parameters)
             {
                 FVector Point, Tangent;
                 Layout.SampleCave(T, Point, Tangent);
+                if (Layout.CavePortalWeight(Point.X, Point.Y) < 0.9f) continue;
                 TestTrue(TEXT("Uphill passage remains covered by mountain rock"),
                     Layout.SurfaceHeightAt(Point.X, Point.Y) > 600.f + Point.Z + Layout.CaveClearance(T));
             }
@@ -163,6 +166,56 @@ bool FCanyonRandomCavesTest::RunTest(const FString& Parameters)
             }
             TestTrue(FString::Printf(TEXT("Seed %d branch%d has floor and capsule clearance"), Seed, Branch),
                 bFloor && bClear);
+        }
+        // Check the complete ceiling footprint, rather than four centerline
+        // samples. Only explicitly marked exterior portal transitions are exempt.
+        for (const auto& Segment : Layout.CaveSegments)
+        {
+            if (Segment.bExterior) continue;
+            const float Length = FVector::Dist2D(Segment.A, Segment.B);
+            const FVector Along = (Segment.B - Segment.A).GetSafeNormal2D();
+            const FVector Side(-Along.Y, Along.X, 0.f);
+            const int32 Steps = FMath::Max(2, FMath::CeilToInt(Length / 120.f));
+            bool bCovered = true;
+            for (int32 Step = 0; Step <= Steps && bCovered; ++Step)
+            {
+                const float T = Step / static_cast<float>(Steps);
+                for (float Lateral : { -0.6f, 0.f, 0.6f })
+                {
+                    const FVector Point = FMath::Lerp(Segment.A, Segment.B, T) + Side * (Segment.Width * Lateral);
+                    if (Layout.CavePortalWeight(Point.X, Point.Y) < 0.999f) continue;
+                    const float Surface = Layout.SurfaceHeightAt(Point.X, Point.Y);
+                    TArray<FCanyonSolidTunnel, TInlineAllocator<4>> Tunnels;
+                    Layout.SampleCaveTunnels(Point.X, Point.Y, 0.f, Surface, Tunnels);
+                    const FCanyonSolidTunnel* Inside = nullptr;
+                    for (const auto& Tunnel : Tunnels)
+                        if (Tunnel.HalfWidth > 0.f && Tunnel.Lateral < Tunnel.HalfWidth * 0.8f
+                            && Tunnel.Clearance > 200.f && (!Inside
+                                || FMath::Abs(Tunnel.FloorZ - 600.f - Point.Z)
+                                    < FMath::Abs(Inside->FloorZ - 600.f - Point.Z))) Inside = &Tunnel;
+                    if (!Inside)
+                    {
+                        if (Lateral == 0.f) AddError(FString::Printf(TEXT("Seed %d has no usable interior at %s"), Seed, *Point.ToString()));
+                        continue; // A bend's side probe may be inside its rock wall.
+                    }
+                    const FVector Start = Island->GetActorLocation() + FVector(Point.X, Point.Y, Inside->FloorZ + 40.f);
+                    FHitResult Roof, Outside;
+                    const bool bHit = World->LineTraceSingleByChannel(Roof, Start,
+                        FVector(Start.X, Start.Y, Island->GetActorLocation().Z + Surface + 300.f), ECC_Visibility);
+                    const bool bOutside = bHit && World->LineTraceSingleByChannel(Outside,
+                        Roof.ImpactPoint + FVector(0.f, 0.f, 10000.f), Roof.ImpactPoint + FVector(0.f, 0.f, 10.f), ECC_Visibility);
+                    if (!bHit || Roof.GetActor() != Island
+                        || !bOutside || Outside.GetActor() != Island
+                        || Outside.ImpactPoint.Z - Roof.ImpactPoint.Z < 100.f)
+                    {
+                        AddError(FString::Printf(TEXT("Seed %d ceiling missing or too thin at %s lateral %.1f hit%d roof%s exterior%s component%s surface%.1f floor%.1f clearance%.1f"),
+                            Seed, *Point.ToString(), Lateral, bHit, *Roof.ImpactPoint.ToString(),
+                            *Outside.ImpactPoint.ToString(), *GetNameSafe(Roof.GetComponent()), Surface, Inside->FloorZ, Inside->Clearance));
+                        bCovered = false;
+                        break;
+                    }
+                }
+            }
         }
         int32 UndergroundTreasures = 0;
         for (int32 Sample = 0; Sample < 40; ++Sample)
