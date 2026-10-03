@@ -417,12 +417,32 @@ float ATreasureSketchPlayerController::GetActionFeedbackRemaining() const
 float ATreasureSketchPlayerController::GetHoldDigProgress() const
 {
     return bLocalDigHeld && GetWorld() ? FMath::Clamp((GetWorld()->GetTimeSeconds() - LocalDigStartedAt)
-        / ATreasureSketchGameMode::HeldDigSeconds, 0.f, 1.f) : 0.f;
+        / (GetWorld()->GetGameState<ATreasureSketchGameState>()
+            && GetWorld()->GetGameState<ATreasureSketchGameState>()->RoomMode == ETreasureRoomMode::HideAndSeek
+            ? ATreasureSketchGameMode::HideDigSeconds : ATreasureSketchGameMode::HeldDigSeconds), 0.f, 1.f) : 0.f;
+}
+
+void ATreasureSketchPlayerController::UpdateHideTreasureMarkers()
+{
+    if (!IsLocalController()) return;
+    const auto* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    TArray<FVector> Desired;
+    if (GS && GS->RoomMode == ETreasureRoomMode::HideAndSeek && GS->bGameStarted
+        && (!GS->IsRoundOver() || GS->bReviewingRound))
+        for (int32 Index = 0; Index < GS->HideTreasures.Num(); ++Index)
+            if (!(GS->HideCollectedMask & (1 << Index))) Desired.Add(GS->HideTreasures[Index]);
+    if (Desired == VisibleHideTreasures) return;
+    for (auto& Marker : HideMarkers) if (Marker) Marker->Destroy();
+    HideMarkers.Reset();
+    VisibleHideTreasures = Desired;
+    for (const FVector& Point : Desired)
+        HideMarkers.Add(GetWorld()->SpawnActor<ATreasureMarker>(ATreasureMarker::StaticClass(), Point, FRotator::ZeroRotator));
 }
 
 void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
 {
     Super::PlayerTick(DeltaTime);
+    UpdateHideTreasureMarkers();
     UpdateFrontEnd();
     if (IsFrontEndVisible()) { bCameraMode = false; return; }
     const ATreasureSketchGameState* CursorGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
@@ -822,13 +842,14 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
         if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) GM->ToggleSurfacePaint();
     }
     else if (ActionName == TEXT("RoomModeCoop") || ActionName == TEXT("RoomModeOneExplorer")
-        || ActionName == TEXT("RoomModeRaceToggle"))
+        || ActionName == TEXT("RoomModeRaceToggle") || ActionName == TEXT("RoomModeHideAndSeek"))
     {
         if (!IsLocalController() || FrontEndPage != EFrontEndPage::RoomLobby) return;
         if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
         {
             const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
-            const ETreasureRoomMode Mode = ActionName == TEXT("RoomModeOneExplorer") ? ETreasureRoomMode::OneExplorer
+            const ETreasureRoomMode Mode = ActionName == TEXT("RoomModeHideAndSeek") ? ETreasureRoomMode::HideAndSeek
+                : ActionName == TEXT("RoomModeOneExplorer") ? ETreasureRoomMode::OneExplorer
                 : ActionName == TEXT("RoomModeRaceToggle") && GS && GS->RoomMode != ETreasureRoomMode::ExplorerRace
                     ? ETreasureRoomMode::ExplorerRace : ETreasureRoomMode::OneMapmaker;
             GM->SelectRoomMode(Mode);
@@ -952,7 +973,7 @@ void ATreasureSketchPlayerController::ApplyPhaseInputRules()
     if (!PS || !GS) return;
     const bool bReviewing = GS->bReviewingRound && GS->IsRoundOver();
     const bool bShouldWait = !bReviewing && ((PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->Phase == ETreasureRoundPhase::ScoutDrawing)
-        || (PS->PlayerRole == ETreasurePlayerRole::Scout && GS->Phase != ETreasureRoundPhase::ScoutDrawing)
+        || (PS->PlayerRole == ETreasurePlayerRole::Scout && GS->RoomMode != ETreasureRoomMode::HideAndSeek && GS->Phase != ETreasureRoundPhase::ScoutDrawing)
         || GS->IsRoundOver());
     const bool bShouldLock = bPauseMenuOpen || bMapOpen || bDrawingOverheadView || bShouldWait
         || (!bReviewing && IsLocalScout() && HasSubmittedSketch());
@@ -1053,7 +1074,7 @@ void ATreasureSketchPlayerController::UpdateSpectatorCamera(float DeltaTime)
     if (GS && GS->Phase != ETreasureRoundPhase::ScoutDrawing) bDrawingOverheadView = false;
     const bool bDrawingView = GS && GS->Phase == ETreasureRoundPhase::ScoutDrawing && bDrawingOverheadView;
     const bool bShouldSpectate = GS && GS->bGameStarted && PendingSpectatorRoundSerial == 0
-        && IsLocalScout() && (GS->Phase == ETreasureRoundPhase::HunterSearching || bDrawingView);
+        && GS->RoomMode != ETreasureRoomMode::HideAndSeek && IsLocalScout() && (GS->Phase == ETreasureRoundPhase::HunterSearching || bDrawingView);
     if (!bShouldSpectate)
     {
         StopSpectating();
@@ -1174,6 +1195,8 @@ void ATreasureSketchPlayerController::SetSprayCursorMode(bool bEnabled)
 
 void ATreasureSketchPlayerController::ToggleMap()
 {
+    if (const auto* ModeState = GetWorld()->GetGameState<ATreasureSketchGameState>();
+        ModeState && ModeState->RoomMode == ETreasureRoomMode::HideAndSeek) return;
     if (bPauseMenuOpen) return;
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     const bool bReviewing = GS && GS->bReviewingRound && GS->IsRoundOver();
@@ -1403,9 +1426,9 @@ void ATreasureSketchPlayerController::Shove()
     const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
     const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
     if (!bPauseMenuOpen && !bMapOpen && GetPawn() && GS && PS
-        && GS->RoomMode == ETreasureRoomMode::ExplorerRace && GS->bGameStarted
+        && (GS->RoomMode == ETreasureRoomMode::ExplorerRace || GS->RoomMode == ETreasureRoomMode::HideAndSeek) && GS->bGameStarted
         && GS->Phase == ETreasureRoundPhase::HunterSearching
-        && PS->PlayerRole == ETreasurePlayerRole::Hunter
+        && PS->PlayerRole == (GS->RoomMode == ETreasureRoomMode::HideAndSeek ? ETreasurePlayerRole::Scout : ETreasurePlayerRole::Hunter)
         && !PS->bDigging
         && PS->NextShoveServerTime <= GS->GetServerWorldTimeSeconds()) ServerTryShove();
 }
@@ -1447,6 +1470,13 @@ void ATreasureSketchPlayerController::ClientDigInterrupted_Implementation()
 void ATreasureSketchPlayerController::ClientShoveFeedback_Implementation(uint8 Result, const FString& OtherName)
 {
     PlayActionCue(this, Result);
+    const auto* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (GS && GS->RoomMode == ETreasureRoomMode::HideAndSeek)
+    {
+        StatusMessage = Result == 0 ? TEXT("正在抓捕……") : TEXT("没抓到，等待冷却后再试。");
+        StatusUntil = GetWorld()->GetTimeSeconds() + 2.f;
+        return;
+    }
     StatusMessage = Result == 0 ? TEXT("正在出手推人……")
         : Result == 1 ? FString::Printf(TEXT("推中了 %s！"), *OtherName)
         : Result == 3 ? FString::Printf(TEXT("你被 %s 推开了！"), *OtherName)

@@ -220,6 +220,10 @@ private:
 
     UPROPERTY()
     TObjectPtr<ATreasureMarker> LocalScoutMarker;
+    UPROPERTY()
+    TArray<TObjectPtr<ATreasureMarker>> HideMarkers;
+    TArray<FVector> VisibleHideTreasures;
+    void UpdateHideTreasureMarkers();
 
     UPROPERTY()
     TObjectPtr<ACameraActor> SpectatorCamera;

@@ -20,7 +20,8 @@ enum class ETreasureRoomMode : uint8
     OneMapmaker,
     OneExplorer,
     ExplorerRace,
-    TeamVersus
+    TeamVersus,
+    HideAndSeek
 };
 
 UCLASS()
@@ -35,6 +36,16 @@ public:
     UPROPERTY(Replicated, BlueprintReadOnly)
     ETreasureRoomMode RoomMode = ETreasureRoomMode::OneMapmaker;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+    // Public treasure positions are only populated for hide and seek.
+    UPROPERTY(Replicated)
+    TArray<FVector> HideTreasures;
+    UPROPERTY(Replicated)
+    int32 HideCollectedMask = 0;
+    UPROPERTY(Replicated)
+    int32 HideTreasureCount = 0;
+    UPROPERTY(Replicated)
+    bool bHideCaught = false;
 
     // The room's random map pool. Ruins remain outside the normal pool.
     UPROPERTY(Replicated, BlueprintReadOnly)

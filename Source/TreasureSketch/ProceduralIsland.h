@@ -52,6 +52,7 @@ public:
     bool IsCanyonRouteAt(float X, float Y) const;
     FVector FindTreasurePoint(FRandomStream& Stream, float MinimumHeight = 130.f) const;
     FVector FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight = 130.f) const;
+    TArray<FVector> FindSeparatedTreasurePoints(FRandomStream& Stream, int32 Count, float MinimumSpacing) const;
     FVector FindSpawnPoint(float LateralOffset = 0.f) const;
     FRotator GetCanyonStartFacing() const;
     const FCanyonGrayboxLayout& GetCanyonLayout() const { return CanyonLayout; }

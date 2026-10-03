@@ -19,6 +19,7 @@ class TREASURESKETCH_API ATreasureSketchGameMode : public AGameModeBase
 
 public:
     static constexpr float HeldDigSeconds = 1.2f;
+    static constexpr float HideDigSeconds = 3.f;
     ATreasureSketchGameMode();
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaSeconds) override;
@@ -55,6 +56,9 @@ public:
 private:
     friend class FMultiMapmakerFlowTest;
     friend class FExplorerRaceFlowTest;
+    friend class FHideAndSeekFlowTest;
+    void BeginHideAndSeek();
+    void FinishHideAndSeek(bool bCaught);
     void ResolveShove(ATreasureSketchPlayerController* ShovingPlayer,
         class ATreasureSketchCharacter* ShovingCharacter, int32 RoundSerial);
     UPROPERTY()

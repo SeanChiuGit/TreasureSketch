@@ -13,6 +13,10 @@ void ATreasureSketchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProper
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
     DOREPLIFETIME(ATreasureSketchGameState, RoomMode);
+    DOREPLIFETIME(ATreasureSketchGameState, HideTreasures);
+    DOREPLIFETIME(ATreasureSketchGameState, HideCollectedMask);
+    DOREPLIFETIME(ATreasureSketchGameState, HideTreasureCount);
+    DOREPLIFETIME(ATreasureSketchGameState, bHideCaught);
     DOREPLIFETIME(ATreasureSketchGameState, bBeachInMapPool);
     DOREPLIFETIME(ATreasureSketchGameState, bForestInMapPool);
     DOREPLIFETIME(ATreasureSketchGameState, bCanyonInMapPool);

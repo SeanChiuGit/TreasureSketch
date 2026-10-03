@@ -706,6 +706,62 @@ FVector AProceduralIsland::FindTreasurePoint(FRandomStream& Stream, float Minimu
     return FindRandomLandPoint(Stream, MinimumHeight);
 }
 
+TArray<FVector> AProceduralIsland::FindSeparatedTreasurePoints(FRandomStream& Stream, int32 Count, float MinimumSpacing) const
+{
+    TArray<FVector> Candidates;
+    // Enumerate real land positions. The single-treasure random helper can return
+    // the same center fallback repeatedly, so it must not place multiple treasures.
+    if (Theme == EIslandTheme::CanyonGraybox)
+    {
+        for (const auto& Node : CanyonLayout.Nodes)
+        {
+            if (Node.bCaveInterior || Node.Layer == ECanyonRouteLayer::Ramp) continue;
+            const FVector& P = Node.Position;
+            Candidates.Add(GetActorLocation() + FVector(P.X, P.Y, CanyonLayout.SurfaceHeightAt(P.X, P.Y)));
+        }
+    }
+    else
+    {
+        const float Extent = CellSize * (GridSize - 1) * 0.46f;
+        constexpr int32 Samples = 64;
+        for (int32 Y = 0; Y < Samples; ++Y)
+            for (int32 X = 0; X < Samples; ++X)
+            {
+                const float PX = FMath::Lerp(-Extent, Extent, (X + 0.5f) / Samples);
+                const float PY = FMath::Lerp(-Extent, Extent, (Y + 0.5f) / Samples);
+                const float PZ = HeightAt(PX, PY);
+                // Allow clear, walkable land at any elevation, including high
+                // forest hills; keep treasure above water and out of scenery.
+                if (PZ < 30.f || NormalizedIslandDistance(PX, PY) > 0.9f
+                    || SlopeAt(PX, PY) > 0.42f || !IsClearOfDecorations(PX, PY, 100.f)) continue;
+                Candidates.Add(GetActorLocation() + FVector(PX, PY, PZ));
+            }
+    }
+    TArray<FVector> Selected;
+    if (Count <= 0 || Candidates.IsEmpty()) return Selected;
+    Selected.Add(Candidates[Stream.RandRange(0, Candidates.Num() - 1)]);
+    while (Selected.Num() < Count)
+    {
+        float BestSpacingSquared = FMath::Square(MinimumSpacing);
+        int32 BestIndex = INDEX_NONE;
+        for (int32 Index = 0; Index < Candidates.Num(); ++Index)
+        {
+            float NearestSquared = TNumericLimits<float>::Max();
+            for (const FVector& Existing : Selected)
+                NearestSquared = FMath::Min(NearestSquared, FVector::DistSquared2D(Candidates[Index], Existing));
+            if (NearestSquared > BestSpacingSquared)
+            {
+                BestSpacingSquared = NearestSquared;
+                BestIndex = Index;
+            }
+        }
+        // Never accept a duplicate or overlapping fallback to fill the quota.
+        if (BestIndex == INDEX_NONE) return {};
+        Selected.Add(Candidates[BestIndex]);
+    }
+    return Selected;
+}
+
 FVector AProceduralIsland::FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight) const
 {
     if (Theme == EIslandTheme::CanyonGraybox && CanyonLayout.Validate())
