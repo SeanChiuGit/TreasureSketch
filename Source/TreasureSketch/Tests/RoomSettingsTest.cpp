@@ -57,6 +57,9 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     GM->AdjustRoomSetting(TEXT("PreprintedIsland"), 1);
     GM->AdjustRoomSetting(TEXT("LimitedInk"), 1);
     GM->AdjustRoomSetting(TEXT("InkLimit"), -1);
+    TestTrue(TEXT("Camera clue is enabled for existing rooms by default"), GS->bPhotoClueEnabled);
+    GM->AdjustRoomSetting(TEXT("PhotoClue"), 1);
+    TestFalse(TEXT("Host can disable the camera clue"), GS->bPhotoClueEnabled);
     TestTrue(TEXT("Room can lock drawing to the board"), GS->bSketchSceneLock);
     TestTrue(TEXT("Room can preprint island outline"), GS->bPreprintedIsland);
     TestTrue(TEXT("Room can limit ink"), GS->bLimitedInk);
@@ -90,11 +93,13 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     GM->AdjustRoomSetting(TEXT("DigCooldown"), 1);
     GM->AdjustRoomSetting(TEXT("InkLimit"), 1);
     GM->AdjustRoomSetting(TEXT("SketchSceneLock"), 1);
+    GM->AdjustRoomSetting(TEXT("PhotoClue"), 1);
     TestFalse(TEXT("Range setting locked during round"), GS->bTreasureRangeVisible);
     TestTrue(TEXT("Spawn setting locked during round"), GS->bSpreadPlayerSpawns);
     TestEqual(TEXT("Dig cooldown is locked during round"), GS->DigCooldownSeconds, 10);
     TestEqual(TEXT("Ink limit is locked during round"), GS->InkLimit, 500);
     TestTrue(TEXT("Scene lock is locked during round"), GS->bSketchSceneLock);
+    TestFalse(TEXT("Camera clue setting is locked during round"), GS->bPhotoClueEnabled);
     GS->RoundEndServerTime = -1.f;
     GM->Tick(0.f);
     TestEqual(TEXT("Drawing timeout automatically starts searching"), GS->Phase, ETreasureRoundPhase::HunterSearching);
@@ -114,8 +119,12 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Replay keeps dig cooldown setting"), GS->DigCooldownSeconds, 10);
     TestEqual(TEXT("Replay keeps ink limit"), GS->InkLimit, 500);
     TestTrue(TEXT("Replay keeps preprinted island setting"), GS->bPreprintedIsland);
+    TestFalse(TEXT("Replay keeps camera clue disabled"), GS->bPhotoClueEnabled);
     GS->Phase = ETreasureRoundPhase::Won;
     GM->ReturnToSetup();
+    TestFalse(TEXT("Lobby return keeps camera clue disabled"), GS->bPhotoClueEnabled);
+    GM->AdjustRoomSetting(TEXT("PhotoClue"), 1);
+    TestTrue(TEXT("Host can enable the camera clue again in lobby"), GS->bPhotoClueEnabled);
     TestFalse(TEXT("Lobby return retains beach exclusion"), GS->bBeachInMapPool);
     TestTrue(TEXT("Host can add beach back in lobby"), GM->ToggleRoomMapPool(EIslandTheme::PirateBeach));
     TestTrue(TEXT("Host can exclude forest when beach is available"), GM->ToggleRoomMapPool(EIslandTheme::MistForest));
@@ -175,7 +184,13 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
     GM->StartSoloTest(-2);
     TestEqual(TEXT("Explorer test uses searching setting"), GS->GetSecondsRemaining(), 600);
     for (TActorIterator<AProceduralIsland> It(World); It; ++It)
-        if (!It->IsActorBeingDestroyed()) TestEqual(TEXT("Solo terrain uses selected size"), It->GridSize, FMath::RoundToInt(38.f * FMath::Sqrt(5.f)) + 1);
+        if (!It->IsActorBeingDestroyed())
+        {
+            TestEqual(TEXT("Solo terrain uses selected area multiplier"), It->MapScale, 5.f);
+            const float BaseSide = It->Theme == EIslandTheme::MistForest ? 12540.f * 0.75f : 12540.f;
+            TestTrue(TEXT("Solo terrain dimensions use selected size"), FMath::IsNearlyEqual(
+                (It->GridSize - 1) * It->CellSize, BaseSide * FMath::Sqrt(5.f), 0.1f));
+        }
     GM->StartSoloTest(0);
     TestEqual(TEXT("Map preview timer remains unchanged"), GS->GetSecondsRemaining(), 3600);
     for (TActorIterator<AProceduralIsland> It(World); It; ++It)

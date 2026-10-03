@@ -18,6 +18,7 @@ class TREASURESKETCH_API ATreasureSketchGameMode : public AGameModeBase
     GENERATED_BODY()
 
 public:
+    static constexpr float HeldDigSeconds = 1.2f;
     ATreasureSketchGameMode();
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaSeconds) override;
@@ -33,6 +34,8 @@ public:
     void BroadcastSketchClear(ATreasureSketchPlayerState* Scout);
     void BroadcastSketchPhoto(ATreasureSketchPlayerState* Scout, const TArray<uint8>& PhotoJpeg);
     bool TryDig(ATreasureSketchPlayerState* Hunter, const FVector& WorldLocation, float& OutDistance, bool& bAttempted);
+    bool StartHeldDig(ATreasureSketchPlayerController* HunterController);
+    void CancelHeldDig(ATreasureSketchPlayerState* Hunter, bool bNotifyInterrupted = false);
     bool TryShove(ATreasureSketchPlayerController* ShovingPlayer);
     void StartNewRound(bool bSwapRoles = false, ATreasureSketchPlayerState* RoleRequester = nullptr);
     void SetRoundReview(bool bReviewing);
@@ -65,6 +68,7 @@ private:
     void ResetSurfacePaint();
     void PlaceRoundPlayers();
     void RecoverFallenPlayers();
+    void UpdateHeldDigs();
     TArray<FVector> MapmakerLandingSpawns;
 
     FVector FindPlayerSpawn(TArray<FVector>& UsedSpawns) const;

@@ -24,6 +24,9 @@ public:
     void SetCanyonTestMode(bool bEnabled);
     bool IsCanyonTestMode() const { return bCanyonTestMode; }
     void SetShoveWindingUp(bool bWindingUp);
+    void SetDiggingPose(bool bDigging);
+    void SetWaterSlowed(bool bSlowed);
+    bool IsWaterSlowed() const { return bWaterSlowed; }
     bool IsShoveWindingUp() const { return bShoveWindingUp; }
 
     UFUNCTION(BlueprintCallable, Category="Party Explorer")
@@ -45,6 +48,7 @@ protected:
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
 private:
+    friend class ATreasureSketchGameMode;
     friend class FExplorerRaceFlowTest;
     static constexpr float NormalJumpVelocity = 620.f;
     static constexpr float LowWaterJumpVelocity = 900.f;
@@ -127,6 +131,21 @@ private:
 
     UFUNCTION()
     void OnRep_ShoveWindingUp();
+
+    UPROPERTY(ReplicatedUsing=OnRep_DiggingPose)
+    bool bDiggingPose = false;
+
+    UFUNCTION()
+    void OnRep_DiggingPose();
+
+    UPROPERTY(ReplicatedUsing=OnRep_WaterSlowed)
+    bool bWaterSlowed = false;
+
+    UFUNCTION()
+    void OnRep_WaterSlowed();
+
+    bool bWasInShallowWater = false;
+    float WaterSlowUntilServerTime = 0.f;
 
     void MoveForward(float Value);
     void MoveRight(float Value);

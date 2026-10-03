@@ -55,6 +55,11 @@ public:
     const TArray<uint8>& GetPhotoJpeg() const { return SketchPages.IsValidIndex(ActiveSketchPage) ? SketchPages[ActiveSketchPage].PhotoJpeg : LocalPhotoJpeg; }
     bool HasTakenPhoto() const { return !LocalPhotoJpeg.IsEmpty(); }
     bool IsPhotoExpanded() const { return bPhotoExpanded; }
+    bool IsCameraMode() const { return bCameraMode; }
+    uint8 GetActionFeedbackKind() const { return ActionFeedbackKind; }
+    float GetActionFeedbackRemaining() const;
+    int32 GetPaperRotationSteps() const { return PaperRotationSteps; }
+    void RotatePaper(int32 Direction);
     uint8 GetSelectedInkColor() const { return SelectedInkColor; }
     uint8 GetSelectedEraserSize() const { return SelectedEraserSize; }
     const TArray<FPlayedRoundRecord>& GetHistoryRecords() const;
@@ -67,6 +72,8 @@ public:
     int32 GetInkUsed() const;
     int32 GetDigFeedbackBand() const { return DigFeedbackBand; }
     float GetDigFeedbackRemaining() const;
+    bool IsHoldingDig() const { return bLocalDigHeld; }
+    float GetHoldDigProgress() const;
     int32 GetSketchPageCount() const { return SketchPages.Num(); }
     int32 GetActiveSketchPage() const { return ActiveSketchPage; }
     FString GetActiveMapmakerName() const { return SketchPages.IsValidIndex(ActiveSketchPage) ? SketchPages[ActiveSketchPage].MapmakerName : FString(); }
@@ -121,7 +128,13 @@ public:
     void ClientDigResult(bool bFound, int32 FeedbackValue, bool bRace);
 
     UFUNCTION(Client, Reliable)
-    void ClientShoveFeedback(uint8 Result);
+    void ClientDigInterrupted();
+
+    UFUNCTION(Client, Reliable)
+    void ClientShoveFeedback(uint8 Result, const FString& OtherName);
+
+    UFUNCTION(Client, Reliable)
+    void ClientTerrainFeedback(uint8 Kind);
 
     UFUNCTION(Client, Reliable)
     void ClientStartNewRound(int32 NewRoundSerial);
@@ -226,14 +239,21 @@ private:
     int32 PendingSpectatorRoundSerial = 0;
 
     bool bMapOpen = false;
+    uint8 PaperRotationSteps = 0;
     bool bPhotoExpanded = false;
+    bool bCameraMode = false;
     bool bWaitingSketchInputActive = false;
     bool bWasDrawing = false;
     bool bReplayInputActive = false;
     bool bPauseMenuOpen = false;
     bool bInputLocked = false;
+    bool bLocalDigHeld = false;
+    float LocalDigStartedAt = 0.f;
+    FVector LocalDigStartLocation = FVector::ZeroVector;
     FString StatusMessage;
     float StatusUntil = 0.f;
+    uint8 ActionFeedbackKind = 255;
+    float ActionFeedbackUntil = 0.f;
     EFrontEndPage FrontEndPage = EFrontEndPage::None;
     bool bFrontEndInputActive = false;
 
@@ -241,6 +261,7 @@ private:
     void TakePhoto();
     void Handoff();
     void Dig();
+    void StopDig();
     void NewRound();
     void HostOnlineGame();
     void JoinOnlineGame();
@@ -269,6 +290,9 @@ private:
 
     UFUNCTION(Server, Reliable)
     void ServerTryDig();
+
+    UFUNCTION(Server, Reliable)
+    void ServerCancelDig();
 
     UFUNCTION(Server, Reliable)
     void ServerTryShove();

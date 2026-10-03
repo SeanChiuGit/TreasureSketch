@@ -4,9 +4,11 @@
 #include "TreasureSketchCharacter.h"
 
 #include "TreasureSketchGameState.h"
+#include "TreasureSketchGameMode.h"
 #include "TreasureSketchPlayerController.h"
 #include "TreasureSketchPlayerState.h"
 #include "TreasureOnlineSubsystem.h"
+#include "SketchRotation.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/Texture2D.h"
@@ -296,28 +298,37 @@ void ATreasureSketchHUD::DrawHUD()
                     const float PaperH = PaperW / 1.74f;
                     const FVector2D PaperMin(RightX + (RightW - PaperW) * 0.5f, PanelY + 150.f);
                     const FVector2D PaperExtent(PaperW, PaperH);
+                    const int32 RotationSteps = PC->GetPaperRotationSteps();
+                    const float ToolbarH = PaperH * 0.13f;
+                    const FVector2D ContentMin = PaperMin + FVector2D(0.f, ToolbarH);
+                    const FVector2D ContentSize = PaperExtent - FVector2D(0.f, ToolbarH);
                     DrawRect(SketchInkColor(5), PaperMin.X, PaperMin.Y, PaperW, PaperH);
                     constexpr int32 Samples = 48;
                     if (Selected->IslandTemplateMask.Num() == Samples * Samples)
                     {
-                        const float ToolbarH = PaperH * 0.13f;
-                        const float TemplateSize = FMath::Min(PaperW, PaperH - ToolbarH) * 0.9f;
+                        const float TemplateSize = FMath::Min(PaperW, PaperH - ToolbarH) * 0.9f
+                            * SketchRotation::FitScale(ContentSize, RotationSteps);
                         const FVector2D Origin(PaperMin.X + (PaperW - TemplateSize) * 0.5f,
                             PaperMin.Y + ToolbarH + (PaperH - ToolbarH - TemplateSize) * 0.5f);
                         const float Cell = TemplateSize / Samples;
                         const FLinearColor Coast(0.53f, 0.45f, 0.32f, 0.72f);
+                        auto HistoryLandAt = [&](int32 X, int32 Y)
+                        {
+                            const FIntPoint Source = SketchRotation::SourceCellForDisplay(X, Y, Samples, RotationSteps);
+                            return Selected->IslandTemplateMask[Source.Y * Samples + Source.X] != 0;
+                        };
                         for (int32 Y = 0; Y < Samples; ++Y)
                             for (int32 X = 0; X < Samples; ++X)
-                                if (Selected->IslandTemplateMask[Y * Samples + X])
+                                if (HistoryLandAt(X, Y))
                                 {
                                     const float Left = Origin.X + X * Cell, Top = Origin.Y + Y * Cell;
-                                    if (X == 0 || !Selected->IslandTemplateMask[Y * Samples + X - 1])
+                                    if (X == 0 || !HistoryLandAt(X - 1, Y))
                                         DrawLine(Left, Top, Left, Top + Cell, Coast, 1.f);
-                                    if (X == Samples - 1 || !Selected->IslandTemplateMask[Y * Samples + X + 1])
+                                    if (X == Samples - 1 || !HistoryLandAt(X + 1, Y))
                                         DrawLine(Left + Cell, Top, Left + Cell, Top + Cell, Coast, 1.f);
-                                    if (Y == 0 || !Selected->IslandTemplateMask[(Y - 1) * Samples + X])
+                                    if (Y == 0 || !HistoryLandAt(X, Y - 1))
                                         DrawLine(Left, Top, Left + Cell, Top, Coast, 1.f);
-                                    if (Y == Samples - 1 || !Selected->IslandTemplateMask[(Y + 1) * Samples + X])
+                                    if (Y == Samples - 1 || !HistoryLandAt(X, Y + 1))
                                         DrawLine(Left, Top + Cell, Left + Cell, Top + Cell, Coast, 1.f);
                                 }
                     }
@@ -328,12 +339,14 @@ void ATreasureSketchHUD::DrawHUD()
                         for (const FSketchStroke& Stroke : Sketch.Strokes)
                             for (int32 I = 1; I < Stroke.Points.Num(); ++I)
                             {
-                                const FVector2D A = PaperMin + Stroke.Points[I - 1] * PaperExtent;
-                                const FVector2D B = PaperMin + Stroke.Points[I] * PaperExtent;
+                                const FVector2D A = SketchRotation::ToScreen(PaperMin + Stroke.Points[I - 1] * PaperExtent,
+                                    ContentMin, ContentSize, RotationSteps);
+                                const FVector2D B = SketchRotation::ToScreen(PaperMin + Stroke.Points[I] * PaperExtent,
+                                    ContentMin, ContentSize, RotationSteps);
                                 const float Width = Stroke.ColorIndex == 5
                                     ? (Stroke.EraserSize ? 48.f : 22.f) : 4.f;
                                 DrawLine(A.X, A.Y, B.X, B.Y, SketchInkColor(Stroke.ColorIndex),
-                                    FMath::Max(1.f, Width * PaperW / 1000.f));
+                                    FMath::Max(1.f, Width * PaperW / 1000.f * SketchRotation::FitScale(ContentSize, RotationSteps)));
                             }
                         if (UTexture2D* HistoryPhoto = GetPhotoTexture(Sketch.PhotoJpeg))
                         {
@@ -347,6 +360,15 @@ void ATreasureSketchHUD::DrawHUD()
                         DrawText(FString::Printf(TEXT("图纸 %d / %d · %s"), PageIndex + 1,
                             Selected->Pages.Num(), *Sketch.MapmakerName), FLinearColor::White,
                             RightX + 12.f, PaperMin.Y + PaperH + 20.f, BodyFont, 1.f);
+                        for (int32 I = 0; I < 2; ++I)
+                        {
+                            const FVector2D Button(PaperMin.X + PaperW - 224.f + I * 114.f, PaperMin.Y - 38.f);
+                            DrawRect(FLinearColor(0.15f, 0.30f, 0.30f), Button.X, Button.Y, 106.f, 32.f);
+                            DrawText(I == 0 ? TEXT("左转90°") : TEXT("右转90°"), FLinearColor::White,
+                                Button.X + 7.f, Button.Y + 8.f, BodyFont, 0.8f);
+                            AddHitBox(Button, FVector2D(106.f, 32.f),
+                                I == 0 ? TEXT("RotatePaperLeft") : TEXT("RotatePaperRight"), true, 10);
+                        }
                         if (Selected->Pages.Num() > 1)
                         {
                             const float SwitchY = PaperMin.Y + PaperH + 46.f;
@@ -618,8 +640,23 @@ void ATreasureSketchHUD::DrawHUD()
                 if (bEnabled) AddHitBox(FVector2D(X, InkY + 4.f), FVector2D(42.f, 34.f),
                     I == 0 ? TEXT("RoomInkLess") : TEXT("RoomInkMore"), true, 10);
             }
-            DrawRule(TEXT("ToggleSurfacePaint"), GS->bSurfacePaintEnabled
-                ? TEXT("实验喷漆：开启") : TEXT("实验喷漆：关闭"), PanelY + 456.f);
+            const float ToolY = PanelY + 456.f;
+            const float ToolX = PanelX + 48.f;
+            const float ToolW = (PanelW - 104.f) * 0.5f;
+            const FLinearColor ToolColor = bHost ? FLinearColor(0.13f, 0.32f, 0.29f)
+                : FLinearColor(0.08f, 0.13f, 0.14f);
+            DrawRect(ToolColor, ToolX, ToolY, ToolW, 42.f);
+            DrawText(GS->bSurfacePaintEnabled ? TEXT("喷漆：开启") : TEXT("喷漆：关闭"),
+                FLinearColor::White, ToolX + 12.f, ToolY + 12.f, BodyFont);
+            DrawRect(ToolColor, ToolX + ToolW + 8.f, ToolY, ToolW, 42.f);
+            DrawText(GS->bPhotoClueEnabled ? TEXT("相机：开启") : TEXT("相机：关闭"),
+                FLinearColor::White, ToolX + ToolW + 20.f, ToolY + 12.f, BodyFont);
+            if (bHost)
+            {
+                AddHitBox(FVector2D(ToolX, ToolY), FVector2D(ToolW, 42.f), TEXT("ToggleSurfacePaint"), true, 10);
+                AddHitBox(FVector2D(ToolX + ToolW + 8.f, ToolY), FVector2D(ToolW, 42.f),
+                    TEXT("TogglePhotoClue"), true, 10);
+            }
             DrawMenuButton(TEXT("RoomDrawingRulesBack"), TEXT("返回房间"), PanelY + PanelH - 64.f);
         }
         return;
@@ -778,8 +815,9 @@ void ATreasureSketchHUD::DrawHUD()
             for (int32 Rank = 0; Rank < Standings.Num(); ++Rank)
             {
                 const ATreasureSketchPlayerState* Member = Standings[Rank];
-                DrawText(FString::Printf(TEXT("%d. %s  %d 分  本局 %+d  找到 %d 次"), Rank + 1,
-                    *Member->GetPlayerName(), Member->RacePoints, Member->RaceLastRoundPoints, Member->RaceFinds),
+                DrawText(FString::Printf(TEXT("%d. %s  %d 分  本局 %+d  找到 %d 次  推中 %d"), Rank + 1,
+                    *Member->GetPlayerName(), Member->RacePoints, Member->RaceLastRoundPoints,
+                    Member->RaceFinds, Member->RoundShoveHits),
                     Member == PS ? FLinearColor(0.95f, 0.85f, 0.35f) : FLinearColor::White,
                     CenterX - PanelWidth * 0.5f + 80.f, CenterY - 47.f + Rank * 24.f,
                     BodyFont, 0.95f);
@@ -873,7 +911,9 @@ void ATreasureSketchHUD::DrawHUD()
                     FVector2D Screen;
                     if (PC->ProjectWorldLocationToScreen(Character->GetActorLocation() + FVector(0.f, 0.f, 135.f), Screen))
                     {
-                        const FString Name = Other->GetPlayerName();
+                        const FString Name = Other->GetPlayerName()
+                            + (Other->bDigging ? TEXT(" · 挖掘中")
+                                : Character->IsShoveWindingUp() ? TEXT(" · 正在推人") : TEXT(""));
                         float NameW = 0.f, NameH = 0.f;
                         GetTextSize(Name, NameW, NameH, BodyFont, 1.f);
                         DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.62f), Screen.X - NameW * 0.5f - 8.f,
@@ -955,8 +995,8 @@ void ATreasureSketchHUD::DrawHUD()
     {
         const int32 CooldownRemaining = FMath::CeilToInt(PS->GetDigCooldownRemaining(
             GS->RoundSerial, GS->GetServerWorldTimeSeconds()));
-        const FString DigStatus = CooldownRemaining > 0 ? FString::Printf(TEXT("挖掘冷却：%d 秒"), CooldownRemaining)
-            : GS->DigCooldownSeconds == 0 ? TEXT("挖掘就绪（无冷却） · E") : TEXT("挖掘就绪 · E");
+        const FString DigStatus = PC->IsHoldingDig() ? TEXT("正在挖掘：按住 E，松开会取消") : CooldownRemaining > 0 ? FString::Printf(TEXT("挖掘冷却：%d 秒"), CooldownRemaining)
+            : GS->DigCooldownSeconds == 0 ? TEXT("挖掘就绪（无冷却） · 长按 E") : TEXT("挖掘就绪 · 长按 E");
         float DigStatusW = 0.f, DigStatusH = 0.f;
         GetTextSize(DigStatus, DigStatusW, DigStatusH, BodyFont, 0.96f);
         const float DigPanelW = DigStatusW + 34.f;
@@ -972,7 +1012,7 @@ void ATreasureSketchHUD::DrawHUD()
             const int32 ShoveCooldown = FMath::CeilToInt(FMath::Max(0.f,
                 PS->NextShoveServerTime - GS->GetServerWorldTimeSeconds()));
             DrawText(ShoveCooldown > 0 ? FString::Printf(TEXT("推人冷却：%d 秒"), ShoveCooldown)
-                : TEXT("推人就绪：靠近并面向对手按 G"), FLinearColor(0.95f, 0.75f, 0.40f),
+                : TEXT("推人就绪：瞄准对手按鼠标左键或 G"), FLinearColor(0.95f, 0.75f, 0.40f),
                 35.f, DigPanelY + DigStatusH + 24.f, BodyFont, 1.f);
             const int32 ProtectionRemaining = FMath::CeilToInt(FMath::Max(0.f,
                 PS->ShoveProtectedUntilServerTime - GS->GetServerWorldTimeSeconds()));
@@ -996,12 +1036,13 @@ void ATreasureSketchHUD::DrawHUD()
             FLinearColor(0.25f, 0.75f, 1.f), 35.f, ContextY + 8.f,
             BodyFont, 0.95f);
     }
-    if (bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing && !PC->HasSubmittedSketch()
+    if (GS->bPhotoClueEnabled && bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing && !PC->HasSubmittedSketch()
         && !PC->IsMapOpen())
         DrawText(PC->HasTakenPhoto() ? TEXT("照片已拍好 · 按 M 在画纸上查看")
-            : PC->IsDrawingOverheadView() ? TEXT("相机：返回地面后按 B 拍照")
-            : TEXT("相机：按 B 拍一张照片 · 鬼魂视角不可拍"),
-            FLinearColor(0.95f, 0.84f, 0.52f), 35.f, 155.f, BodyFont, 0.86f);
+            : PC->IsCameraMode() ? TEXT("相机取景中 · B 拍照 · Esc 取消")
+            : PC->IsDrawingOverheadView() ? TEXT("相机：返回地面后按 B 取景")
+            : TEXT("相机：按 B 取景 · 再按 B 拍照"),
+            FLinearColor(0.95f, 0.84f, 0.52f), 35.f, 155.f, BodyFont, 0.9f);
     const int32 SecondsRemaining = GS->GetSecondsRemaining();
     const FString TimerText = FString::Printf(TEXT("%02d:%02d"), SecondsRemaining / 60, SecondsRemaining % 60);
     const FLinearColor TimerColor = SecondsRemaining <= 10 ? FLinearColor(1.f, 0.24f, 0.16f) : FLinearColor(1.f, 0.94f, 0.73f);
@@ -1028,6 +1069,60 @@ void ATreasureSketchHUD::DrawHUD()
             FMath::Min(760.f, Canvas->SizeX * 0.62f), 60.f);
         DrawRect(FLinearColor(0.91f, 0.68f, 0.27f), 22.f, Canvas->SizeY - 96.f, 6.f, 60.f);
         DrawText(PC->GetStatusMessage(), FLinearColor::Yellow, 35.f, Canvas->SizeY - 82.f, DisplayFont, 1.1f);
+    }
+
+    if (PC->GetActionFeedbackRemaining() > 0.f && !PC->IsMapOpen())
+    {
+        const uint8 Kind = PC->GetActionFeedbackKind();
+        const TCHAR* Label = Kind == 1 ? TEXT("推中了！") : Kind == 2 ? TEXT("推空了！")
+            : Kind == 3 ? TEXT("被推开！") : Kind == 4 ? TEXT("对手受保护")
+            : Kind == 5 ? TEXT("扑通！") : Kind == 6 ? TEXT("掉进深水！") : TEXT("斜坡滑行！");
+        const FLinearColor Color = Kind == 1 ? FLinearColor(1.f, 0.74f, 0.18f)
+            : Kind == 3 || Kind == 6 ? FLinearColor(1.f, 0.31f, 0.20f)
+            : Kind == 5 ? FLinearColor(0.30f, 0.75f, 1.f) : FLinearColor(0.90f, 0.88f, 0.72f);
+        const float Fade = FMath::Min(1.f, PC->GetActionFeedbackRemaining() * 1.5f);
+        DrawRect(FLinearColor(Color.R, Color.G, Color.B, 0.12f * Fade), 0.f, 0.f,
+            Canvas->SizeX, Canvas->SizeY);
+        DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.68f * Fade), Canvas->SizeX * 0.32f,
+            Canvas->SizeY * 0.26f, Canvas->SizeX * 0.36f, 70.f);
+        float LabelW = 0.f, LabelH = 0.f;
+        GetTextSize(Label, LabelW, LabelH, GEngine->GetLargeFont(), 1.5f);
+        DrawText(Label, Color, (Canvas->SizeX - LabelW) * 0.5f, Canvas->SizeY * 0.27f,
+            GEngine->GetLargeFont(), 1.5f);
+    }
+
+    if (PC->IsHoldingDig() && GS->Phase == ETreasureRoundPhase::HunterSearching)
+    {
+        const float DigFraction = PC->GetHoldDigProgress();
+        const float BarW = FMath::Min(Canvas->SizeX * 0.36f, 420.f);
+        const float BarX = (Canvas->SizeX - BarW) * 0.5f;
+        const float BarY = Canvas->SizeY * 0.72f;
+        DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.72f), BarX - 8.f, BarY - 8.f, BarW + 16.f, 60.f);
+        DrawText(TEXT("按住 E 挖掘"), FLinearColor::White, BarX + 4.f, BarY - 2.f, BodyFont);
+        DrawRect(FLinearColor(0.18f, 0.21f, 0.20f), BarX, BarY + 24.f, BarW, 16.f);
+        DrawRect(FLinearColor(0.96f, 0.72f, 0.22f), BarX, BarY + 24.f, BarW * DigFraction, 16.f);
+    }
+
+    if (PC->IsCameraMode())
+    {
+        const float FrameW = FMath::Min(Canvas->SizeX * 0.78f, Canvas->SizeY * 0.78f * 16.f / 9.f);
+        const float FrameH = FrameW * 9.f / 16.f;
+        const float FrameX = (Canvas->SizeX - FrameW) * 0.5f;
+        const float FrameY = (Canvas->SizeY - FrameH) * 0.5f;
+        const FLinearColor Shade(0.f, 0.f, 0.f, 0.38f);
+        const FLinearColor Edge(1.f, 0.90f, 0.58f);
+        DrawRect(Shade, 0.f, 0.f, FrameX, Canvas->SizeY);
+        DrawRect(Shade, FrameX + FrameW, 0.f, Canvas->SizeX - FrameX - FrameW, Canvas->SizeY);
+        DrawRect(Shade, FrameX, 0.f, FrameW, FrameY);
+        DrawRect(Shade, FrameX, FrameY + FrameH, FrameW, Canvas->SizeY - FrameY - FrameH);
+        DrawLine(FrameX, FrameY, FrameX + FrameW, FrameY, Edge, 2.f);
+        DrawLine(FrameX + FrameW, FrameY, FrameX + FrameW, FrameY + FrameH, Edge, 2.f);
+        DrawLine(FrameX + FrameW, FrameY + FrameH, FrameX, FrameY + FrameH, Edge, 2.f);
+        DrawLine(FrameX, FrameY + FrameH, FrameX, FrameY, Edge, 2.f);
+        DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.72f), FrameX + FrameW * 0.5f - 118.f,
+            FrameY + FrameH - 42.f, 236.f, 34.f);
+        DrawText(TEXT("B 拍照   ·   Esc 取消"), Edge, FrameX + FrameW * 0.5f - 104.f,
+            FrameY + FrameH - 34.f, BodyFont, 1.f);
     }
 
     if (PC->GetDigFeedbackRemaining() > 0.f && !GS->IsRoundOver())
@@ -1076,6 +1171,9 @@ void ATreasureSketchHUD::DrawHUD()
         DrawRect(FLinearColor(0.01f, 0.015f, 0.025f, 0.96f), 0.f, 0.f, Canvas->SizeX, Canvas->SizeY);
     const FVector2D Min = PC->GetPaperMin();
     const FVector2D Size = PC->GetPaperSize();
+    const int32 RotationSteps = PC->GetPaperRotationSteps();
+    const FVector2D ContentMin = Min + FVector2D(0.f, 92.f);
+    const FVector2D ContentSize = Size - FVector2D(0.f, 92.f);
     DrawRect(FLinearColor(0.18f, 0.11f, 0.05f, 0.75f), Min.X - 8.f, Min.Y - 8.f, Size.X + 16.f, Size.Y + 16.f);
     DrawRect(FLinearColor(0.96f, 0.92f, 0.78f, 0.99f), Min.X, Min.Y, Size.X, Size.Y);
     DrawRect(FLinearColor(0.53f, 0.36f, 0.14f, 0.75f), Min.X, Min.Y, Size.X, 4.f);
@@ -1102,23 +1200,29 @@ void ATreasureSketchHUD::DrawHUD()
                             ? Island->IsCanyonRouteAt(WX, WY) : Island->HeightAt(WX, WY) > 0.f;
                     }
             }
-            const float TemplateSize = FMath::Min(Size.X, Size.Y - 100.f) * 0.9f;
+            const float TemplateSize = FMath::Min(Size.X, Size.Y - 100.f) * 0.9f
+                * SketchRotation::FitScale(ContentSize, RotationSteps);
             const FVector2D Origin(Min.X + (Size.X - TemplateSize) * 0.5f,
                 Min.Y + 90.f + (Size.Y - 90.f - TemplateSize) * 0.5f);
             const float Cell = TemplateSize / Samples;
             const FLinearColor Coast(0.53f, 0.45f, 0.32f, 0.72f);
+            auto LandAt = [&](int32 X, int32 Y)
+            {
+                const FIntPoint Source = SketchRotation::SourceCellForDisplay(X, Y, Samples, RotationSteps);
+                return IslandTemplateMask[Source.Y * Samples + Source.X] != 0;
+            };
             for (int32 Y = 0; Y < Samples; ++Y)
                 for (int32 X = 0; X < Samples; ++X)
-                    if (IslandTemplateMask[Y * Samples + X])
+                    if (LandAt(X, Y))
                     {
                         const float Left = Origin.X + X * Cell, Top = Origin.Y + Y * Cell;
-                        if (X == 0 || !IslandTemplateMask[Y * Samples + X - 1])
+                        if (X == 0 || !LandAt(X - 1, Y))
                             DrawLine(Left, Top, Left, Top + Cell, Coast, 2.f);
-                        if (X == Samples - 1 || !IslandTemplateMask[Y * Samples + X + 1])
+                        if (X == Samples - 1 || !LandAt(X + 1, Y))
                             DrawLine(Left + Cell, Top, Left + Cell, Top + Cell, Coast, 2.f);
-                        if (Y == 0 || !IslandTemplateMask[(Y - 1) * Samples + X])
+                        if (Y == 0 || !LandAt(X, Y - 1))
                             DrawLine(Left, Top, Left + Cell, Top, Coast, 2.f);
-                        if (Y == Samples - 1 || !IslandTemplateMask[(Y + 1) * Samples + X])
+                        if (Y == Samples - 1 || !LandAt(X, Y + 1))
                             DrawLine(Left, Top + Cell, Left + Cell, Top + Cell, Coast, 2.f);
                     }
         }
@@ -1132,6 +1236,17 @@ void ATreasureSketchHUD::DrawHUD()
             ATreasureSurfacePaint::MaxStamps) : FString();
     DrawText(PaperTitle + PaintCounter,
         FLinearColor::Black, Min.X + 18.f, Min.Y + 14.f, BodyFont, 1.f);
+    for (int32 I = 0; I < 2; ++I)
+    {
+        const FVector2D Button(Min.X + Size.X - 366.f + I * 116.f, Min.Y + 42.f);
+        DrawRect(FLinearColor(0.15f, 0.30f, 0.30f), Button.X, Button.Y, 108.f, 38.f);
+        DrawText(I == 0 ? TEXT("左转90° Z") : TEXT("右转90° X"), FLinearColor::White,
+            Button.X + 6.f, Button.Y + 11.f, BodyFont, 0.75f);
+        AddHitBox(Button, FVector2D(108.f, 38.f),
+            I == 0 ? TEXT("RotatePaperLeft") : TEXT("RotatePaperRight"), true, 10);
+    }
+    DrawText(FString::Printf(TEXT("地图朝向：%d°"), RotationSteps * 90), FLinearColor::Black,
+        Min.X + Size.X - 366.f, Min.Y + 84.f, BodyFont, 0.85f);
     if (bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing && !PC->HasSubmittedSketch())
     {
         const FName Names[] = { TEXT("InkBlack"), TEXT("InkRed"), TEXT("InkBlue"),
@@ -1150,7 +1265,7 @@ void ATreasureSketchHUD::DrawHUD()
         }
         if (GS->bLimitedInk)
             DrawText(FString::Printf(TEXT("笔墨 %d / %d"), FMath::Max(0, GS->InkLimit - PC->GetInkUsed()), GS->InkLimit),
-                FLinearColor::Black, Min.X + Size.X - 190.f, Min.Y + 52.f, BodyFont, 1.f);
+                FLinearColor::Black, Min.X + Size.X - 190.f, Min.Y + 85.f, BodyFont, 1.f);
         if (GS->bSketchSceneLock)
             DrawText(TEXT("画纸已锁定：交图前不能返回场景"), FLinearColor(0.62f, 0.20f, 0.12f),
                 Min.X + 18.f, Min.Y + 85.f, BodyFont, 0.85f);
@@ -1163,20 +1278,23 @@ void ATreasureSketchHUD::DrawHUD()
     {
         for (int32 I = 1; I < Stroke.Points.Num(); ++I)
         {
-            const FVector2D A = Min + Stroke.Points[I-1] * Size;
-            const FVector2D B = Min + Stroke.Points[I] * Size;
+            const FVector2D A = SketchRotation::ToScreen(Min + Stroke.Points[I-1] * Size,
+                ContentMin, ContentSize, RotationSteps);
+            const FVector2D B = SketchRotation::ToScreen(Min + Stroke.Points[I] * Size,
+                ContentMin, ContentSize, RotationSteps);
             DrawLine(A.X, A.Y, B.X, B.Y, SketchInkColor(Stroke.ColorIndex),
-                Stroke.ColorIndex == 5 ? (Stroke.EraserSize ? 48.f : 22.f) : 4.f);
+                (Stroke.ColorIndex == 5 ? (Stroke.EraserSize ? 48.f : 22.f) : 4.f)
+                    * SketchRotation::FitScale(ContentSize, RotationSteps));
         }
     }
     const TArray<uint8>& PhotoJpeg = PC->GetPhotoJpeg();
     if (UTexture2D* PhotoTexture = GetPhotoTexture(PhotoJpeg))
     {
-        const FVector2D PhotoButton(Min.X + Size.X - 174.f, Min.Y + 96.f);
-        DrawRect(FLinearColor(0.13f, 0.35f, 0.31f), PhotoButton.X, PhotoButton.Y, 154.f, 36.f);
+        const FVector2D PhotoButton(Min.X + Size.X - 130.f, Min.Y + 42.f);
+        DrawRect(FLinearColor(0.13f, 0.35f, 0.31f), PhotoButton.X, PhotoButton.Y, 120.f, 38.f);
         DrawText(PC->IsPhotoExpanded() ? TEXT("收起照片") : TEXT("查看照片"), FLinearColor::White,
-            PhotoButton.X + 23.f, PhotoButton.Y + 9.f, BodyFont, 0.86f);
-        AddHitBox(PhotoButton, FVector2D(154.f, 36.f), TEXT("TogglePhoto"), true, 10);
+            PhotoButton.X + 16.f, PhotoButton.Y + 11.f, BodyFont, 0.9f);
+        AddHitBox(PhotoButton, FVector2D(120.f, 38.f), TEXT("TogglePhoto"), true, 10);
         if (PC->IsPhotoExpanded())
         {
             const float PhotoW = FMath::Min(Canvas->SizeX * 0.72f, 960.f);
@@ -1191,7 +1309,7 @@ void ATreasureSketchHUD::DrawHUD()
             DrawText(TEXT("收起照片"), FLinearColor::White, PhotoX + PhotoW - 98.f, PhotoY - 35.f,
                 BodyFont, 0.80f);
             AddHitBox(FVector2D(PhotoX + PhotoW - 110.f, PhotoY - 44.f), FVector2D(110.f, 36.f),
-                TEXT("TogglePhoto"), true, 20);
+                TEXT("ClosePhotoOverlay"), true, 20);
         }
     }
     if ((!bScout || GS->bReviewingRound || GS->Phase == ETreasureRoundPhase::HunterSearching)

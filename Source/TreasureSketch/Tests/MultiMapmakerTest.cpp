@@ -12,12 +12,26 @@
 #include "../TreasureSketchPlayerController.h"
 #include "../TreasureSketchPlayerState.h"
 #include "../TreasureSketchCharacter.h"
+#include "../SketchRotation.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMultiMapmakerFlowTest, "TreasureSketch.RoomSettings.MultiMapmaker",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
 {
+    const FVector2D RotationMin(100.f, 150.f), RotationSize(600.f, 300.f);
+    const FVector2D OriginalPoint(180.f, 220.f);
+    for (int32 Steps = 0; Steps < 4; ++Steps)
+    {
+        const FVector2D ScreenPoint = SketchRotation::ToScreen(OriginalPoint, RotationMin, RotationSize, Steps);
+        TestTrue(TEXT("Every quarter turn maps the cursor back to the original drawing point"),
+            SketchRotation::FromScreen(ScreenPoint, RotationMin, RotationSize, Steps).Equals(OriginalPoint, 0.01f));
+    }
+    TestTrue(TEXT("Odd turns fit a landscape map without stretching"),
+        FMath::IsNearlyEqual(SketchRotation::FitScale(RotationSize, 1), 0.5f));
+    TestEqual(TEXT("Quarter-turn rotates the island mask clockwise"),
+        SketchRotation::SourceCellForDisplay(0, 0, 4, 1), FIntPoint(0, 3));
+
     UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
     GEngine->CreateNewWorldContext(EWorldType::Game).SetCurrentWorld(World);
     World->URL.AddOption(TEXT("listen"));
@@ -94,6 +108,9 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Waiting explorer receives every mapmaker's page"), LivePages.Num(), 3);
     Explorer->ClientInitializeLiveSketch_Implementation(GS->RoundSerial, LivePages);
     TestEqual(TEXT("Live pages are ready during drawing"), Explorer->GetSketchPageCount(), 3);
+    Explorer->RotatePaper(1);
+    TestEqual(TEXT("Waiting explorer can rotate the live map"), Explorer->GetPaperRotationSteps(), 1);
+    Explorer->RotatePaper(-1);
     if (LivePages.Num() == 3)
     {
         Explorer->ClientAppendLiveSketch_Implementation(GS->RoundSerial, Players[1]->GetPlayerId(), 0, 1, 0, FirstStroke.Points);
@@ -131,16 +148,36 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Test photograph can be encoded"), TestPhoto.Num() > 100);
     ATreasureSketchCharacter* PhotoPawn = World->SpawnActor<ATreasureSketchCharacter>();
     Controllers[1]->Possess(PhotoPawn);
+    GS->bPhotoClueEnabled = false;
+    Controllers[1]->TakePhoto();
+    TestFalse(TEXT("Disabled camera never enters viewfinder mode"), Controllers[1]->IsCameraMode());
+    GS->bPhotoClueEnabled = true;
+    Controllers[1]->TakePhoto();
+    TestTrue(TEXT("First B opens the viewfinder without taking a photo"), Controllers[1]->IsCameraMode());
+    TestFalse(TEXT("Opening the viewfinder does not spend the photo"), Controllers[1]->HasTakenPhoto());
+    FInputKeyEventArgs EscapeKey;
+    EscapeKey.Key = EKeys::Escape;
+    EscapeKey.Event = IE_Pressed;
+    TestTrue(TEXT("Escape consumes the input to cancel the viewfinder"), Controllers[1]->InputKey(EscapeKey));
+    TestFalse(TEXT("Escape leaves camera mode"), Controllers[1]->IsCameraMode());
+    TestFalse(TEXT("Cancelled framing preserves the photo allowance"), Controllers[1]->HasTakenPhoto());
     const FVector PhotoOrigin = Controllers[1]->GetPawn()->GetActorLocation();
     const FRotator PhotoRotation = Controllers[1]->GetControlRotation();
     Controllers[1]->bServerDrawingOverheadView = true;
     Controllers[1]->ServerSubmitPhoto_Implementation(GS->RoundSerial, PhotoOrigin, PhotoRotation, TestPhoto);
     TestTrue(TEXT("Ghost camera cannot submit a photograph"), Controllers[1]->GetServerPhoto().IsEmpty());
     Controllers[1]->bServerDrawingOverheadView = false;
+    GS->bPhotoClueEnabled = false;
+    Controllers[1]->ServerSubmitPhoto_Implementation(GS->RoundSerial, PhotoOrigin, PhotoRotation, TestPhoto);
+    TestTrue(TEXT("Disabled room camera rejects a photograph on the server"), Controllers[1]->GetServerPhoto().IsEmpty());
+    GS->bPhotoClueEnabled = true;
     Controllers[1]->ServerSubmitPhoto_Implementation(GS->RoundSerial, PhotoOrigin, PhotoRotation, TestPhoto);
     TestEqual(TEXT("Ground camera stores one photograph"), Controllers[1]->GetServerPhoto(), TestPhoto);
     Explorer->ClientReceiveLivePhoto_Implementation(GS->RoundSerial, Players[1]->GetPlayerId(), TestPhoto);
     TestEqual(TEXT("Waiting explorer receives the matching live photograph"), Explorer->GetPhotoJpeg(), TestPhoto);
+    Explorer->bPhotoExpanded = true;
+    Explorer->HandleFrontEndAction(TEXT("ClosePhotoOverlay"));
+    TestFalse(TEXT("Photo overlay close action dismisses the photograph"), Explorer->bPhotoExpanded);
     const TArray<FSketchPage> PhotoPages = GM->CollectSketchPages();
     TestEqual(TEXT("Unsubmitted map page keeps its photograph"), PhotoPages[0].PhotoJpeg, TestPhoto);
     GS->bLimitedInk = true;
@@ -208,6 +245,10 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Mapmaker's local drawing remains available"), Mapmaker->Strokes.Num(), 1);
     Mapmaker->ToggleMap();
     TestTrue(TEXT("Mapmaker can open the map while spectating"), Mapmaker->IsMapOpen());
+    Mapmaker->RotatePaper(1);
+    TestEqual(TEXT("Mapmaker can rotate the map"), Mapmaker->GetPaperRotationSteps(), 1);
+    TestEqual(TEXT("Rotating does not change stored strokes"), Mapmaker->GetStrokes()[0].Points[0], FirstStroke.Points[0]);
+    Mapmaker->RotatePaper(-1);
     Mapmaker->CycleSketchPage(1);
     TestEqual(TEXT("Mapmaker can switch to another finished page"), Mapmaker->GetActiveSketchPage(), 1);
     Mapmaker->ClearSketch();

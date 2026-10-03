@@ -34,6 +34,16 @@ public:
     float NextDigServerTime = 0.f;
 
     UPROPERTY(Replicated, BlueprintReadOnly)
+    bool bDigging = false;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    float DigStartedServerTime = 0.f;
+
+    // Server-only anchor: moving away cancels the held dig.
+    FVector DigStartLocation = FVector::ZeroVector;
+    int32 DigStartRoundSerial = 0;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
     int32 RacePoints = 0;
 
     UPROPERTY(Replicated, BlueprintReadOnly)
@@ -41,6 +51,9 @@ public:
 
     UPROPERTY(Replicated, BlueprintReadOnly)
     int32 RaceLastRoundPoints = 0;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    int32 RoundShoveHits = 0;
 
     // Server-only progress for the current race round.
     float RaceBestMissDistance = TNumericLimits<float>::Max();

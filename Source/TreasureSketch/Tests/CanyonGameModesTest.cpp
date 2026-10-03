@@ -61,9 +61,9 @@ bool FCanyonGameModesTest::RunTest(const FString& Parameters)
             FMath::IsNearlyEqual(Island->MapScale, Scales[Index])
             && FMath::IsNearlyEqual((Island->GridSize - 1) * Island->CellSize,
                 12540.f * FMath::Sqrt(Scales[Index]), 0.1f));
-        FRandomStream Stream(125 + Index);
+        FRandomStream Stream(Island->Seed ^ 0x35D1A7);
         const FVector Treasure = Island->FindTreasurePoint(Stream);
-        TestTrue(TEXT("Treasure uses the planned canyon goal"),
+        TestTrue(TEXT("Treasure selection matches the hosted round seed, including cave locations"),
             FVector::Dist2D(Treasure, GM->GetTreasureLocation()) < 1.f);
         for (int32 Attempt = 0; Attempt < 12; ++Attempt)
         {

@@ -75,6 +75,10 @@ bool FExplorerRaceFlowTest::RunTest(const FString& Parameters)
             ShovingPawn->SetActorLocation(FVector(0.f, 0.f, -1000.f));
             GM->RecoverFallenPlayers();
             TestTrue(TEXT("Fallen explorer returns to the island"), ShovingPawn->GetActorLocation().Z > 0.f);
+            ShovingPawn->SetWaterSlowed(true);
+            TestEqual(TEXT("Shallow water temporarily slows walking"), ShovingPawn->GetCharacterMovement()->MaxWalkSpeed, 390.f);
+            ShovingPawn->SetWaterSlowed(false);
+            TestEqual(TEXT("Walking speed returns after leaving water"), ShovingPawn->GetCharacterMovement()->MaxWalkSpeed, 520.f);
             ShovingPawn->SetActorLocation(FVector(0.f, 0.f, 50.f));
             ShovingPawn->Jump();
             ShovingPawn->CheckJumpInput(0.f);
@@ -87,6 +91,22 @@ bool FExplorerRaceFlowTest::RunTest(const FString& Parameters)
             ShovingPawn->StopJumping();
             ShovingPawn->SetActorLocation(FVector(0.f, 0.f, 5000.f));
             TargetPawn->SetActorLocation(FVector(150.f, 0.f, 5000.f));
+            ShovingPawn->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+            TargetPawn->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+            const float PreviousDigCooldown = Players[1]->NextDigServerTime;
+            TestTrue(TEXT("Holding E starts a server-owned dig"), GM->StartHeldDig(Controllers[1]));
+            TestTrue(TEXT("Digging state is shared"), Players[1]->bDigging);
+            GM->CancelHeldDig(Players[1]);
+            TestFalse(TEXT("Releasing E cancels the dig"), Players[1]->bDigging);
+            TestEqual(TEXT("Cancelled dig does not consume cooldown"), Players[1]->NextDigServerTime, PreviousDigCooldown);
+            TestTrue(TEXT("Explorer can restart a cancelled dig"), GM->StartHeldDig(Controllers[1]));
+            Players[1]->DigStartedServerTime = GS->GetServerWorldTimeSeconds() - GM->HeldDigSeconds - 0.1f;
+            GM->UpdateHeldDigs();
+            TestFalse(TEXT("Completed hold stops the digging state"), Players[1]->bDigging);
+            TestTrue(TEXT("Only a completed dig starts cooldown"), Players[1]->NextDigServerTime > PreviousDigCooldown);
+            // The hold-dig assertion uses this round's finder; leave the race flow's later find independent.
+            Players[1]->NextDigServerTime = PreviousDigCooldown;
+            TestTrue(TEXT("Other explorer can begin digging"), GM->StartHeldDig(Controllers[2]));
             Controllers[1]->SetControlRotation(FRotator::ZeroRotator);
             TestTrue(TEXT("Nearby explorer can shove the opponent"), GM->TryShove(Controllers[1]));
             TestTrue(TEXT("Shove visibly winds up"), ShovingPawn->IsShoveWindingUp());
@@ -96,6 +116,9 @@ bool FExplorerRaceFlowTest::RunTest(const FString& Parameters)
             TestFalse(TEXT("Windup ends after shove"), ShovingPawn->IsShoveWindingUp());
             const float ProtectedUntil = Players[2]->ShoveProtectedUntilServerTime;
             TestTrue(TEXT("Hit grants brief protection"), ProtectedUntil > GS->GetServerWorldTimeSeconds());
+            TestFalse(TEXT("A shove interrupts the target's held dig"), Players[2]->bDigging);
+            TestEqual(TEXT("Interrupted dig keeps its cooldown ready"), Players[2]->NextDigServerTime, 0.f);
+            TestEqual(TEXT("Successful shoves are recorded without affecting points"), Players[1]->RoundShoveHits, 1);
 
             Players[1]->NextShoveServerTime = 0.f;
             TestTrue(TEXT("Protected opponent still consumes an attempted shove"), GM->TryShove(Controllers[1]));
