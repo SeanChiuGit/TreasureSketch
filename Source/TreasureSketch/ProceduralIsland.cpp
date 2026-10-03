@@ -2,6 +2,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "CanyonSolidMesh.h"
+#include "Async/ParallelFor.h"
 
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
@@ -1271,19 +1272,28 @@ void AProceduralIsland::BuildCanyonGrayboxTerrain()
     TArray<FProcMeshTangent> Tangents;
     TArray<int32> Triangles[4];
     const float Half = (GridSize - 1) * CellSize * 0.5f;
-    for (int32 Y = 0; Y < GridSize; ++Y)
+    const int32 VertexCount = GridSize * GridSize;
+    Vertices.SetNumUninitialized(VertexCount);
+    Normals.SetNumUninitialized(VertexCount);
+    UVs.SetNumUninitialized(VertexCount);
+    Colors.SetNumUninitialized(VertexCount);
+    Tangents.SetNumUninitialized(VertexCount);
+    ParallelFor(GridSize, [&](int32 Y)
+    {
         for (int32 X = 0; X < GridSize; ++X)
         {
             const float WX = X * CellSize - Half, WY = Y * CellSize - Half;
             const float Z = CanyonLayout.SurfaceHeightAt(WX, WY);
             const float DX = CanyonLayout.SurfaceHeightAt(WX + 70.f, WY) - CanyonLayout.SurfaceHeightAt(WX - 70.f, WY);
             const float DY = CanyonLayout.SurfaceHeightAt(WX, WY + 70.f) - CanyonLayout.SurfaceHeightAt(WX, WY - 70.f);
-            Vertices.Add(FVector(WX, WY, Z));
-            Normals.Add(FVector(-DX / 140.f, -DY / 140.f, 1.f).GetSafeNormal());
-            UVs.Add(FVector2D(X / 12.f, Y / 12.f));
-            Colors.Add(FLinearColor::White);
-            Tangents.Add(FProcMeshTangent(1.f, 0.f, 0.f));
+            const int32 Index = Y * GridSize + X;
+            Vertices[Index] = FVector(WX, WY, Z);
+            Normals[Index] = FVector(-DX / 140.f, -DY / 140.f, 1.f).GetSafeNormal();
+            UVs[Index] = FVector2D(X / 12.f, Y / 12.f);
+            Colors[Index] = FLinearColor::White;
+            Tangents[Index] = FProcMeshTangent(1.f, 0.f, 0.f);
         }
+    });
     for (int32 Y = 0; Y < GridSize - 1; ++Y)
         for (int32 X = 0; X < GridSize - 1; ++X)
         {
@@ -1310,8 +1320,14 @@ void AProceduralIsland::BuildCanyonGrayboxTerrain()
     };
     for (int32 Section = 0; Section < 4; ++Section)
     {
+        // CreateMeshSection rebuilds collision for every enabled section. Keep
+        // the first three disabled until the final call, then cook all four
+        // together. Collision is ready synchronously before construction ends.
+        if (Section == 3)
+            for (int32 Previous = 0; Previous < Section; ++Previous)
+                IslandMesh->GetProcMeshSection(Previous)->bEnableCollision = true;
         IslandMesh->CreateMeshSection_LinearColor(Section, Vertices, Triangles[Section], Normals, UVs,
-            Colors, Tangents, true);
+            Colors, Tangents, Section == 3);
         if (Base)
         {
             UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(Base, this);
@@ -1514,21 +1530,25 @@ void AProceduralIsland::BuildCanyonCaves()
                 CarveSegments.Add({ CanyonLayout.Nodes[Edge.A].Position, CanyonLayout.Nodes[Edge.B].Position,
                     CanyonLayout.CaveHalfWidth(0.f, NetworkIndex), CanyonLayout.CaveClearance(0.f, NetworkIndex), CarveGroups++ });
     }
+    const bool bGroupedTunnels = CanyonLayout.CavePattern == ECanyonCavePattern::ThreeMouthHall
+        || CanyonLayout.CavePattern == ECanyonCavePattern::LongWindingThrough
+        || CanyonLayout.CavePattern == ECanyonCavePattern::LongLoop
+        || CanyonLayout.CavePattern == ECanyonCavePattern::BranchedThrough
+        || CanyonLayout.CaveNetworks.Num() > 1;
     BuildCanyonSolidMesh(CanyonCaveMesh, Bounds, [&](float X, float Y)
     {
         FCanyonSolidColumn Column;
         Column.SurfaceZ = CanyonLayout.SurfaceHeightAt(X, Y);
-        float T = 0.f, Floor = 0.f;
-        int32 Network = INDEX_NONE;
-        CanyonLayout.ProjectCave(X, Y, T, Column.Lateral, Floor, &Network);
-        Column.FloorZ = 600.f + Floor;
-        Column.HalfWidth = CanyonLayout.CaveHalfWidth(T, Network);
-        Column.Clearance = CanyonLayout.CaveClearance(T, Network);
-        if (CanyonLayout.CavePattern == ECanyonCavePattern::ThreeMouthHall
-            || CanyonLayout.CavePattern == ECanyonCavePattern::LongWindingThrough
-            || CanyonLayout.CavePattern == ECanyonCavePattern::LongLoop
-            || CanyonLayout.CavePattern == ECanyonCavePattern::BranchedThrough
-            || CanyonLayout.CaveNetworks.Num() > 1)
+        if (!bGroupedTunnels)
+        {
+            float T = 0.f, Floor = 0.f;
+            int32 Network = INDEX_NONE;
+            CanyonLayout.ProjectCave(X, Y, T, Column.Lateral, Floor, &Network);
+            Column.FloorZ = 600.f + Floor;
+            Column.HalfWidth = CanyonLayout.CaveHalfWidth(T, Network);
+            Column.Clearance = CanyonLayout.CaveClearance(T, Network);
+        }
+        else
         {
             // Keep every branch in the same solid field. Choosing just the
             // nearest XY centerline closes a tunnel where passages cross at
@@ -1536,7 +1556,7 @@ void AProceduralIsland::BuildCanyonCaves()
             Column.HalfWidth = 0.f;
             const FVector2D Point(X, Y);
             struct FNearestTunnel { float Distance = TNumericLimits<float>::Max(); FCanyonSolidTunnel Tunnel; };
-            TArray<FNearestTunnel, TInlineAllocator<12>> Nearest;
+            TArray<FNearestTunnel, TInlineAllocator<32>> Nearest;
             Nearest.SetNum(CarveGroups);
             for (const FCarveSegment& Segment : CarveSegments)
             {

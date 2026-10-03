@@ -38,5 +38,7 @@ struct FCanyonSolidBounds
 
 // Extract one connected solid surface: terrain, tunnel floor, cave walls and
 // roof. The XY boundary is exactly on the caller's terrain grid vertices.
+// SampleColumn runs concurrently and must read immutable data only. Mesh and
+// collision creation stay on the calling game thread after all workers finish.
 void BuildCanyonSolidMesh(UProceduralMeshComponent* Mesh, const FCanyonSolidBounds& Bounds,
     TFunctionRef<FCanyonSolidColumn(float, float)> SampleColumn);

@@ -1,6 +1,7 @@
 #include "CanyonSolidMesh.h"
 
 #include "ProceduralMeshComponent.h"
+#include "Async/ParallelFor.h"
 
 void BuildCanyonSolidMesh(UProceduralMeshComponent* Mesh, const FCanyonSolidBounds& Bounds,
     TFunctionRef<FCanyonSolidColumn(float, float)> SampleColumn)
@@ -15,15 +16,17 @@ void BuildCanyonSolidMesh(UProceduralMeshComponent* Mesh, const FCanyonSolidBoun
     TArray<FCanyonSolidColumn> Columns;
     Columns.SetNum(StrideZ);
     float Highest = Bounds.BottomZ + Bounds.StepZ;
-    for (int32 Y = 0; Y <= NY; ++Y)
+    ParallelFor(NY + 1, [&](int32 Y)
+    {
         for (int32 X = 0; X <= NX; ++X)
         {
             const float WX = Bounds.Min.X + X * Bounds.StepXY;
             const float WY = Bounds.Min.Y + Y * Bounds.StepXY;
             FCanyonSolidColumn& Column = Columns[ColumnIndex(X, Y)];
             Column = SampleColumn(WX, WY);
-            Highest = FMath::Max(Highest, Column.SurfaceZ);
         }
+    });
+    for (const auto& Column : Columns) Highest = FMath::Max(Highest, Column.SurfaceZ);
     const int32 NZ = FMath::CeilToInt((Highest + Bounds.StepZ - Bounds.BottomZ) / Bounds.StepZ);
     auto Index = [&](int32 X, int32 Y, int32 Z)
     { return Z * StrideZ + ColumnIndex(X, Y); };
@@ -60,88 +63,137 @@ void BuildCanyonSolidMesh(UProceduralMeshComponent* Mesh, const FCanyonSolidBoun
     };
     TArray<float> Values;
     Values.SetNumUninitialized(StrideZ * (NZ + 1));
-    for (int32 Z = 0; Z <= NZ; ++Z)
+    ParallelFor(NZ + 1, [&](int32 Z)
+    {
         for (int32 Y = 0; Y <= NY; ++Y)
             for (int32 X = 0; X <= NX; ++X)
                 Values[Index(X, Y, Z)] = Solid(Columns[ColumnIndex(X, Y)],
                     Bounds.BottomZ + Z * Bounds.StepZ);
+    });
 
-    TArray<FVector> Vertices, Normals;
-    TArray<int32> Triangles;
-    TArray<FVector2D> UVs;
-    TArray<FLinearColor> Colors;
-    TArray<FProcMeshTangent> Tangents;
+    struct FGeometry
+    {
+        TArray<FVector> Vertices, Normals;
+        TArray<int32> Triangles;
+        TArray<FVector2D> UVs;
+        TArray<FLinearColor> Colors;
+        TArray<FProcMeshTangent> Tangents;
+    };
+    // Each worker owns a consecutive Z range. Flatten in that same order so
+    // vertices, normals and triangle indices match the serial builder exactly.
+    const int32 ChunkCount = FMath::Min(NZ, 16);
+    TArray<FGeometry> Chunks;
+    Chunks.SetNum(ChunkCount);
     const int32 Corners[8][3] = { {0,0,0}, {1,0,0}, {1,1,0}, {0,1,0},
         {0,0,1}, {1,0,1}, {1,1,1}, {0,1,1} };
     const int32 Tets[6][4] = { {0,5,1,6}, {0,1,2,6}, {0,2,3,6},
         {0,3,7,6}, {0,7,4,6}, {0,4,5,6} };
-    auto AddTriangle = [&](FVector A, FVector B, FVector C, const FVector& RockWitness)
+    ParallelFor(ChunkCount, [&](int32 ChunkIndex)
     {
-        FVector Geometric = FVector::CrossProduct(B - A, C - A).GetSafeNormal();
-        if (Geometric.IsNearlyZero()) return;
-        const FVector Center = (A + B + C) / 3.f;
-        if (FVector::DotProduct(Geometric, RockWitness - Center) < 0.f)
+        FGeometry& Geometry = Chunks[ChunkIndex];
+        auto& Vertices = Geometry.Vertices;
+        auto& Normals = Geometry.Normals;
+        auto& Triangles = Geometry.Triangles;
+        auto& UVs = Geometry.UVs;
+        auto& Colors = Geometry.Colors;
+        auto& Tangents = Geometry.Tangents;
+        auto AddTriangle = [&](FVector A, FVector B, FVector C, const FVector& RockWitness)
         {
-            Swap(B, C);
-            Geometric *= -1.f;
-        }
-        const FVector Outward = -Geometric;
-        const int32 Base = Vertices.Num();
-        for (const FVector& Vertex : { A, B, C })
-        {
-            Vertices.Add(Vertex);
-            Normals.Add(Outward);
-            UVs.Add(FVector2D(Vertex.X / 500.f, Vertex.Y / 500.f));
-            Colors.Add(FLinearColor::White);
-            Tangents.Add(FProcMeshTangent(1.f, 0.f, 0.f));
-        }
-        Triangles.Append({ Base, Base + 1, Base + 2 });
-    };
-
-    for (int32 Z = 0; Z < NZ; ++Z)
-        for (int32 Y = 0; Y < NY; ++Y)
-            for (int32 X = 0; X < NX; ++X)
+            FVector Geometric = FVector::CrossProduct(B - A, C - A).GetSafeNormal();
+            if (Geometric.IsNearlyZero()) return;
+            const FVector Center = (A + B + C) / 3.f;
+            if (FVector::DotProduct(Geometric, RockWitness - Center) < 0.f)
             {
-                FVector P[8]; float F[8];
-                for (int32 C = 0; C < 8; ++C)
-                {
-                    const int32 CX = X + Corners[C][0];
-                    const int32 CY = Y + Corners[C][1];
-                    const int32 CZ = Z + Corners[C][2];
-                    P[C] = Position(CX, CY, CZ);
-                    F[C] = Values[Index(CX, CY, CZ)];
-                }
-                for (const auto& Tet : Tets)
-                {
-                    int32 Rock[4], Air[4], RockCount = 0, AirCount = 0;
-                    for (int32 I = 0; I < 4; ++I)
-                    {
-                        const int32 Corner = Tet[I];
-                        if (F[Corner] > 0.f) Rock[RockCount++] = Corner;
-                        else Air[AirCount++] = Corner;
-                    }
-                    if (RockCount == 0 || AirCount == 0) continue;
-                    auto Cut = [&](int32 A, int32 B)
-                    { return FMath::Lerp(P[A], P[B], F[A] / (F[A] - F[B])); };
-                    if (RockCount == 1)
-                        AddTriangle(Cut(Rock[0], Air[0]), Cut(Rock[0], Air[1]),
-                            Cut(Rock[0], Air[2]), P[Rock[0]]);
-                    else if (AirCount == 1)
-                        AddTriangle(Cut(Air[0], Rock[0]), Cut(Air[0], Rock[1]),
-                            Cut(Air[0], Rock[2]), P[Rock[0]]);
-                    else
-                    {
-                        const FVector A = Cut(Rock[0], Air[0]);
-                        const FVector B = Cut(Rock[0], Air[1]);
-                        const FVector C = Cut(Rock[1], Air[1]);
-                        const FVector D = Cut(Rock[1], Air[0]);
-                        AddTriangle(A, B, C, P[Rock[0]]);
-                        AddTriangle(A, C, D, P[Rock[0]]);
-                    }
-                }
+                Swap(B, C);
+                Geometric *= -1.f;
             }
-    Mesh->CreateMeshSection_LinearColor(0, Vertices, Triangles, Normals,
-        UVs, Colors, Tangents, true);
+            const FVector Outward = -Geometric;
+            const int32 Base = Vertices.Num();
+            for (const FVector& Vertex : { A, B, C })
+            {
+                Vertices.Add(Vertex);
+                Normals.Add(Outward);
+                UVs.Add(FVector2D(Vertex.X / 500.f, Vertex.Y / 500.f));
+                Colors.Add(FLinearColor::White);
+                Tangents.Add(FProcMeshTangent(1.f, 0.f, 0.f));
+            }
+            Triangles.Append({ Base, Base + 1, Base + 2 });
+        };
+
+        for (int32 Z = NZ * ChunkIndex / ChunkCount; Z < NZ * (ChunkIndex + 1) / ChunkCount; ++Z)
+            for (int32 Y = 0; Y < NY; ++Y)
+                for (int32 X = 0; X < NX; ++X)
+                {
+                    FVector P[8]; float F[8];
+                    uint32 RockMask = 0;
+                    for (int32 C = 0; C < 8; ++C)
+                    {
+                        const int32 CX = X + Corners[C][0];
+                        const int32 CY = Y + Corners[C][1];
+                        const int32 CZ = Z + Corners[C][2];
+                        F[C] = Values[Index(CX, CY, CZ)];
+                        if (F[C] > 0.f) RockMask |= 1u << C;
+                    }
+                    // A cell entirely inside rock or air has no tetrahedron surface.
+                    if (RockMask == 0u || RockMask == 255u) continue;
+                    for (int32 C = 0; C < 8; ++C)
+                        P[C] = Position(X + Corners[C][0], Y + Corners[C][1], Z + Corners[C][2]);
+                    for (const auto& Tet : Tets)
+                    {
+                        int32 Rock[4], Air[4], RockCount = 0, AirCount = 0;
+                        for (int32 I = 0; I < 4; ++I)
+                        {
+                            const int32 Corner = Tet[I];
+                            if (F[Corner] > 0.f) Rock[RockCount++] = Corner;
+                            else Air[AirCount++] = Corner;
+                        }
+                        if (RockCount == 0 || AirCount == 0) continue;
+                        auto Cut = [&](int32 A, int32 B)
+                        { return FMath::Lerp(P[A], P[B], F[A] / (F[A] - F[B])); };
+                        if (RockCount == 1)
+                            AddTriangle(Cut(Rock[0], Air[0]), Cut(Rock[0], Air[1]),
+                                Cut(Rock[0], Air[2]), P[Rock[0]]);
+                        else if (AirCount == 1)
+                            AddTriangle(Cut(Air[0], Rock[0]), Cut(Air[0], Rock[1]),
+                                Cut(Air[0], Rock[2]), P[Rock[0]]);
+                        else
+                        {
+                            const FVector A = Cut(Rock[0], Air[0]);
+                            const FVector B = Cut(Rock[0], Air[1]);
+                            const FVector C = Cut(Rock[1], Air[1]);
+                            const FVector D = Cut(Rock[1], Air[0]);
+                            AddTriangle(A, B, C, P[Rock[0]]);
+                            AddTriangle(A, C, D, P[Rock[0]]);
+                        }
+                    }
+                }
+    });
+    FGeometry Geometry;
+    int32 VertexCount = 0, IndexCount = 0;
+    for (const auto& Chunk : Chunks)
+    {
+        VertexCount += Chunk.Vertices.Num();
+        IndexCount += Chunk.Triangles.Num();
+    }
+    Geometry.Vertices.Reserve(VertexCount);
+    Geometry.Normals.Reserve(VertexCount);
+    Geometry.UVs.Reserve(VertexCount);
+    Geometry.Colors.Reserve(VertexCount);
+    Geometry.Tangents.Reserve(VertexCount);
+    Geometry.Triangles.Reserve(IndexCount);
+    for (auto& Chunk : Chunks)
+    {
+        const int32 Base = Geometry.Vertices.Num();
+        for (int32 IndexValue : Chunk.Triangles) Geometry.Triangles.Add(Base + IndexValue);
+        Geometry.Vertices.Append(Chunk.Vertices);
+        Geometry.Normals.Append(Chunk.Normals);
+        Geometry.UVs.Append(Chunk.UVs);
+        Geometry.Colors.Append(Chunk.Colors);
+        Geometry.Tangents.Append(Chunk.Tangents);
+        Chunk = FGeometry();
+    }
+    Mesh->CreateMeshSection_LinearColor(0, Geometry.Vertices, Geometry.Triangles, Geometry.Normals,
+        Geometry.UVs, Geometry.Colors, Geometry.Tangents, true);
     Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     Mesh->SetCollisionResponseToAllChannels(ECR_Block);
 }

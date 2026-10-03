@@ -1,3 +1,10 @@
+## 峡谷生成性能优化（尚未打包发布）
+
+- 不改变布局、随机规则、洞穴形状或采样精度；并行计算纯数据，按原顺序合并网格，跳过没有表面的体素，去除无用洞穴查询。四个地表材质区统一同步生成碰撞。
+- 本机一倍地图种子 1050：3.23 秒 → 2.11 秒；18232：4.05 秒 → 2.50 秒。完整网格 CRC 一致，非空网格区碰撞标记保留。详情 `Docs/CanyonGenerationPerformance.md`。
+- AllGameModes 随机种子 784343 的洞内胶囊通行检查失败；不能记为全玩法通过。该种子的批量/重复碰撞重建查询对比通过（`Saved/Logs/CanyonPerfCollision.log`），不在本次修改洞穴形状。
+- 当前下载包仍为以下 v0.13.0，不包含性能优化。
+
 ## 最新 Windows 测试 Release：v0.13.0
 
 - 已合并并发布 `v0.13.0-caves-controls-rc1`：https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.13.0-caves-controls-rc1
