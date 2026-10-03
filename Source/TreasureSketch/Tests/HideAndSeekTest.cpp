@@ -3,6 +3,7 @@
 #include "Misc/AutomationTest.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "Engine/StaticMesh.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "IpNetDriver.h"
 #include "TimerManager.h"
@@ -82,6 +83,9 @@ bool FHideAndSeekFlowTest::RunTest(const FString& Parameters)
     Catcher->SetActorLocation(FVector(0.f, 0.f, 5000.f));
     Hider->SetActorLocation(FVector(150.f, 0.f, 5000.f));
     Hider->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+    FPropDisguise Form;
+    Form.Mesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    Hider->SetPropDisguise(Form);
     TestFalse(TEXT("Catcher cannot dig"), GM->StartHeldDig(Controllers[0]));
     TestFalse(TEXT("Hider cannot catch"), GM->TryShove(Controllers[1]));
     TestTrue(TEXT("Hider begins held dig"), GM->StartHeldDig(Controllers[1]));
@@ -97,6 +101,7 @@ bool FHideAndSeekFlowTest::RunTest(const FString& Parameters)
     Players[1]->DigStartedServerTime = GS->GetServerWorldTimeSeconds() - 3.1f;
     GM->UpdateHeldDigs();
     TestEqual(TEXT("Completed hold collects one treasure"), GS->HideTreasureCount, 1);
+    TestTrue(TEXT("Treasure collection does not end disguise"), Hider->IsPropDisguised());
     TestEqual(TEXT("Treasure does not end the round"), GS->Phase, ETreasureRoundPhase::HunterSearching);
     float Distance;
     bool bAttempted;
@@ -119,6 +124,7 @@ bool FHideAndSeekFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Roles can swap"), Players[0]->PlayerRole, ETreasurePlayerRole::Hunter);
     TestEqual(TEXT("Replay skips drawing"), GS->Phase, ETreasureRoundPhase::HunterSearching);
     TestEqual(TEXT("Replay resets treasure count"), GS->HideTreasureCount, 0);
+    TestFalse(TEXT("New round removes old prop disguise"), Hider->IsPropDisguised());
     TestFalse(TEXT("Replay clears capture"), GS->bHideCaught);
     TestEqual(TEXT("Replay restores three treasures"), GS->HideTreasures.Num(), 3);
 

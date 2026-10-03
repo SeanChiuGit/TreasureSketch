@@ -1,6 +1,7 @@
 #include "TreasureSketchCharacter.h"
 #include "TreasureSketchGameState.h"
 #include "Engine/World.h"
+#include "Engine/StaticMesh.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -45,6 +46,10 @@ ATreasureSketchCharacter::ATreasureSketchCharacter()
     FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
     FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
     FollowCamera->bUsePawnControlRotation = false;
+    DisguiseMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DisguiseMesh"));
+    DisguiseMesh->SetupAttachment(GetCapsuleComponent());
+    DisguiseMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    DisguiseMesh->SetVisibility(false);
 
     static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
     static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
@@ -241,6 +246,7 @@ void ATreasureSketchCharacter::BeginPlay()
 void ATreasureSketchCharacter::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    if (IsPropDisguised()) HideNormalDisguiseParts();
     if (!GetMesh()->GetSkeletalMeshAsset() || !GetWorld()) return;
 
     // Keep the staff grip locked to the animated right palm while preserving
@@ -303,6 +309,7 @@ void ATreasureSketchCharacter::PlayDigAnimation()
     bActionGearVisible = true;
     PlayPartyAnimation(DigAnimation, false, 1.25f);
     if (GetWorld()) PartyActionUntil = GetWorld()->GetTimeSeconds() + 1.2f;
+    if (IsPropDisguised()) HideNormalDisguiseParts();
 }
 
 void ATreasureSketchCharacter::PlayReadBookAnimation()
@@ -341,6 +348,7 @@ void ATreasureSketchCharacter::ApplyReadBookAnimation()
     bReadingBook = true;
     PlayPartyAnimation(ReadBookAnimation, true, 1.f);
     PartyActionUntil = TNumericLimits<float>::Max();
+    if (IsPropDisguised()) HideNormalDisguiseParts();
 }
 
 void ATreasureSketchCharacter::StopReadBookAnimation()
@@ -376,6 +384,7 @@ void ATreasureSketchCharacter::MulticastStopReadBookAnimation_Implementation()
 
 void ATreasureSketchCharacter::SetDefaultGearVisibility()
 {
+    if (IsPropDisguised()) { HideNormalDisguiseParts(); return; }
     BackBookMesh->SetVisibility(true);
     BackStaffMesh->SetVisibility(true);
     OpenBookMesh->SetVisibility(false);
@@ -389,6 +398,62 @@ void ATreasureSketchCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProper
     DOREPLIFETIME(ATreasureSketchCharacter, bShoveWindingUp);
     DOREPLIFETIME(ATreasureSketchCharacter, bDiggingPose);
     DOREPLIFETIME(ATreasureSketchCharacter, bWaterSlowed);
+    DOREPLIFETIME(ATreasureSketchCharacter, Disguise);
+}
+
+float ATreasureSketchCharacter::GetDisguiseViewDistance() const
+{
+    return CameraBoom->TargetArmLength + CameraBoom->TargetOffset.Size();
+}
+
+void ATreasureSketchCharacter::HideNormalDisguiseParts()
+{
+    GetMesh()->SetVisibility(false);
+    for (UStaticMeshComponent* Part : {BodyMesh.Get(), HeadMesh.Get(), LeftArmMesh.Get(), RightArmMesh.Get(),
+        LeftLegMesh.Get(), RightLegMesh.Get(), FaceMesh.Get(), BackBookMesh.Get(), BackStaffMesh.Get(),
+        OpenBookMesh.Get(), HandStaffMesh.Get()}) Part->SetVisibility(false);
+}
+
+void ATreasureSketchCharacter::SetPropDisguise(const FPropDisguise& Form)
+{
+    if (!HasAuthority()) return;
+    Disguise = Form;
+    if (Form.Mesh) Disguise.Rotation = (GetActorQuat().Inverse() * Form.Rotation.Quaternion()).Rotator();
+    OnRep_PropDisguise();
+    ForceNetUpdate();
+}
+
+void ATreasureSketchCharacter::OnRep_PropDisguise()
+{
+    DisguiseMesh->SetStaticMesh(Disguise.Mesh);
+    DisguiseMesh->SetVisibility(IsPropDisguised());
+    if (!IsPropDisguised())
+    {
+        const bool bSkeletal = GetMesh()->GetSkeletalMeshAsset() != nullptr;
+        GetMesh()->SetVisibility(bSkeletal);
+        for (UStaticMeshComponent* Part : {BodyMesh.Get(), HeadMesh.Get(), LeftArmMesh.Get(), RightArmMesh.Get(),
+            LeftLegMesh.Get(), RightLegMesh.Get(), FaceMesh.Get()}) Part->SetVisibility(!bSkeletal);
+        SetDefaultGearVisibility();
+        CameraBoom->TargetArmLength = 500.f;
+        CameraBoom->TargetOffset = FVector::ZeroVector;
+        return;
+    }
+    const FTransform Shape(Disguise.Rotation, FVector::ZeroVector, Disguise.Scale);
+    const FBox Bounds = Disguise.Mesh->GetBoundingBox().TransformBy(Shape);
+    DisguiseMesh->SetRelativeScale3D(Disguise.Scale);
+    DisguiseMesh->SetRelativeRotation(Disguise.Rotation);
+    DisguiseMesh->SetRelativeLocation(FVector(-Bounds.GetCenter().X, -Bounds.GetCenter().Y,
+        -GetCapsuleComponent()->GetScaledCapsuleHalfHeight() - Bounds.Min.Z));
+    for (int32 Index = 0; Index < Disguise.Materials.Num(); ++Index)
+    {
+        DisguiseMesh->SetMaterial(Index, Disguise.Materials[Index]);
+        if (Disguise.Colors.IsValidIndex(Index))
+            if (auto* Material = DisguiseMesh->CreateAndSetMaterialInstanceDynamic(Index))
+                Material->SetVectorParameterValue(TEXT("Color"), Disguise.Colors[Index]);
+    }
+    CameraBoom->TargetArmLength = FMath::Max(500.f, Bounds.GetExtent().Size() * 2.f);
+    CameraBoom->TargetOffset = FVector(0.f, 0.f, Bounds.GetExtent().Z - GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+    HideNormalDisguiseParts();
 }
 
 void ATreasureSketchCharacter::SetShoveWindingUp(bool bWindingUp)

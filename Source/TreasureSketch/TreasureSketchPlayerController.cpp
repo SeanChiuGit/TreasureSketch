@@ -252,6 +252,8 @@ void ATreasureSketchPlayerController::SetupInputComponent()
     InputComponent->BindAction("Dig", IE_Pressed, this, &ATreasureSketchPlayerController::Dig);
     InputComponent->BindAction("Dig", IE_Released, this, &ATreasureSketchPlayerController::StopDig);
     InputComponent->BindAction("Shove", IE_Pressed, this, &ATreasureSketchPlayerController::Shove);
+    InputComponent->BindAction("PropDisguise", IE_Pressed, this, &ATreasureSketchPlayerController::TransformIntoProp);
+    InputComponent->BindAction("RestoreHuman", IE_Pressed, this, &ATreasureSketchPlayerController::RestoreHumanForm);
     InputComponent->BindAction("TakePhoto", IE_Pressed, this, &ATreasureSketchPlayerController::TakePhoto);
     InputComponent->BindAction("ClearSketch", IE_Pressed, this, &ATreasureSketchPlayerController::ClearSketch);
     InputComponent->BindAction("NewRound", IE_Pressed, this, &ATreasureSketchPlayerController::NewRound);
@@ -1419,6 +1421,57 @@ void ATreasureSketchPlayerController::ServerSpraySurface_Implementation(FVector_
     UPrimitiveComponent* Component = Hit.GetComponent();
     if (!Component || !Component->IsVisible()) return;
     if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) GM->SpraySurface(Hit);
+}
+
+void ATreasureSketchPlayerController::TransformIntoProp()
+{
+    const auto* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    const auto* PS = GetPlayerState<ATreasureSketchPlayerState>();
+    if (!GS || !PS || bPauseMenuOpen || bMapOpen || !GS->bGameStarted || GS->IsRoundOver()
+        || GS->RoomMode != ETreasureRoomMode::HideAndSeek || PS->PlayerRole != ETreasurePlayerRole::Hunter) return;
+    FVector Origin;
+    FRotator Rotation;
+    GetPlayerViewPoint(Origin, Rotation);
+    ServerTransformIntoProp(GS->RoundSerial, Origin, Rotation.Vector(), false);
+}
+
+void ATreasureSketchPlayerController::RestoreHumanForm()
+{
+    const auto* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (!GS || bPauseMenuOpen || bMapOpen) return;
+    ServerTransformIntoProp(GS->RoundSerial, FVector::ZeroVector, FVector::ForwardVector, true);
+}
+
+void ATreasureSketchPlayerController::ServerTransformIntoProp_Implementation(int32 RoundSerial,
+    FVector_NetQuantize Origin, FVector_NetQuantizeNormal Direction, bool bRestore)
+{
+    const auto* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    const auto* PS = GetPlayerState<ATreasureSketchPlayerState>();
+    auto* PropCharacter = Cast<ATreasureSketchCharacter>(GetPawn());
+    if (!GS || !PS || !PropCharacter || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::HunterSearching
+        || GS->RoundSerial != RoundSerial || GS->RoomMode != ETreasureRoomMode::HideAndSeek
+        || PS->PlayerRole != ETreasurePlayerRole::Hunter) return;
+    if (bRestore)
+    {
+        PropCharacter->SetPropDisguise(FPropDisguise());
+        ClientPropDisguiseFeedback(true, true);
+        return;
+    }
+    // Validate the camera origin, without imposing a distance limit on the prop.
+    if (FVector(Origin).ContainsNaN() || FVector(Direction).ContainsNaN()
+        || FVector::DistSquared(Origin, PropCharacter->GetActorLocation())
+            > FMath::Square(PropCharacter->GetDisguiseViewDistance() + 300.f)) return;
+    FPropDisguise Form;
+    const bool bFound = PropDisguise::FindTarget(GetWorld(), Origin, Direction, Form);
+    if (bFound) PropCharacter->SetPropDisguise(Form);
+    ClientPropDisguiseFeedback(bFound, false);
+}
+
+void ATreasureSketchPlayerController::ClientPropDisguiseFeedback_Implementation(bool bFound, bool bRestore)
+{
+    StatusMessage = bRestore ? TEXT("已恢复人形。") : bFound ? TEXT("已变形；左键可再次换物品，Q 恢复人形。")
+        : TEXT("未瞄准物品；对准场景中的物品再按左键。");
+    StatusUntil = GetWorld()->GetTimeSeconds() + 3.f;
 }
 
 void ATreasureSketchPlayerController::Shove()

@@ -1,3 +1,10 @@
+## 逃生者变形（尚未发布）
+
+- 在 `feature/hide-and-seek` 增加变形技能：逃生者瞄准地图物品按左键变形，Q 恢复人形。没有冷却、次数、持续时间、目标距离或大小限制；移动、跳跃和挖宝保持原有能力。
+- 支持静态网格与实例化物品，包括无碰撞的植被；复制目标模型、尺寸、旋转、材质及颜色，原物品保留。服务端选择目标并同步变形，相机根据物品尺寸调整。
+- 新局及返回大厅的统一重置流程恢复人形。HUD 增加准星、技能状态与操作说明。
+- 编辑器 Development 编译通过；固定 IslandSeed=1001 的六项 RoomSettings 自动测试全部通过，包含 PropDisguise 和 HideAndSeek 的变形、挖宝及重置断言。日志 `Saved/Logs/PropDisguiseRegressionFinal.log`。尚未验证实际双人联机或打包新下载版本。
+
 ## 躲猫猫模式与宝藏分离修复（v0.14.0 已发布）
 
 - Release：https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.14.0-hide-and-seek-rc1 。源码与标签提交 `2e3b51c`，分支 `feature/hide-and-seek`，非 draft，prerelease。

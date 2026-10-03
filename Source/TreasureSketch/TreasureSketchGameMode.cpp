@@ -879,7 +879,11 @@ void ATreasureSketchGameMode::ResetSubmittedSketches()
                 PS->bSketchSubmitted = false;
                 PS->ForceNetUpdate();
                 if (ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(PS->GetOwner()))
+                {
                     PC->ResetRoundPhoto();
+                    if (auto* Character = Cast<ATreasureSketchCharacter>(PC->GetPawn());
+                        Character && Character->IsPropDisguised()) Character->SetPropDisguise(FPropDisguise());
+                }
             }
 }
 

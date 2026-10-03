@@ -33,6 +33,7 @@ UCLASS()
 class TREASURESKETCH_API ATreasureSketchPlayerController : public APlayerController
 {
     GENERATED_BODY()
+    friend class FPropDisguiseTest;
 
 public:
     ATreasureSketchPlayerController();
@@ -87,6 +88,12 @@ public:
     FVector2D GetPaperSize() const;
     void ClearSketch();
     void Shove();
+    void TransformIntoProp();
+    void RestoreHumanForm();
+    UFUNCTION(Server, Reliable)
+    void ServerTransformIntoProp(int32 RoundSerial, FVector_NetQuantize Origin, FVector_NetQuantizeNormal Direction, bool bRestore);
+    UFUNCTION(Client, Reliable)
+    void ClientPropDisguiseFeedback(bool bFound, bool bRestore);
     void RequestReplay(bool bSwapRoles = false);
     void RequestRoundReview(bool bReviewing);
     bool IsLocalScout() const;

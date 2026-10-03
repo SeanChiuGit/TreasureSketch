@@ -953,7 +953,7 @@ void ATreasureSketchHUD::DrawHUD()
     const FString Help = GS->RoomMode == ETreasureRoomMode::HideAndSeek
         ? (GS->bReviewingRound ? TEXT("WASD 逛岛  ·  Esc 返回结算")
             : bScout ? TEXT("鼠标左键 / G 抓人  ·  出手冷却 5 秒  ·  Esc 菜单")
-            : TEXT("长按 E 3 秒挖宝  ·  避免被抓  ·  Esc 菜单")) : GS->bReviewingRound ? TEXT("WASD 逛岛  ·  M 查看地图  ·  T 宝箱标记  ·  Esc 返回结算")
+            : TEXT("左键瞄准变形 · Q 还原 · 长按 E 3 秒挖宝")) : GS->bReviewingRound ? TEXT("WASD 逛岛  ·  M 查看地图  ·  T 宝箱标记  ·  Esc 返回结算")
         : bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing && PC->IsDrawingOverheadView()
         ? (PC->HasSubmittedSketch() ? TEXT("WASD 飞行  ·  Space / Ctrl 升降  ·  Tab 返回地面")
             : TEXT("WASD 飞行  ·  Space / Ctrl 升降  ·  Tab 返回地面  ·  M 画图"))
@@ -1001,6 +1001,15 @@ void ATreasureSketchHUD::DrawHUD()
     DrawReadableText(Help, FLinearColor(1.f, 0.97f, 0.84f),
         36.f, HelpY, BodyFont, 0.86f, false);
     const float ContextY = 24.f + MissionPanelHeight;
+    if (GS->RoomMode == ETreasureRoomMode::HideAndSeek && !bScout && !GS->bReviewingRound)
+    {
+        const auto* Character = Cast<ATreasureSketchCharacter>(PC->GetPawn());
+        DrawText(Character && Character->IsPropDisguised() ? TEXT("变形中 · 无冷却、次数或持续时间限制")
+            : TEXT("变形就绪 · 瞄准场景物品按左键"), FLinearColor::White, 35.f, ContextY, BodyFont, 0.95f);
+        const FVector2D Center(Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f);
+        DrawLine(Center.X - 5.f, Center.Y, Center.X + 5.f, Center.Y, FLinearColor::White, 1.5f);
+        DrawLine(Center.X, Center.Y - 5.f, Center.X, Center.Y + 5.f, FLinearColor::White, 1.5f);
+    }
     if (GS->RoomMode == ETreasureRoomMode::HideAndSeek && bScout && !GS->bReviewingRound)
     {
         const int32 CatchCooldown = FMath::CeilToInt(FMath::Max(0.f,

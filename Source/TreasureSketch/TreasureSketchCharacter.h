@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "PropDisguise.h"
 #include "TreasureSketchCharacter.generated.h"
 
 class USpringArmComponent;
@@ -28,6 +29,9 @@ public:
     void SetWaterSlowed(bool bSlowed);
     bool IsWaterSlowed() const { return bWaterSlowed; }
     bool IsShoveWindingUp() const { return bShoveWindingUp; }
+    void SetPropDisguise(const FPropDisguise& Form);
+    bool IsPropDisguised() const { return Disguise.Mesh != nullptr; }
+    float GetDisguiseViewDistance() const;
 
     UFUNCTION(BlueprintCallable, Category="Party Explorer")
     void SetSuitColor(FLinearColor Color);
@@ -48,6 +52,14 @@ protected:
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
 private:
+    friend class FPropDisguiseTest;
+    UPROPERTY(ReplicatedUsing=OnRep_PropDisguise)
+    FPropDisguise Disguise;
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UStaticMeshComponent> DisguiseMesh;
+    UFUNCTION()
+    void OnRep_PropDisguise();
+    void HideNormalDisguiseParts();
     friend class ATreasureSketchGameMode;
     friend class FExplorerRaceFlowTest;
     static constexpr float NormalJumpVelocity = 620.f;
