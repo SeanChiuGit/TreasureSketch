@@ -1242,13 +1242,14 @@ const TCHAR* FCanyonGrayboxLayout::CaveName(int32 NetworkIndex) const
 
 void FCanyonGrayboxLayout::ScaleForMap(float Scale)
 {
-    // Fill the same 125.4 m square used by Beach while reserving space for
+    // Canyon's new 1x is a 62.7 m square (one quarter of the previous area).
+    // Reserve space for
     // corridor banks and landmark silhouettes, regardless of graph rotation.
     float MaxCoordinate = 1.f;
     for (const FCanyonGrayboxNode& Node : Nodes)
         MaxCoordinate = FMath::Max(MaxCoordinate,
             FMath::Max(FMath::Abs(Node.Position.X), FMath::Abs(Node.Position.Y)));
-    LengthScale = (6270.f - 1000.f) / MaxCoordinate
+    LengthScale = (3135.f - 500.f) / MaxCoordinate
         * FMath::Sqrt(FMath::Clamp(Scale, 0.5f, 5.f));
     for (FCanyonGrayboxNode& Node : Nodes) Node.Position *= LengthScale;
     for (FCanyonGrayboxEdge& Edge : Edges)
@@ -1565,9 +1566,11 @@ float FCanyonGrayboxLayout::SurfaceHeightAt(float X, float Y, float* DistanceFro
         const float T = FMath::Clamp(FVector2D::DotProduct(Point - Start, Delta) / Delta.SizeSquared(), 0.f, 1.f);
         const float Distance = FVector2D::Distance(Point, Start + Delta * T);
         const float FloorZ = FMath::Lerp(A.Z, B.Z, T);
-        const float Rise = Edge.Layer == ECanyonRouteLayer::Upper ? 1200.f * LengthScale
-            : Edge.Layer == ECanyonRouteLayer::Ramp ? 2200.f * LengthScale - FloorZ
-            : 2200.f * LengthScale;
+        // Keep bank height at the former baseline: tunnel clearance does not
+        // shrink with the map's footprint, so its surrounding rock must remain.
+        const float Rise = Edge.Layer == ECanyonRouteLayer::Upper ? 2400.f * LengthScale
+            : Edge.Layer == ECanyonRouteLayer::Ramp ? 4400.f * LengthScale - FloorZ
+            : 4400.f * LengthScale;
         Consider(Distance, Edge.HalfWidth, FloorZ, Rise, Edge.Layer);
     }
     for (const FCanyonGrayboxNode& Node : Nodes)
@@ -1576,9 +1579,9 @@ float FCanyonGrayboxLayout::SurfaceHeightAt(float X, float Y, float* DistanceFro
         const float Distance = FVector2D::Distance(Point, FVector2D(Node.Position.X, Node.Position.Y));
         Consider(Distance * 0.72f,
             (Node.Layer == ECanyonRouteLayer::Upper ? 480.f : 440.f) * LengthScale,
-            Node.Position.Z, Node.Layer == ECanyonRouteLayer::Upper ? 1200.f * LengthScale
-                : Node.Layer == ECanyonRouteLayer::Ramp ? 2200.f * LengthScale - Node.Position.Z
-                : 2200.f * LengthScale,
+            Node.Position.Z, Node.Layer == ECanyonRouteLayer::Upper ? 2400.f * LengthScale
+                : Node.Layer == ECanyonRouteLayer::Ramp ? 4400.f * LengthScale - Node.Position.Z
+                : 4400.f * LengthScale,
             Node.Layer);
     }
     int32 BestIndex = 0;

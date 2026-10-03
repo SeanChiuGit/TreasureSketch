@@ -187,7 +187,8 @@ bool FRoomSettingsFlowTest::RunTest(const FString& Parameters)
         if (!It->IsActorBeingDestroyed())
         {
             TestEqual(TEXT("Solo terrain uses selected area multiplier"), It->MapScale, 5.f);
-            const float BaseSide = It->Theme == EIslandTheme::MistForest ? 12540.f * 0.75f : 12540.f;
+            const float BaseSide = It->Theme == EIslandTheme::MistForest ? 12540.f * 0.75f
+                : It->Theme == EIslandTheme::CanyonGraybox ? 6270.f : 12540.f;
             TestTrue(TEXT("Solo terrain dimensions use selected size"), FMath::IsNearlyEqual(
                 (It->GridSize - 1) * It->CellSize, BaseSide * FMath::Sqrt(5.f), 0.1f));
         }

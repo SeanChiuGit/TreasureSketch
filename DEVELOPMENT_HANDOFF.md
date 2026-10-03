@@ -1,3 +1,11 @@
+## 峡谷资源合并与缩小（尚未发布）
+
+- 合并本地 `feature/gameplay-first-canyon` 的峡谷资源，合并提交 `27957fc`。保留当前 CanyonGraybox、洞穴和玩法实现，未引入分支中较早的地图生成算法。资源位于 `Content/IslandAssets/CanyonModules`，含 15 个谷底/左右岩壁模块和 3 个碎岩模型，以及材质、Blender/GLB 源文件及导入脚本。
+- 峡谷 1 倍生成范围从约 125.4 米边长缩为约 62.7 米，面积为旧基准的 0.25 倍；其他面积档位以新基准缩放。保留原岩壁高度，为固定通行高度的洞穴留出覆盖；沙滩和森林尺寸不变。
+- 编辑器编译通过；固定 IslandSeed=1001 的六项 RoomSettings、GrayboxRoutes 和 MergedAssetsAndScale 共八项自动测试全部通过。18 个资源模型可加载；100 个种子的峡谷路线在 0.5、1、2、5 倍档位通过检查。日志 `Saved/Logs/CanyonQuarterFinal2.log`。
+- 单独运行 Canyon.AllGameModes 也通过，覆盖三个原有玩法的地图尺寸、寻宝位置与洞内通行碰撞。日志 `Saved/Logs/CanyonQuarterGameModes.log`。
+- 用户明确暂缓种子 191959 的宝藏问题：没有保留该问题的放置逻辑改动。尚未打包发布或实际双人试玩。
+
 ## 逃生者变形（尚未发布）
 
 - 在 `feature/hide-and-seek` 增加变形技能：逃生者瞄准地图物品按左键变形，Q 恢复人形。没有冷却、次数、持续时间、目标距离或大小限制；移动、跳跃和挖宝保持原有能力。

@@ -241,7 +241,7 @@ void AProceduralIsland::ConfigureThemeParameters()
     {
         MapScale = FMath::IsFinite(MapScale) ? FMath::Clamp(MapScale, 0.5f, 5.f) : 1.f;
         GridSize = 321;
-        CellSize = 39.1875f * FMath::Sqrt(MapScale);
+        CellSize = 19.59375f * FMath::Sqrt(MapScale);
         return;
     }
     const FIslandThemeDefinition& Definition = GetThemeDefinition(Theme);

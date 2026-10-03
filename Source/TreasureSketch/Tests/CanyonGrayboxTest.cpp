@@ -126,7 +126,7 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
                 {
                     FVector CaveCenter, Along;
                     Scaled.SampleCave(0.5f, CaveCenter, Along);
-                    TestTrue(TEXT("Cave floor has a solid mountain above its void"),
+                    TestTrue(FString::Printf(TEXT("Seed %d cave floor has a solid mountain above its void"), Seed),
                         Scaled.IsCaveVoid(CaveCenter.X, CaveCenter.Y)
                         && Scaled.SurfaceHeightAt(CaveCenter.X, CaveCenter.Y)
                             - Scaled.HeightAt(CaveCenter.X, CaveCenter.Y) > 380.f);
@@ -159,11 +159,11 @@ bool FCanyonGrayboxPlanTest::RunTest(const FString& Parameters)
                     TestTrue(TEXT("Larger maps add route nodes and choices"),
                         Large.X > Base.X && Large.Y > Base.Y);
                 }
-                const float TerrainHalf = 6270.f * FMath::Sqrt(Scale);
+                const float TerrainHalf = 3135.f * FMath::Sqrt(Scale);
                 for (const FCanyonGrayboxNode& Node : Scaled.Nodes)
                     TestTrue(TEXT("Scaled route leaves room for banks at terrain edge"),
-                        FMath::Abs(Node.Position.X) <= TerrainHalf - 900.f * FMath::Sqrt(Scale)
-                        && FMath::Abs(Node.Position.Y) <= TerrainHalf - 900.f * FMath::Sqrt(Scale));
+                        FMath::Abs(Node.Position.X) <= TerrainHalf - 450.f * FMath::Sqrt(Scale)
+                        && FMath::Abs(Node.Position.Y) <= TerrainHalf - 450.f * FMath::Sqrt(Scale));
                 if (Scale == 5.f)
                     for (const FCanyonGrayboxEdge& Edge : Scaled.Edges)
                     {
