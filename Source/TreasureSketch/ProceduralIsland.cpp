@@ -8,6 +8,7 @@
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Engine/ExponentialHeightFog.h"
 #include "Engine/Engine.h"
+#include "Engine/World.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -672,6 +673,32 @@ FVector AProceduralIsland::FindTreasurePoint(FRandomStream& Stream, float Minimu
 {
     if (Theme == EIslandTheme::CanyonGraybox && CanyonLayout.Nodes.IsValidIndex(CanyonLayout.TreasureNode))
     {
+        if (GetWorld() && Stream.FRand() < 0.4f)
+        {
+            TArray<int32> Candidates;
+            for (int32 Index = 0; Index < CanyonLayout.Nodes.Num(); ++Index)
+                if (CanyonLayout.Nodes[Index].bCaveInterior) Candidates.Add(Index);
+            while (!Candidates.IsEmpty())
+            {
+                const int32 Choice = Stream.RandRange(0, Candidates.Num() - 1);
+                const FVector ExpectedFloor = GetActorTransform().TransformPosition(
+                    CanyonLayout.Nodes[Candidates[Choice]].Position + FVector(0.f, 0.f, 600.f));
+                Candidates.RemoveAtSwap(Choice);
+                FHitResult Ground, Ceiling;
+                if (!GetWorld()->LineTraceSingleByChannel(Ground,
+                        ExpectedFloor + FVector(0.f, 0.f, 200.f),
+                        ExpectedFloor - FVector(0.f, 0.f, 250.f), ECC_Visibility)
+                    || Ground.GetComponent() != CanyonCaveMesh || Ground.ImpactNormal.Z < 0.55f) continue;
+                const FVector Floor = Ground.ImpactPoint;
+                // Trace at tunnel height, so the overlying mountain cannot be mistaken for its floor.
+                if (!GetWorld()->LineTraceSingleByChannel(Ceiling,
+                        Floor + FVector(0.f, 0.f, 180.f), Floor + FVector(0.f, 0.f, 2200.f), ECC_Visibility)
+                    || Ceiling.GetComponent() != CanyonCaveMesh) continue;
+                if (GetWorld()->OverlapBlockingTestByChannel(Floor + FVector(0.f, 0.f, 130.f),
+                        FQuat::Identity, ECC_Pawn, FCollisionShape::MakeCapsule(42.f, 96.f))) continue;
+                return Floor;
+            }
+        }
         const FVector& Point = CanyonLayout.Nodes[CanyonLayout.TreasureNode].Position;
         return GetActorLocation() + FVector(Point.X, Point.Y, CanyonLayout.SurfaceHeightAt(Point.X, Point.Y));
     }

@@ -27,6 +27,8 @@ Ordinary random Canyon maps use the shorter through cave, long winding through c
 
 ## What to judge
 
+Canyon treasure selection has a 40% chance to try an interior cave point, including passages, halls, and enclosed branches. Candidates require an actual cave floor, overhead rock, and player capsule clearance; if none qualifies, treasure stays on the surface. This applies to normal rounds and the solo preview. Seeded selection is repeatable when the collision scene is unchanged.
+
 1. At the first decision, do the routes create an interesting choice or only extra walking?
 2. Can you understand where each route leads using the landmark placeholders and terrain?
 3. Does the treasure location make you remember or draw a distinct relationship?

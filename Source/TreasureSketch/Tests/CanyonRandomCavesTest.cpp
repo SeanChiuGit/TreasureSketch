@@ -75,6 +75,30 @@ bool FCanyonRandomCavesTest::RunTest(const FString& Parameters)
             TestTrue(FString::Printf(TEXT("Seed %d branch%d has floor and capsule clearance"), Seed, Branch),
                 bFloor && bClear);
         }
+        int32 UndergroundTreasures = 0;
+        for (int32 Sample = 0; Sample < 40; ++Sample)
+        {
+            FRandomStream TreasureStream(Seed * 100 + Sample);
+            FRandomStream ReplayStream(Seed * 100 + Sample);
+            const FVector Treasure = Island->FindTreasurePoint(TreasureStream);
+            TestTrue(TEXT("Treasure selection repeats for the same stream"),
+                Treasure.Equals(Island->FindTreasurePoint(ReplayStream), 0.1f));
+            const FVector Local = Island->GetActorTransform().InverseTransformPosition(Treasure);
+            if (Local.Z < Layout.SurfaceHeightAt(Local.X, Local.Y) - 200.f)
+            {
+                ++UndergroundTreasures;
+                FHitResult Floor;
+                TestTrue(TEXT("Underground treasure rests on a walkable collision floor"),
+                    World->LineTraceSingleByChannel(Floor, Treasure + FVector(0.f, 0.f, 20.f),
+                        Treasure - FVector(0.f, 0.f, 20.f), ECC_Visibility)
+                    && Floor.GetActor() == Island && Floor.ImpactNormal.Z >= 0.55f);
+                TestTrue(TEXT("Underground treasure leaves room for a player"),
+                    !World->OverlapBlockingTestByChannel(Treasure + FVector(0.f, 0.f, 130.f),
+                        FQuat::Identity, ECC_Pawn, FCollisionShape::MakeCapsule(42.f, 96.f)));
+            }
+        }
+        TestTrue(TEXT("Treasure pool includes both cave and surface locations"),
+            UndergroundTreasures > 4 && UndergroundTreasures < 36);
         World->DestroyActor(Island);
     }
     TestEqual(TEXT("Ordinary seeds exercise all three cave types"), Patterns.Num(), 3);
