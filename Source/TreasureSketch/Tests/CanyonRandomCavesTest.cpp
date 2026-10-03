@@ -16,7 +16,7 @@ bool FCanyonRandomCavesTest::RunTest(const FString& Parameters)
             || Context.WorldType == EWorldType::Game)) { World = Context.World(); break; }
     if (!TestNotNull(TEXT("A collision world exists"), World)) return false;
     TSet<ECanyonCavePattern> Patterns;
-    for (const int32 Seed : { 1004, 1008, 1006, 1010 })
+    for (const int32 Seed : { 1001, 1008, 1006, 1010, 1020 })
     {
         AProceduralIsland* Island = World->SpawnActor<AProceduralIsland>();
         if (!TestNotNull(TEXT("Random canyon actor exists"), Island)) return false;
@@ -31,7 +31,20 @@ bool FCanyonRandomCavesTest::RunTest(const FString& Parameters)
                     >= Island->GetFallRecoveryLimitZ() + 599.f);
         TestTrue(FString::Printf(TEXT("Random seed %d has a valid graph"), Seed), Layout.Validate());
         TestTrue(TEXT("Random map contains cave networks"),
-            Layout.CaveNetworks.Num() >= (Seed == 1010 ? 1 : 2));
+            Layout.CaveNetworks.Num() >= (Seed == 1001 || Seed == 1010 || Seed == 1020 ? 1 : 2));
+        if (Seed == 1020)
+        {
+            TestTrue(TEXT("Fixed preview contains a branched through cave"), Layout.CavePattern == ECanyonCavePattern::BranchedThrough);
+            TestTrue(TEXT("Main cave has two to four enclosed side passages"),
+                Layout.CaveBranches.Num() >= 3 && Layout.CaveBranches.Num() <= 5);
+            float Length = 0.f;
+            for (int32 I = 1; I < Layout.CavePathNodes.Num(); ++I)
+                Length += FVector::Dist2D(Layout.Nodes[Layout.CavePathNodes[I - 1]].Position,
+                    Layout.Nodes[Layout.CavePathNodes[I]].Position);
+            UE_LOG(LogTemp, Display, TEXT("CANYON_BRANCH_PREVIEW Seed=%d MainMeters=%.1f SidePassages=%d"),
+                Seed, Length / 100.f, Layout.CaveBranches.Num() - 1);
+            TestTrue(TEXT("Branched cave retains a long main passage"), Length > 9000.f);
+        }
         if (Seed == 1010)
         {
             TestTrue(TEXT("Fixed preview contains a loop cave"), Layout.CavePattern == ECanyonCavePattern::LongLoop);
@@ -115,7 +128,7 @@ bool FCanyonRandomCavesTest::RunTest(const FString& Parameters)
             UndergroundTreasures > 4 && UndergroundTreasures < 36);
         World->DestroyActor(Island);
     }
-    TestEqual(TEXT("Representative seeds exercise all four cave types"), Patterns.Num(), 4);
+    TestEqual(TEXT("Representative seeds exercise all five cave types"), Patterns.Num(), 5);
     return true;
 }
 

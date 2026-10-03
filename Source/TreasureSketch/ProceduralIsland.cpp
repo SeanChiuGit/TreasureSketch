@@ -1228,7 +1228,8 @@ void AProceduralIsland::BuildCanyonGrayboxTerrain()
 {
     CanyonLayout = FCanyonGrayboxLayout::Generate(Seed, MapScale,
         FParse::Param(FCommandLine::Get(), TEXT("CanyonHallPreview")),
-        FParse::Param(FCommandLine::Get(), TEXT("CanyonLoopPreview")));
+        FParse::Param(FCommandLine::Get(), TEXT("CanyonLoopPreview")),
+        FParse::Param(FCommandLine::Get(), TEXT("CanyonBranchPreview")));
     CanyonLayout.ScaleForMap(MapScale);
     const bool bValid = CanyonLayout.Validate();
     UE_LOG(LogTemp, Display, TEXT("CANYON_CAVE_NETWORKS Seed=%d Count=%d Types=%s"),
@@ -1525,6 +1526,7 @@ void AProceduralIsland::BuildCanyonCaves()
         if (CanyonLayout.CavePattern == ECanyonCavePattern::ThreeMouthHall
             || CanyonLayout.CavePattern == ECanyonCavePattern::LongWindingThrough
             || CanyonLayout.CavePattern == ECanyonCavePattern::LongLoop
+            || CanyonLayout.CavePattern == ECanyonCavePattern::BranchedThrough
             || CanyonLayout.CaveNetworks.Num() > 1)
         {
             // Keep every branch in the same solid field. Choosing just the
@@ -1554,15 +1556,14 @@ void AProceduralIsland::BuildCanyonCaves()
             for (const FNearestTunnel& Tunnel : Nearest)
                 if (Tunnel.Distance < TNumericLimits<float>::Max()) Column.AdditionalTunnels.Add(Tunnel.Tunnel);
         }
-        if (!CanyonLayout.AllCaveHalls.IsEmpty())
+        for (const FCanyonCaveHall& Hall : CanyonLayout.AllCaveHalls)
         {
-            const FCanyonCaveHall& Hall = CanyonLayout.AllCaveHalls[0];
             const FVector& Center = CanyonLayout.Nodes[Hall.Node].Position;
-            Column.ChamberDistance = FVector2D::Distance(FVector2D(X, Y),
+            const float Distance = FVector2D::Distance(FVector2D(X, Y),
                 FVector2D(Center.X, Center.Y));
-            Column.ChamberRadius = Hall.Radius;
-            Column.ChamberFloorZ = 600.f + Center.Z;
-            Column.ChamberClearance = Hall.Clearance;
+            if (Distance <= Hall.Radius + Bounds.StepXY)
+                Column.AdditionalTunnels.Add({ static_cast<float>(600.f + Center.Z), Distance,
+                    Hall.Radius, Hall.Clearance });
         }
         return Column;
     });
@@ -1624,11 +1625,13 @@ void AProceduralIsland::BuildCanyonCaves()
             CanyonFillLights.Add(Lamp);
         }
     }
-    for (int32 NetworkIndex = 1; NetworkIndex < CanyonLayout.CaveNetworks.Num(); ++NetworkIndex)
+    for (int32 NetworkIndex = 0; NetworkIndex < CanyonLayout.CaveNetworks.Num(); ++NetworkIndex)
     {
         const FCanyonCaveNetwork& Network = CanyonLayout.CaveNetworks[NetworkIndex];
+        if (NetworkIndex == 0 && Network.Pattern != ECanyonCavePattern::BranchedThrough) continue;
         TArray<TArray<int32>> Paths = Network.Branches;
         if (Paths.IsEmpty()) Paths.Add(Network.PathNodes);
+        if (NetworkIndex == 0) Paths.RemoveAt(0); // Main path already has lamps.
         for (const TArray<int32>& Path : Paths)
             for (int32 Segment = 1; Segment < Path.Num(); ++Segment)
             {
