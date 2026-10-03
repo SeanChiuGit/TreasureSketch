@@ -48,6 +48,7 @@ public:
     float MapScale = 1.f;
 
     float HeightAt(float X, float Y) const;
+    float GetFallRecoveryLimitZ() const;
     bool IsCanyonRouteAt(float X, float Y) const;
     FVector FindTreasurePoint(FRandomStream& Stream, float MinimumHeight = 130.f) const;
     FVector FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight = 130.f) const;

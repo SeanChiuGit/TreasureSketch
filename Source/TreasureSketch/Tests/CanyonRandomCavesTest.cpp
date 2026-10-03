@@ -25,6 +25,10 @@ bool FCanyonRandomCavesTest::RunTest(const FString& Parameters)
         Island->MapScale = 1.f;
         Island->OnConstruction(Island->GetActorTransform());
         const FCanyonGrayboxLayout& Layout = Island->GetCanyonLayout();
+        for (const FCanyonGrayboxNode& Node : Layout.Nodes)
+            TestTrue(TEXT("Legal canyon floors remain above fall recovery"),
+                Island->GetActorTransform().TransformPosition(Node.Position + FVector(0.f, 0.f, 600.f)).Z
+                    >= Island->GetFallRecoveryLimitZ() + 599.f);
         TestTrue(FString::Printf(TEXT("Random seed %d has a valid graph"), Seed), Layout.Validate());
         TestTrue(TEXT("Random map contains multiple cave networks"), Layout.CaveNetworks.Num() >= 2);
         TArray<TArray<int32>> Paths;

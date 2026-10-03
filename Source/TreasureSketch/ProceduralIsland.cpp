@@ -532,6 +532,17 @@ float AProceduralIsland::NormalizedIslandDistance(float X, float Y) const
     return Distance;
 }
 
+float AProceduralIsland::GetFallRecoveryLimitZ() const
+{
+    float LowestWorldZ = GetActorLocation().Z;
+    if (Theme == EIslandTheme::CanyonGraybox)
+        for (const FCanyonGrayboxNode& Node : CanyonLayout.Nodes)
+            LowestWorldZ = FMath::Min(LowestWorldZ, GetActorTransform().TransformPosition(
+                Node.Position + FVector(0.f, 0.f, 600.f)).Z);
+    // Keep recovery below every legal floor, including deep tunnels and mesh variation.
+    return LowestWorldZ - 600.f;
+}
+
 float AProceduralIsland::HeightAt(float X, float Y) const
 {
     if (Theme == EIslandTheme::CanyonGraybox) return CanyonLayout.SurfaceHeightAt(X, Y);

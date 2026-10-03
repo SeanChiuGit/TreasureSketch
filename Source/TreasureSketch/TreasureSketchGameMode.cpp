@@ -63,7 +63,7 @@ void ATreasureSketchGameMode::RecoverFallenPlayers()
     const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (!HasAuthority() || !Island || !GS || !GS->bGameStarted
         || (GS->IsRoundOver() && !GS->bReviewingRound)) return;
-    const float FallLimitZ = Island->GetActorLocation().Z - 600.f;
+    const float FallLimitZ = Island->GetFallRecoveryLimitZ();
     for (APlayerState* State : GS->PlayerArray)
         if (const ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State))
             if (const ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(PS->GetOwner()))
