@@ -267,7 +267,6 @@ private:
     bool bCameraMode = false;
     bool bPropSelectionMode = false;
     bool bPropButtonHeld = false;
-    float PropButtonHeldSeconds = 0.f;
     int32 PropSelectionRoundSerial = 0;
     FVector PropSelectionOrigin = FVector::ZeroVector;
     FVector PropSelectionDirection = FVector::ForwardVector;

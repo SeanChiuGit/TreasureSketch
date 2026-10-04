@@ -977,7 +977,7 @@ void ATreasureSketchHUD::DrawHUD()
     const FString Help = GS->RoomMode == ETreasureRoomMode::HideAndSeek
         ? (GS->bReviewingRound ? TEXT("WASD 逛岛  ·  Esc 返回结算")
             : bScout ? TEXT("鼠标左键 / G 抓人  ·  出手冷却 5 秒  ·  Esc 菜单")
-            : TEXT("长按左键选物 · 再点确认 · Q 还原 · 长按 E 3 秒挖宝")) : GS->bReviewingRound ? TEXT("WASD 逛岛  ·  M 查看地图  ·  T 宝箱标记  ·  Esc 返回结算")
+            : TEXT("按住左键选物 · 松开变形 · Q 还原 · 长按 E 3 秒挖宝")) : GS->bReviewingRound ? TEXT("WASD 逛岛  ·  M 查看地图  ·  T 宝箱标记  ·  Esc 返回结算")
         : bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing && PC->IsDrawingOverheadView()
         ? (PC->HasSubmittedSketch() ? TEXT("WASD 飞行  ·  Space / Ctrl 升降  ·  Tab 返回地面")
             : TEXT("WASD 飞行  ·  Space / Ctrl 升降  ·  Tab 返回地面  ·  M 画图"))
@@ -1032,10 +1032,10 @@ void ATreasureSketchHUD::DrawHUD()
     {
         const auto* Character = Cast<ATreasureSketchCharacter>(PC->GetPawn());
         const bool bSelecting = PC->IsPropSelectionMode();
-        DrawText(bSelecting ? (PC->HasPropSelectionTarget() ? TEXT("已选中高亮物品 · 松开后再点左键确认")
+        DrawText(bSelecting ? (PC->HasPropSelectionTarget() ? TEXT("已选中高亮物品 · 松开左键变形")
             : TEXT("变形取景中 · 移动准星瞄准物品"))
-            : Character && Character->IsPropDisguised() ? TEXT("变形中 · 长按左键选物 · Q 恢复人形")
-            : TEXT("变形就绪 · 长按左键打开取景框"), FLinearColor::White, 35.f, ContextY, BodyFont, 0.95f);
+            : Character && Character->IsPropDisguised() ? TEXT("变形中 · 按住左键选物 · Q 恢复人形")
+            : TEXT("变形就绪 · 按住左键打开取景框"), FLinearColor::White, 35.f, ContextY, BodyFont, 0.95f);
         const FVector2D Center(Canvas->SizeX * 0.5f, Canvas->SizeY * 0.5f);
         const FLinearColor AimColor = bSelecting && PC->HasPropSelectionTarget() ? FLinearColor(1.f, 0.90f, 0.58f) : FLinearColor::White;
         DrawLine(Center.X - 5.f, Center.Y, Center.X + 5.f, Center.Y, AimColor, 1.5f);
@@ -1190,7 +1190,7 @@ void ATreasureSketchHUD::DrawHUD()
         DrawLine(FrameX + FrameW, FrameY + FrameH, FrameX, FrameY + FrameH, Edge, 2.f);
         DrawLine(FrameX, FrameY + FrameH, FrameX, FrameY, Edge, 2.f);
         const FString Hint = PC->IsPropSelectionMode() ? (PC->HasPropSelectionTarget()
-            ? TEXT("松开后点击左键变形   ·   Esc 取消") : TEXT("瞄准物品使其高亮   ·   Esc 取消"))
+            ? TEXT("松开左键变形   ·   Esc 取消") : TEXT("瞄准物品使其高亮   ·   Esc 取消"))
             : TEXT("B 拍照   ·   Esc 取消");
         float HintW = 0.f, HintH = 0.f;
         GetTextSize(Hint, HintW, HintH, BodyFont, 1.f);

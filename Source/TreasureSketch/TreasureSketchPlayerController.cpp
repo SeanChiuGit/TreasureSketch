@@ -1531,7 +1531,6 @@ void ATreasureSketchPlayerController::CancelPropSelection()
     PropSelectionCamera.Reset();
     bPropSelectionMode = false;
     bPropButtonHeld = false;
-    PropButtonHeldSeconds = 0.f;
     PropSelectionRoundSerial = 0;
     if (PropSelectionHighlight)
     {
@@ -1542,8 +1541,16 @@ void ATreasureSketchPlayerController::CancelPropSelection()
 
 void ATreasureSketchPlayerController::ReleasePropSelection()
 {
-    bPropButtonHeld = false;
-    PropButtonHeldSeconds = 0.f;
+    if (!bPropButtonHeld) return;
+    const auto* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    const bool bConfirm = bPropSelectionMode && CanSelectProp() && GS
+        && GS->RoundSerial == PropSelectionRoundSerial && HasPropSelectionTarget();
+    // Use the ray that produced the displayed outline before restoring the camera.
+    const FVector Origin = PropSelectionOrigin;
+    const FVector Direction = PropSelectionDirection;
+    const int32 RoundSerial = PropSelectionRoundSerial;
+    CancelPropSelection();
+    if (bConfirm) ServerTransformIntoProp(RoundSerial, Origin, Direction, false);
 }
 
 void ATreasureSketchPlayerController::UpdatePropSelectionTarget(const FVector& Origin, const FVector& Direction)
@@ -1598,16 +1605,6 @@ void ATreasureSketchPlayerController::UpdatePropSelection(float DeltaSeconds)
         CancelPropSelection();
         return;
     }
-    if (bPropButtonHeld && !bPropSelectionMode)
-    {
-        PropButtonHeldSeconds += DeltaSeconds;
-        if (PropButtonHeldSeconds >= 0.4f)
-        {
-            bPropSelectionMode = true;
-            bCameraMode = false;
-            BeginPropSelectionView();
-        }
-    }
     if (!bPropSelectionMode) return;
     FVector Origin;
     FRotator Rotation;
@@ -1627,25 +1624,10 @@ void ATreasureSketchPlayerController::TransformIntoProp()
     if ((bPropSelectionMode || bPropButtonHeld) && GS->RoundSerial != PropSelectionRoundSerial) CancelPropSelection();
     if (bPropButtonHeld) return;
     bPropButtonHeld = true;
-    if (bPropSelectionMode)
-    {
-        // Confirm the last highlighted ray, not a new camera pose that has not
-        // been drawn yet. The server independently resolves this same ray.
-        UpdatePropSelectionTarget(PropSelectionOrigin, PropSelectionDirection);
-        if (!HasPropSelectionTarget())
-        {
-            StatusMessage = TEXT("未选中物品；移动准星，对准高亮物品后点击左键。");
-            StatusUntil = GetWorld()->GetTimeSeconds() + 3.f;
-            return;
-        }
-        const FVector Origin = PropSelectionOrigin;
-        const FVector Direction = PropSelectionDirection;
-        CancelPropSelection();
-        ServerTransformIntoProp(GS->RoundSerial, Origin, Direction, false);
-        return;
-    }
-    PropButtonHeldSeconds = 0.f;
     PropSelectionRoundSerial = GS->RoundSerial;
+    bPropSelectionMode = true;
+    bCameraMode = false;
+    BeginPropSelectionView();
 }
 
 void ATreasureSketchPlayerController::RestoreHumanForm()
@@ -1683,8 +1665,8 @@ void ATreasureSketchPlayerController::ServerTransformIntoProp_Implementation(int
 
 void ATreasureSketchPlayerController::ClientPropDisguiseFeedback_Implementation(bool bFound, bool bRestore)
 {
-    StatusMessage = bRestore ? TEXT("已恢复人形。") : bFound ? TEXT("已变形；长按左键可重新选取物品，Q 恢复人形。")
-        : TEXT("未瞄准物品；长按左键打开取景框，选中高亮物品后点击确认。");
+    StatusMessage = bRestore ? TEXT("已恢复人形。") : bFound ? TEXT("已变形；按住左键选取，松开变形，Q 恢复人形。")
+        : TEXT("未瞄准物品；按住左键打开取景框，瞄准高亮物品后松开变形。");
     StatusUntil = GetWorld()->GetTimeSeconds() + 3.f;
 }
 
