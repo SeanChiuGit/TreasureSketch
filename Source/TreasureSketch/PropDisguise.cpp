@@ -12,8 +12,15 @@ bool PropDisguise::FindTarget(UWorld* World, const FVector& Origin, const FVecto
 {
     if (OutTarget) *OutTarget = FTarget();
     if (!World || Origin.ContainsNaN() || Direction.ContainsNaN() || Direction.IsNearlyZero()) return false;
-    const FVector End = Origin + Direction.GetSafeNormal() * WORLD_MAX;
+    const FVector Aim = Direction.GetSafeNormal();
+    const FVector End = Origin + Aim * WORLD_MAX;
     float BestTime = 1.f;
+    double BestAimScore = TNumericLimits<double>::Max();
+    // A small angular margin stays consistent with distance and is shared by
+    // the local preview and authoritative server selection.
+    const double AimMargin = FMath::Tan(FMath::DegreesToRadians(0.6));
+    FCollisionQueryParams VisibilityQuery(SCENE_QUERY_STAT(PropSelection), true);
+    for (TActorIterator<APawn> Pawn(World); Pawn; ++Pawn) VisibilityQuery.AddIgnoredActor(*Pawn);
     UStaticMeshComponent* BestComponent = nullptr;
     FTransform BestTransform;
     int32 BestInstanceIndex = INDEX_NONE;
@@ -35,12 +42,30 @@ bool PropDisguise::FindTarget(UWorld* World, const FVector& Origin, const FVecto
                 if (Transform.GetScale3D().IsNearlyZero()) continue;
                 FVector Hit, Normal;
                 float Time;
-                // Bounds picking includes grass, bushes and other decorative
-                // instances with collision disabled. There is no skill range,
-                // prop whitelist, cooldown, duration, or size clamp.
-                if (!FMath::LineExtentBoxIntersection(Component->GetStaticMesh()->GetBoundingBox(),
+                const FBox Bounds = Component->GetStaticMesh()->GetBoundingBox();
+                const FVector CenterDelta = Transform.TransformPosition(Bounds.GetCenter()) - Origin;
+                const double ForwardDistance = FVector::DotProduct(CenterDelta, Aim);
+                if (ForwardDistance <= UE_SMALL_NUMBER) continue;
+                const double AimScore = (CenterDelta - Aim * ForwardDistance).SizeSquared()
+                    / FMath::Square(ForwardDistance);
+                // Rank by proximity to the reticle, not the front face of a
+                // large decorative bounding box. Distance breaks angular ties.
+                if (AimScore > BestAimScore + 1.e-8) continue;
+                const FVector Scale = Transform.GetScale3D().GetAbs();
+                if (Scale.GetMin() <= UE_SMALL_NUMBER) continue;
+                const FVector Margin = FVector(ForwardDistance * AimMargin) / Scale;
+                if (!FMath::LineExtentBoxIntersection(Bounds,
                     Transform.InverseTransformPosition(Origin), Transform.InverseTransformPosition(End),
-                    FVector::ZeroVector, Hit, Normal, Time) || Time >= BestTime) continue;
+                    Margin, Hit, Normal, Time)) continue;
+                if (FMath::Abs(AimScore - BestAimScore) <= 1.e-8 && Time >= BestTime) continue;
+                // Do not allow a centered prop to win through a colliding wall.
+                // Decorative meshes with collision disabled remain selectable.
+                FHitResult Obstruction;
+                const FVector TargetPoint = Origin + Aim * (Time * WORLD_MAX);
+                if (World->LineTraceSingleByChannel(Obstruction, Origin, TargetPoint,
+                    ECC_Visibility, VisibilityQuery) && Obstruction.GetComponent() != Component
+                    && Obstruction.Distance + 2.f < FVector::Distance(Origin, TargetPoint)) continue;
+                BestAimScore = AimScore;
                 BestTime = Time;
                 BestComponent = Component;
                 BestTransform = Transform;

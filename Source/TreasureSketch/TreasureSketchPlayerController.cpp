@@ -1612,7 +1612,12 @@ void ATreasureSketchPlayerController::UpdatePropSelection(float DeltaSeconds)
     FVector Origin;
     FRotator Rotation;
     GetPlayerViewPoint(Origin, Rotation);
-    UpdatePropSelectionTarget(Origin, Rotation.Vector());
+    FVector AimDirection = Rotation.Vector();
+    int32 ViewWidth = 0, ViewHeight = 0;
+    GetViewportSize(ViewWidth, ViewHeight);
+    if (ViewWidth > 0 && ViewHeight > 0)
+        DeprojectScreenPositionToWorld(ViewWidth * 0.5f, ViewHeight * 0.5f, Origin, AimDirection);
+    UpdatePropSelectionTarget(Origin, AimDirection);
 }
 
 void ATreasureSketchPlayerController::TransformIntoProp()

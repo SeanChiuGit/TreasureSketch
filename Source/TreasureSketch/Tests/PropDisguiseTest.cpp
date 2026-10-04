@@ -164,6 +164,28 @@ bool FPropDisguiseTest::RunTest(const FString& Parameters)
     Instances->SetHiddenInGame(true);
     TestFalse(TEXT("Invisible collision helper meshes are not props"),
         PropDisguise::FindTarget(World, FVector::ZeroVector, FVector::ForwardVector, Form));
+    Instances->SetHiddenInGame(false);
+    Instances->ClearInstances();
+    Instances->AddInstance(FTransform(FRotator::ZeroRotator, FVector(500.f, 120.f, 0.f), FVector(6.f)), true);
+    Instances->AddInstance(FTransform(FRotator::ZeroRotator, FVector(1000.f, 0.f, 0.f), FVector(0.02f)), true);
+    PropDisguise::FTarget CenterPick;
+    TestTrue(TEXT("Centered tiny prop wins over a nearer broad decorative box"),
+        PropDisguise::FindTarget(World, FVector::ZeroVector, FVector::ForwardVector, Form, &CenterPick)
+        && CenterPick.InstanceIndex == 1);
+    Instances->ClearInstances();
+    Instances->AddInstance(FTransform(FRotator::ZeroRotator, FVector(1000.f, 7.f, 0.f), FVector(0.02f)), true);
+    TestTrue(TEXT("Tiny prop slightly outside the exact ray has angular aim tolerance"),
+        PropDisguise::FindTarget(World, FVector::ZeroVector, FVector::ForwardVector, Form));
+    Instances->UpdateInstanceTransform(0, FTransform(FRotator::ZeroRotator,
+        FVector(1000.f, 25.f, 0.f), FVector(0.02f)), true);
+    TestFalse(TEXT("Aim tolerance does not select props far from the reticle"),
+        PropDisguise::FindTarget(World, FVector::ZeroVector, FVector::ForwardVector, Form));
+    Instances->ClearInstances();
+    Instances->AddInstance(FTransform(FRotator::ZeroRotator, FVector(1200.f, 0.f, 0.f), FVector(0.02f)), true);
+    Instances->AddInstance(FTransform(FRotator::ZeroRotator, FVector(800.f, 0.f, 0.f), FVector(0.02f)), true);
+    TestTrue(TEXT("Equally centered props use the nearer instance"),
+        PropDisguise::FindTarget(World, FVector::ZeroVector, FVector::ForwardVector, Form, &CenterPick)
+        && CenterPick.InstanceIndex == 1);
     World->DestroyWorld(false);
     GEngine->DestroyWorldContext(World);
     return true;
