@@ -1,3 +1,10 @@
+## 抓捕范围与观战上下方向（开发分支，尚未发布）
+
+- 躲猫猫抓捕使用 `CatchAttack.h` 共享几何：默认半径 450 cm，半角 80°，高差 ±300 cm；等待从 0.35 秒缩为 0.15 秒。HUD 用同一半径、角度、高差绘制空间边界和脚下扇形，颜色区分就绪、出手及冷却。
+- `CatchRangeMeters` 为复制的房间设置，房主可输入 2–10 米，每次微调 0.25 米；服务端验证模式、权限、有限值、边界及开局锁定，重玩和返回房间保留。沿用小数编辑器，新增设置行后移开后续按钮避免重叠。
+- 自由观战 `UpdateSpectatorCamera` 改为增加 MouseY 对俯仰的贡献，修正上下反向。其他模式推人仍为 260 cm、140 cm 高差及 0.35 秒等待。
+- 编辑器编译及 CatchAttack、HideAndSeek、TeamVersus、ExplorerRace、PropDisguise 五项回归通过。新增 CatchAttack 测试覆盖房间输入、同步设置对应实际命中、跳跃目标、范围边界、后方排除及缩短后的等待。日志 `Saved/Logs/CatchRange-*.log`。实际画面及多人手感仍需试玩。
+
 ## 最新 Windows 测试 Release：v0.18.0
 
 - 已发布 [v0.18.0-hide-and-seek-rc1](https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.18.0-hide-and-seek-rc1)，源码标签指向 `ccd162b`。新增躲猫猫队伍收齐全部宝藏即时获胜，以及出局逃生者观战存活队友（Q 切换队友，Tab 切换跟随 / 自由视角）。保留 v0.17.0 的其他功能。

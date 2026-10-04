@@ -1,4 +1,5 @@
 #include "TreasureSketchHUD.h"
+#include "CatchAttack.h"
 #include "TreasureSurfacePaint.h"
 #include "ProceduralIsland.h"
 #include "TreasureSketchCharacter.h"
@@ -189,14 +190,17 @@ void ATreasureSketchHUD::DrawHUD()
                 auto DrawRoleSpeed = [&](const TCHAR* Label, FName Setting, float Value, float Y,
                     FName Input, FName Less, FName More)
                 {
-                    DrawRoomSetting(Label, Y, Less, More, Value > GS->MinMovementSpeed, Value < GS->MaxMovementSpeed);
+                    const bool bRange = Setting == TEXT("CatchRange");
+                    const float MinValue = bRange ? GS->MinCatchRangeMeters : GS->MinMovementSpeed;
+                    const float MaxValue = bRange ? GS->MaxCatchRangeMeters : GS->MaxMovementSpeed;
+                    DrawRoomSetting(Label, Y, Less, More, Value > MinValue, Value < MaxValue);
                     const bool bEditing = PC->IsRoleSpeedEditing(Setting);
                     const FString ValueText = bEditing ? PC->GetMapScaleText() : FString::Printf(TEXT("%.6g"), Value);
                     float ParsedValue = 0.f;
                     const bool bValid = LexTryParseString(ParsedValue, *ValueText) && FMath::IsFinite(ParsedValue)
-                        && ParsedValue >= GS->MinMovementSpeed && ParsedValue <= GS->MaxMovementSpeed;
+                        && ParsedValue >= MinValue && ParsedValue <= MaxValue;
                     DrawRect(bEditing ? FLinearColor(0.15f, 0.30f, 0.30f) : FLinearColor(0.08f, 0.12f, 0.13f), InputX, Y + 3.f, InputW, 32.f);
-                    DrawText(ValueText + (bEditing ? TEXT("_") : TEXT(" 倍")), bValid ? FLinearColor::White : FLinearColor(1.f, 0.4f, 0.3f),
+                    DrawText(ValueText + (bEditing ? TEXT("_") : bRange ? TEXT(" 米") : TEXT(" 倍")), bValid ? FLinearColor::White : FLinearColor(1.f, 0.4f, 0.3f),
                         InputX + 9.f, Y + 9.f, BodyFont, 0.9f);
                     if (bCanAdjustSettings) AddHitBox(FVector2D(InputX, Y + 3.f), FVector2D(InputW, 32.f), Input, true, 10);
                 };
@@ -204,6 +208,8 @@ void ATreasureSketchHUD::DrawHUD()
                     TEXT("HiderSpeedInput"), TEXT("HiderSpeedLess"), TEXT("HiderSpeedMore"));
                 DrawRoleSpeed(TEXT("抓捕者速度："), TEXT("CatcherSpeed"), GS->CatcherSpeedMultiplier, SettingsY + 160.f,
                     TEXT("CatcherSpeedInput"), TEXT("CatcherSpeedLess"), TEXT("CatcherSpeedMore"));
+                DrawRoleSpeed(TEXT("抓捕范围："), TEXT("CatchRange"), GS->CatchRangeMeters, SettingsY + 200.f,
+                    TEXT("CatchRangeInput"), TEXT("CatchRangeLess"), TEXT("CatchRangeMore"));
             }
             else DrawRoomSetting(FString::Printf(TEXT("移动速度：%.2f 倍"), GS->MovementSpeedMultiplier), SettingsY + 160.f, TEXT("RoomSpeedLess"), TEXT("RoomSpeedMore"), GS->MovementSpeedMultiplier > GS->MinMovementSpeed, GS->MovementSpeedMultiplier < GS->MaxMovementSpeed);
             auto DrawRoomToggle = [&](FName Name, const FString& Label, float Y)
@@ -212,8 +218,8 @@ void ATreasureSketchHUD::DrawHUD()
                 DrawText(Label, FLinearColor::White, SettingsX + 12.f, Y + 9.f, BodyFont, 0.9f);
                 if (bCanAdjustSettings) AddHitBox(FVector2D(SettingsX, Y), FVector2D(SettingsW, 38.f), Name, true, 10);
             };
-            DrawRoomToggle(TEXT("ToggleTreasureRange"), GS->bTreasureRangeVisible ? TEXT("宝藏判定范围：显示") : TEXT("宝藏判定范围：隐藏"), SettingsY + 200.f);
-            DrawRoomToggle(TEXT("ToggleSpreadPlayerSpawns"), GS->bSpreadPlayerSpawns ? TEXT("出生点：分散登岛") : TEXT("出生点：同一区域"), SettingsY + 240.f);
+            DrawRoomToggle(TEXT("ToggleTreasureRange"), GS->bTreasureRangeVisible ? TEXT("宝藏判定范围：显示") : TEXT("宝藏判定范围：隐藏"), SettingsY + (bHide ? 240.f : 200.f));
+            DrawRoomToggle(TEXT("ToggleSpreadPlayerSpawns"), GS->bSpreadPlayerSpawns ? TEXT("出生点：分散登岛") : TEXT("出生点：同一区域"), SettingsY + (bHide ? 280.f : 240.f));
         };
 
         if (Page == EFrontEndPage::MainMenu)
@@ -528,14 +534,15 @@ void ATreasureSketchHUD::DrawHUD()
             }
             DrawText(TEXT("难度与地图"), Parchment, ModeX + 18.f, PanelY + 360.f, BodyFont, 1.05f);
             DrawDifficultySettings(ModeX + 14.f, PanelY + 392.f, ModeW - 28.f, bHost);
+            const float ExtraRuleHeight = GS->RoomMode == ETreasureRoomMode::HideAndSeek ? 40.f : 0.f;
             DrawRect(GS->bSurfacePaintEnabled ? FLinearColor(0.12f, 0.38f, 0.60f) : FLinearColor(0.09f, 0.17f, 0.18f),
-                ModeX + 14.f, PanelY + 674.f, ModeW - 28.f, 42.f);
+                ModeX + 14.f, PanelY + 674.f + ExtraRuleHeight, ModeW - 28.f, 42.f);
             DrawText(GS->bSurfacePaintEnabled ? TEXT("实验喷漆：开启") : TEXT("实验喷漆：关闭"),
-                FLinearColor::White, ModeX + 26.f, PanelY + 684.f, BodyFont, 0.95f);
+                FLinearColor::White, ModeX + 26.f, PanelY + 684.f + ExtraRuleHeight, BodyFont, 0.95f);
             if (bHost)
-                AddHitBox(FVector2D(ModeX + 14.f, PanelY + 674.f), FVector2D(ModeW - 28.f, 42.f), TEXT("ToggleSurfacePaint"), true, 10);
+                AddHitBox(FVector2D(ModeX + 14.f, PanelY + 674.f + ExtraRuleHeight), FVector2D(ModeW - 28.f, 42.f), TEXT("ToggleSurfacePaint"), true, 10);
             DrawText(bHost ? TEXT("房主可调整 · 开局后锁定") : TEXT("等待房主调整本局规则"),
-                FLinearColor(0.72f, 0.82f, 0.79f), ModeX + 18.f, PanelY + 728.f, BodyFont, 0.88f);
+                FLinearColor(0.72f, 0.82f, 0.79f), ModeX + 18.f, PanelY + 728.f + ExtraRuleHeight, BodyFont, 0.88f);
             float PlayerY = PanelY + 408.f;
             const ETreasurePlayerRole SingleRole = GS->RoomMode == ETreasureRoomMode::OneExplorer
                 ? ETreasurePlayerRole::Hunter : ETreasurePlayerRole::Scout;
@@ -1069,8 +1076,43 @@ void ATreasureSketchHUD::DrawHUD()
     {
         const int32 CatchCooldown = FMath::CeilToInt(FMath::Max(0.f,
             PS->NextShoveServerTime - GS->GetServerWorldTimeSeconds()));
+        if (const auto* CatcherCharacter = Cast<ATreasureSketchCharacter>(PC->GetPawn());
+            CatcherCharacter && !PC->IsMapOpen() && !PC->IsPauseMenuOpen())
+        {
+            const FVector Center = CatcherCharacter->GetActorLocation();
+            const float Yaw = PC->GetControlRotation().Yaw;
+            const float Radius = GS->GetCatchRadius();
+            const FLinearColor RangeColor = CatcherCharacter->IsShoveWindingUp()
+                ? FLinearColor(1.f, 0.35f, 0.05f, 0.9f) : CatchCooldown > 0
+                ? FLinearColor(0.65f, 0.7f, 0.7f, 0.45f) : FLinearColor(1.f, 0.82f, 0.12f, 0.75f);
+            auto Edge = [&](const FVector& A, const FVector& B, float Width)
+            {
+                FVector2D ScreenA, ScreenB;
+                if (PC->ProjectWorldLocationToScreen(A, ScreenA) && PC->ProjectWorldLocationToScreen(B, ScreenB))
+                    DrawLine(ScreenA.X, ScreenA.Y, ScreenB.X, ScreenB.Y, RangeColor, Width);
+            };
+            auto ArcPoint = [&](float Angle, float Height)
+            {
+                return Center + FRotator(0.f, Yaw + Angle, 0.f).Vector() * Radius + FVector(0.f, 0.f, Height);
+            };
+            // Wire volume uses exactly the same radius, angle and height as the server.
+            for (float Height : { -CatchAttack::VerticalHalfHeight, CatchAttack::VerticalHalfHeight, -88.f })
+            {
+                const FVector Apex = Center + FVector(0.f, 0.f, Height);
+                Edge(Apex, ArcPoint(-CatchAttack::HalfAngleDegrees, Height), 2.f);
+                Edge(Apex, ArcPoint(CatchAttack::HalfAngleDegrees, Height), 2.f);
+                for (int32 Segment = 0; Segment < 24; ++Segment)
+                {
+                    const float A = -CatchAttack::HalfAngleDegrees + 2.f * CatchAttack::HalfAngleDegrees * Segment / 24.f;
+                    const float B = -CatchAttack::HalfAngleDegrees + 2.f * CatchAttack::HalfAngleDegrees * (Segment + 1) / 24.f;
+                    Edge(ArcPoint(A, Height), ArcPoint(B, Height), Height == -88.f ? 2.f : 1.f);
+                }
+            }
+            for (float Angle : { -CatchAttack::HalfAngleDegrees, 0.f, CatchAttack::HalfAngleDegrees })
+                Edge(ArcPoint(Angle, -CatchAttack::VerticalHalfHeight), ArcPoint(Angle, CatchAttack::VerticalHalfHeight), 1.f);
+        }
         DrawText(CatchCooldown > 0 ? FString::Printf(TEXT("抓捕冷却：%d 秒"), CatchCooldown)
-            : TEXT("抓捕就绪：靠近并面向对手，左键 / G"), FLinearColor::White, 35.f, ContextY, BodyFont, 0.95f);
+            : FString::Printf(TEXT("前方抓捕 %.2f 米 · 高差 ±3米 · 左键 / G"), GS->CatchRangeMeters), FLinearColor::White, 35.f, ContextY, BodyFont, 0.95f);
     }
     if (const ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(PC->GetPawn());
         Character && Character->IsCanyonTestMode())

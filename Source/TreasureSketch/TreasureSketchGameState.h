@@ -158,6 +158,13 @@ public:
     UPROPERTY(ReplicatedUsing=ApplyMovementSpeed, BlueprintReadOnly)
     float CatcherSpeedMultiplier = 2.f;
 
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    float CatchRangeMeters = 4.5f;
+    static constexpr float MinCatchRangeMeters = 2.f;
+    static constexpr float MaxCatchRangeMeters = 10.f;
+    float GetCatchRadius() const { return CatchRangeMeters * 100.f; }
+
+
     float GetMovementSpeedFor(const APawn* Pawn) const;
 
     static constexpr float MinMovementSpeed = 0.5f;

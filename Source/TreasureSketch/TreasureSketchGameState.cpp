@@ -35,6 +35,7 @@ void ATreasureSketchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProper
     DOREPLIFETIME(ATreasureSketchGameState, MovementSpeedMultiplier);
     DOREPLIFETIME(ATreasureSketchGameState, HiderSpeedMultiplier);
     DOREPLIFETIME(ATreasureSketchGameState, CatcherSpeedMultiplier);
+    DOREPLIFETIME(ATreasureSketchGameState, CatchRangeMeters);
     DOREPLIFETIME(ATreasureSketchGameState, DrawingDurationSeconds);
     DOREPLIFETIME(ATreasureSketchGameState, SearchingDurationSeconds);
     DOREPLIFETIME(ATreasureSketchGameState, DigCooldownSeconds);

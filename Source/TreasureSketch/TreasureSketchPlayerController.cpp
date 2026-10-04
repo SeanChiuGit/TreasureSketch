@@ -155,6 +155,7 @@ bool ATreasureSketchPlayerController::CommitMapScale()
     ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>();
     if (!GM || !LexTryParseString(Scale, *MapScaleText)) return false;
     if (!(RoomNumericSetting == TEXT("MapSize") ? GM->SetRoomMapScale(Scale)
+        : RoomNumericSetting == TEXT("CatchRange") ? GM->SetCatchRange(Scale)
         : GM->SetRoleMovementSpeed(RoomNumericSetting, Scale))) return false;
     bMapScaleEditing = false;
     return true;
@@ -781,7 +782,7 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
             ServerClaimSingleRoomRole();
         return;
     }
-    if (ActionName == TEXT("MapScaleInput") || ActionName == TEXT("HiderSpeedInput") || ActionName == TEXT("CatcherSpeedInput"))
+    if (ActionName == TEXT("MapScaleInput") || ActionName == TEXT("HiderSpeedInput") || ActionName == TEXT("CatcherSpeedInput") || ActionName == TEXT("CatchRangeInput"))
     {
         if (!IsLocalController() || (FrontEndPage != EFrontEndPage::RoomLobby && FrontEndPage != EFrontEndPage::SoloTest)
             || !GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) return;
@@ -789,10 +790,12 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
         if (!GS || GS->bGameStarted) return;
         if (!CommitMapScale()) return;
         RoomNumericSetting = ActionName == TEXT("MapScaleInput") ? TEXT("MapSize")
-            : ActionName == TEXT("HiderSpeedInput") ? TEXT("HiderSpeed") : TEXT("CatcherSpeed");
+            : ActionName == TEXT("HiderSpeedInput") ? TEXT("HiderSpeed")
+            : ActionName == TEXT("CatchRangeInput") ? TEXT("CatchRange") : TEXT("CatcherSpeed");
         if (RoomNumericSetting != TEXT("MapSize") && GS->RoomMode != ETreasureRoomMode::HideAndSeek) return;
         const float Value = RoomNumericSetting == TEXT("MapSize") ? GS->RoomMapScale
-            : RoomNumericSetting == TEXT("HiderSpeed") ? GS->HiderSpeedMultiplier : GS->CatcherSpeedMultiplier;
+            : RoomNumericSetting == TEXT("HiderSpeed") ? GS->HiderSpeedMultiplier
+            : RoomNumericSetting == TEXT("CatchRange") ? GS->CatchRangeMeters : GS->CatcherSpeedMultiplier;
         MapScaleText = FString::Printf(TEXT("%.6g"), Value);
         bMapScaleEditing = true;
         bReplaceMapScaleText = true;
@@ -927,12 +930,18 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
         || ActionName == TEXT("RoomSpeedLess") || ActionName == TEXT("RoomSpeedMore")
         || ActionName == TEXT("HiderSpeedLess") || ActionName == TEXT("HiderSpeedMore")
         || ActionName == TEXT("CatcherSpeedLess") || ActionName == TEXT("CatcherSpeedMore")
+        || ActionName == TEXT("CatchRangeLess") || ActionName == TEXT("CatchRangeMore")
         || ActionName == TEXT("RoomInkLess") || ActionName == TEXT("RoomInkMore"))
     {
         if (!IsLocalController() || (FrontEndPage != EFrontEndPage::RoomLobby
             && FrontEndPage != EFrontEndPage::RoomDrawingRules && FrontEndPage != EFrontEndPage::SoloTest)) return;
         if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
         {
+            if (ActionName == TEXT("CatchRangeLess") || ActionName == TEXT("CatchRangeMore"))
+            {
+                GM->AdjustRoomSetting(TEXT("CatchRange"), ActionName == TEXT("CatchRangeMore") ? 1 : -1);
+                return;
+            }
             if (ActionName == TEXT("HiderSpeedLess") || ActionName == TEXT("HiderSpeedMore")
                 || ActionName == TEXT("CatcherSpeedLess") || ActionName == TEXT("CatcherSpeedMore"))
             {
@@ -1207,7 +1216,7 @@ void ATreasureSketchPlayerController::UpdateSpectatorCamera(float DeltaTime)
     FRotator Rotation = SpectatorCamera->GetActorRotation();
     const float MouseSensitivity = bDrawingView ? 0.15f : 0.45f;
     Rotation.Yaw += MouseX * MouseSensitivity;
-    Rotation.Pitch = FMath::ClampAngle(Rotation.Pitch - MouseY * MouseSensitivity, -85.f, 85.f);
+    Rotation.Pitch = FMath::ClampAngle(Rotation.Pitch + MouseY * MouseSensitivity, -85.f, 85.f);
     Rotation.Roll = 0.f;
     SpectatorCamera->SetActorRotation(Rotation);
 

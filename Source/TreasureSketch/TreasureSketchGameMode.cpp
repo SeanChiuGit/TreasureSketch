@@ -1,4 +1,5 @@
 #include "TreasureSketchGameMode.h"
+#include "CatchAttack.h"
 
 #include "ProceduralIsland.h"
 #include "TreasureSurfacePaint.h"
@@ -529,6 +530,16 @@ bool ATreasureSketchGameMode::SetRoomMapScale(float Scale)
     return true;
 }
 
+bool ATreasureSketchGameMode::SetCatchRange(float Meters)
+{
+    auto* GS = GetGameState<ATreasureSketchGameState>();
+    if (!HasAuthority() || !GS || GS->bGameStarted || GS->RoomMode != ETreasureRoomMode::HideAndSeek
+        || !FMath::IsFinite(Meters) || Meters < GS->MinCatchRangeMeters || Meters > GS->MaxCatchRangeMeters) return false;
+    GS->CatchRangeMeters = Meters;
+    GS->ForceNetUpdate();
+    return true;
+}
+
 bool ATreasureSketchGameMode::SetRoleMovementSpeed(FName Setting, float Multiplier)
 {
     auto* GS = GetGameState<ATreasureSketchGameState>();
@@ -552,6 +563,8 @@ void ATreasureSketchGameMode::AdjustRoomSetting(FName Setting, int32 Direction)
     {
         SetRoomMapScale(FMath::Clamp(GS->RoomMapScale + Direction * 0.25f, GS->MinMapScale, GS->MaxMapScale));
     }
+    else if (Setting == TEXT("CatchRange"))
+        SetCatchRange(FMath::Clamp(GS->CatchRangeMeters + Direction * 0.25f, GS->MinCatchRangeMeters, GS->MaxCatchRangeMeters));
     else if (Setting == TEXT("HiderSpeed") || Setting == TEXT("CatcherSpeed"))
     {
         const float Current = Setting == TEXT("HiderSpeed") ? GS->HiderSpeedMultiplier : GS->CatcherSpeedMultiplier;
@@ -1427,7 +1440,7 @@ bool ATreasureSketchGameMode::TryShove(ATreasureSketchPlayerController* ShovingP
         {
             if (WeakController.IsValid() && WeakCharacter.IsValid())
                 ResolveShove(WeakController.Get(), WeakCharacter.Get(), RoundSerial);
-        }), 0.35f, false);
+        }), GS->RoomMode == ETreasureRoomMode::HideAndSeek ? CatchAttack::WindupSeconds : 0.35f, false);
     return true;
 }
 
@@ -1448,9 +1461,11 @@ void ATreasureSketchGameMode::ResolveShove(ATreasureSketchPlayerController* Shov
 
     ATreasureSketchCharacter* Target = nullptr;
     ATreasureSketchPlayerState* TargetState = nullptr;
-    float BestDistanceSquared = FMath::Square(260.f);
+    const bool bCatch = GS->RoomMode == ETreasureRoomMode::HideAndSeek;
+    float BestDistanceSquared = TNumericLimits<float>::Max();
     const FVector Origin = ShovingCharacter->GetActorLocation();
-    const FVector Facing = ShovingPlayer->GetControlRotation().Vector().GetSafeNormal2D();
+    const FVector Facing = bCatch ? FRotator(0.f, ShovingPlayer->GetControlRotation().Yaw, 0.f).Vector()
+        : ShovingPlayer->GetControlRotation().Vector().GetSafeNormal2D();
     for (APlayerState* State : GS->PlayerArray)
         if (ATreasureSketchPlayerState* OtherState = Cast<ATreasureSketchPlayerState>(State);
             OtherState && OtherState != ShovingState && !OtherState->bHideEliminated
@@ -1462,8 +1477,10 @@ void ATreasureSketchGameMode::ResolveShove(ATreasureSketchPlayerController* Shov
                 {
                     const FVector Delta = OtherCharacter->GetActorLocation() - Origin;
                     const float DistanceSquared = Delta.SizeSquared2D();
-                    if (FMath::Abs(Delta.Z) <= 140.f && DistanceSquared < BestDistanceSquared
-                        && FVector::DotProduct(Facing, Delta.GetSafeNormal2D()) > 0.35f)
+                    const bool bInRange = bCatch ? CatchAttack::Contains(Delta, Facing, GS->GetCatchRadius())
+                        : FMath::Abs(Delta.Z) <= 140.f && DistanceSquared < FMath::Square(260.f)
+                            && FVector::DotProduct(Facing, Delta.GetSafeNormal2D()) > 0.35f;
+                    if (bInRange && DistanceSquared < BestDistanceSquared)
                     { Target = OtherCharacter; TargetState = OtherState; BestDistanceSquared = DistanceSquared; }
                 }
     if (!Target || !TargetState)

@@ -48,6 +48,7 @@ public:
     void NormalizeRoomRoles(APlayerState* Excluded = nullptr, ATreasureSketchPlayerState* PreferredSinglePlayer = nullptr);
     void AdjustRoomSetting(FName Setting, int32 Direction);
     bool SetRoomMapScale(float Scale);
+    bool SetCatchRange(float Meters);
     bool SetRoleMovementSpeed(FName Setting, float Multiplier);
     void ReturnToSetup();
     void StartSoloTest(int32 ThemeChoice, bool bForceNewSeed = false);
@@ -59,6 +60,7 @@ private:
     friend class FMultiMapmakerFlowTest;
     friend class FExplorerRaceFlowTest;
     friend class FHideAndSeekFlowTest;
+    friend class FCatchAttackTest;
     void BeginHideAndSeek();
     void FinishHideAndSeek(bool bCaught);
     friend class FTeamVersusFlowTest;
