@@ -1,4 +1,5 @@
 #include "TreasureSketchCharacter.h"
+#include "TreasureSketchPlayerState.h"
 #include "TreasureSketchGameState.h"
 #include "Engine/World.h"
 #include "Engine/StaticMesh.h"
@@ -246,6 +247,18 @@ void ATreasureSketchCharacter::BeginPlay()
 void ATreasureSketchCharacter::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    const auto* HideGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    const auto* HidePS = GetPlayerState<ATreasureSketchPlayerState>();
+    const bool bLockPreparation = HideGS && HidePS && HideGS->IsHidePreparation()
+        && HidePS->PlayerRole == ETreasurePlayerRole::Scout;
+    if (bLockPreparation)
+    {
+        GetCharacterMovement()->StopMovementImmediately();
+        GetCharacterMovement()->DisableMovement();
+    }
+    else if (bHidePreparationLocked && !bSpectatorHidden)
+        GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+    bHidePreparationLocked = bLockPreparation;
     // Role and room settings may replicate in either order, and roles swap on replay.
     if (!bCanyonTestMode)
         if (const auto* GS = GetWorld()->GetGameState<ATreasureSketchGameState>())

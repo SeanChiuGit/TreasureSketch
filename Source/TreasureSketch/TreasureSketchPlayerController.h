@@ -36,6 +36,7 @@ class TREASURESKETCH_API ATreasureSketchPlayerController : public APlayerControl
 {
     GENERATED_BODY()
     friend class FPropDisguiseTest;
+    friend class FHideAndSeekFlowTest;
 
 public:
     ATreasureSketchPlayerController();
@@ -104,6 +105,7 @@ public:
     void RequestRoundReview(bool bReviewing);
     bool IsLocalScout() const;
     bool IsHunterWaiting() const;
+    bool IsCatcherStudyingMap() const;
     bool IsScoutSpectating() const { return SpectatorCamera != nullptr; }
     bool IsDrawingOverheadView() const { return bDrawingOverheadView; }
     bool IsHunterFirstPersonView() const { return SpectatorView == EScoutSpectatorView::HunterFirstPerson; }

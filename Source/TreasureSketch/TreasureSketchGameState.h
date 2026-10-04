@@ -47,6 +47,14 @@ public:
     UPROPERTY(Replicated)
     bool bHideCaught = false;
 
+    UPROPERTY(Replicated)
+    float HidePreparationEndServerTime = 0.f;
+
+    bool IsHidePreparation() const;
+    int32 GetRemainingHiders() const;
+    int32 GetHideDrawThreshold() const { return FMath::Max(1, HideTreasures.Num() / 3); }
+    int32 GetHideWinThreshold() const { return 2 * GetHideDrawThreshold(); }
+
     // The room's random map pool. Ruins remain outside the normal pool.
     UPROPERTY(Replicated, BlueprintReadOnly)
     bool bBeachInMapPool = true;
@@ -142,10 +150,10 @@ public:
     float MovementSpeedMultiplier = 1.f;
 
     UPROPERTY(ReplicatedUsing=ApplyMovementSpeed, BlueprintReadOnly)
-    float HiderSpeedMultiplier = 1.f;
+    float HiderSpeedMultiplier = 2.f;
 
     UPROPERTY(ReplicatedUsing=ApplyMovementSpeed, BlueprintReadOnly)
-    float CatcherSpeedMultiplier = 1.f;
+    float CatcherSpeedMultiplier = 2.f;
 
     float GetMovementSpeedFor(const APawn* Pawn) const;
 

@@ -719,6 +719,26 @@ TArray<FVector> AProceduralIsland::FindSeparatedTreasurePoints(FRandomStream& St
             const FVector& P = Node.Position;
             Candidates.Add(GetActorLocation() + FVector(P.X, P.Y, CanyonLayout.SurfaceHeightAt(P.X, P.Y)));
         }
+        // Larger parties need more than the sparse route junctions. Sample
+        // exterior route floors as well, without changing the three-prop layout.
+        if (Count > 3)
+            for (const auto& Edge : CanyonLayout.Edges)
+            {
+                if (Edge.bCave) continue;
+                const auto& A = CanyonLayout.Nodes[Edge.A];
+                const auto& B = CanyonLayout.Nodes[Edge.B];
+                if (A.bCaveInterior || B.bCaveInterior) continue;
+                const FVector Side = FVector::CrossProduct((B.Position - A.Position).GetSafeNormal2D(), FVector::UpVector);
+                const int32 Steps = FMath::Max(1, FMath::CeilToInt(FVector::Dist2D(A.Position, B.Position) / 150.f));
+                for (int32 Step = 0; Step <= Steps; ++Step)
+                    for (const float Offset : { -0.6f, 0.f, 0.6f })
+                    {
+                        const FVector P = FMath::Lerp(A.Position, B.Position, static_cast<float>(Step) / Steps)
+                            + Side * (Offset * Edge.HalfWidth);
+                        if (SlopeAt(P.X, P.Y) > 0.42f || !IsClearOfDecorations(P.X, P.Y, 100.f)) continue;
+                        Candidates.Add(GetActorLocation() + FVector(P.X, P.Y, CanyonLayout.SurfaceHeightAt(P.X, P.Y)));
+                    }
+            }
     }
     else
     {
@@ -739,27 +759,41 @@ TArray<FVector> AProceduralIsland::FindSeparatedTreasurePoints(FRandomStream& St
     }
     TArray<FVector> Selected;
     if (Count <= 0 || Candidates.IsEmpty()) return Selected;
-    Selected.Add(Candidates[Stream.RandRange(0, Candidates.Num() - 1)]);
-    while (Selected.Num() < Count)
+    // A greedy layout can get stuck even when another starting point fits.
+    // Retry larger quotas; never relax spacing or use duplicate fallback points.
+    const int32 Attempts = Count > 3 ? 256 : 1;
+    for (int32 Attempt = 0; Attempt < Attempts; ++Attempt)
     {
-        float BestSpacingSquared = FMath::Square(MinimumSpacing);
-        int32 BestIndex = INDEX_NONE;
-        for (int32 Index = 0; Index < Candidates.Num(); ++Index)
+        Selected.Reset();
+        Selected.Add(Candidates[Stream.RandRange(0, Candidates.Num() - 1)]);
+        while (Selected.Num() < Count)
         {
-            float NearestSquared = TNumericLimits<float>::Max();
-            for (const FVector& Existing : Selected)
-                NearestSquared = FMath::Min(NearestSquared, FVector::DistSquared2D(Candidates[Index], Existing));
-            if (NearestSquared > BestSpacingSquared)
+            float BestSpacingSquared = FMath::Square(MinimumSpacing);
+            int32 BestIndex = INDEX_NONE;
+            int32 ValidCandidates = 0;
+            for (int32 Index = 0; Index < Candidates.Num(); ++Index)
             {
-                BestSpacingSquared = NearestSquared;
-                BestIndex = Index;
+                float NearestSquared = TNumericLimits<float>::Max();
+                for (const FVector& Existing : Selected)
+                    NearestSquared = FMath::Min(NearestSquared, FVector::DistSquared2D(Candidates[Index], Existing));
+                if (NearestSquared <= FMath::Square(MinimumSpacing)) continue;
+                ++ValidCandidates;
+                // Farthest-first is fast, but may waste space on compact routes.
+                // Later retries vary all valid points to escape that same layout.
+                if ((Attempt < 32 && NearestSquared > BestSpacingSquared)
+                    || (Attempt >= 32 && Stream.RandRange(1, ValidCandidates) == 1))
+                {
+                    BestSpacingSquared = NearestSquared;
+                    BestIndex = Index;
+                }
             }
+            // Never accept a duplicate or overlapping fallback to fill the quota.
+            if (BestIndex == INDEX_NONE) break;
+            Selected.Add(Candidates[BestIndex]);
         }
-        // Never accept a duplicate or overlapping fallback to fill the quota.
-        if (BestIndex == INDEX_NONE) return {};
-        Selected.Add(Candidates[BestIndex]);
+        if (Selected.Num() == Count) return Selected;
     }
-    return Selected;
+    return {};
 }
 
 FVector AProceduralIsland::FindRandomLandPoint(FRandomStream& Stream, float MinimumHeight) const

@@ -18,6 +18,7 @@ void ATreasureSketchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProper
     DOREPLIFETIME(ATreasureSketchGameState, HideCollectedMask);
     DOREPLIFETIME(ATreasureSketchGameState, HideTreasureCount);
     DOREPLIFETIME(ATreasureSketchGameState, bHideCaught);
+    DOREPLIFETIME(ATreasureSketchGameState, HidePreparationEndServerTime);
     DOREPLIFETIME(ATreasureSketchGameState, bBeachInMapPool);
     DOREPLIFETIME(ATreasureSketchGameState, bForestInMapPool);
     DOREPLIFETIME(ATreasureSketchGameState, bCanyonInMapPool);
@@ -68,5 +69,22 @@ float ATreasureSketchGameState::GetMovementSpeedFor(const APawn* Pawn) const
 
 int32 ATreasureSketchGameState::GetSecondsRemaining() const
 {
+    if (IsHidePreparation()) return SearchingDurationSeconds;
     return FMath::Max(0, FMath::CeilToInt(RoundEndServerTime - GetServerWorldTimeSeconds()));
+}
+
+bool ATreasureSketchGameState::IsHidePreparation() const
+{
+    return RoomMode == ETreasureRoomMode::HideAndSeek && bGameStarted
+        && Phase == ETreasureRoundPhase::HunterSearching
+        && GetServerWorldTimeSeconds() < HidePreparationEndServerTime;
+}
+
+int32 ATreasureSketchGameState::GetRemainingHiders() const
+{
+    int32 Remaining = 0;
+    for (const APlayerState* State : PlayerArray)
+        if (const auto* PS = Cast<ATreasureSketchPlayerState>(State);
+            PS && PS->PlayerRole == ETreasurePlayerRole::Hunter && !PS->bHideEliminated) ++Remaining;
+    return Remaining;
 }

@@ -441,6 +441,7 @@ void ATreasureSketchPlayerController::UpdateHideTreasureMarkers()
     const auto* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     TArray<FVector> Desired;
     if (GS && GS->RoomMode == ETreasureRoomMode::HideAndSeek && GS->bGameStarted
+        && !GS->IsHidePreparation()
         && (!GS->IsRoundOver() || GS->bReviewingRound))
         for (int32 Index = 0; Index < GS->HideTreasures.Num(); ++Index)
             if (!(GS->HideCollectedMask & (1 << Index))) Desired.Add(GS->HideTreasures[Index]);
@@ -960,12 +961,18 @@ bool ATreasureSketchPlayerController::IsHunterWaiting() const
     return PS && GS && PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->Phase == ETreasureRoundPhase::ScoutDrawing;
 }
 
+bool ATreasureSketchPlayerController::IsCatcherStudyingMap() const
+{
+    const auto* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
+    return GS && GS->IsHidePreparation() && IsLocalScout();
+}
+
 void ATreasureSketchPlayerController::UpdateWaitingSketchInput()
 {
     if (!IsLocalController() || bPauseMenuOpen) return;
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (GS && GS->IsRoundOver()) { bWaitingSketchInputActive = false; return; }
-    const bool bWatching = GS && GS->bGameStarted && IsHunterWaiting();
+    const bool bWatching = GS && GS->bGameStarted && (IsHunterWaiting() || IsCatcherStudyingMap());
     if (bWatching == bWaitingSketchInputActive) return;
     bWaitingSketchInputActive = bWatching;
     bShowMouseCursor = bWatching;
@@ -1005,6 +1012,7 @@ void ATreasureSketchPlayerController::ApplyPhaseInputRules()
     const bool bReviewing = GS->bReviewingRound && GS->IsRoundOver();
     const bool bShouldWait = !bReviewing && ((PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->Phase == ETreasureRoundPhase::ScoutDrawing)
         || (PS->PlayerRole == ETreasurePlayerRole::Scout && GS->RoomMode != ETreasureRoomMode::HideAndSeek && GS->Phase != ETreasureRoundPhase::ScoutDrawing)
+        || IsCatcherStudyingMap() || (GS->RoomMode == ETreasureRoomMode::HideAndSeek && PS->bHideEliminated)
         || GS->IsRoundOver());
     const bool bShouldLock = bPauseMenuOpen || bMapOpen || bDrawingOverheadView || bShouldWait
         || (!bReviewing && IsLocalScout() && HasSubmittedSketch());
@@ -1459,7 +1467,8 @@ bool ATreasureSketchPlayerController::CanSelectProp() const
     const auto* PS = GetPlayerState<ATreasureSketchPlayerState>();
     return GS && PS && GetPawn() && !bPauseMenuOpen && !bMapOpen && !IsFrontEndVisible()
         && GS->bGameStarted && GS->Phase == ETreasureRoundPhase::HunterSearching
-        && GS->RoomMode == ETreasureRoomMode::HideAndSeek && PS->PlayerRole == ETreasurePlayerRole::Hunter;
+        && GS->RoomMode == ETreasureRoomMode::HideAndSeek && PS->PlayerRole == ETreasurePlayerRole::Hunter
+        && !PS->bHideEliminated;
 }
 
 bool ATreasureSketchPlayerController::HasPropSelectionTarget() const
@@ -1597,7 +1606,7 @@ void ATreasureSketchPlayerController::ServerTransformIntoProp_Implementation(int
     auto* PropCharacter = Cast<ATreasureSketchCharacter>(GetPawn());
     if (!GS || !PS || !PropCharacter || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::HunterSearching
         || GS->RoundSerial != RoundSerial || GS->RoomMode != ETreasureRoomMode::HideAndSeek
-        || PS->PlayerRole != ETreasurePlayerRole::Hunter) return;
+        || PS->PlayerRole != ETreasurePlayerRole::Hunter || PS->bHideEliminated) return;
     if (bRestore)
     {
         PropCharacter->SetPropDisguise(FPropDisguise());

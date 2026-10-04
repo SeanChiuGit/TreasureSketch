@@ -38,6 +38,7 @@ bool FPropDisguiseTest::RunTest(const FString& Parameters)
     PS->SetOwner(PC);
     PS->PlayerRole = ETreasurePlayerRole::Hunter;
     PC->Possess(Character);
+    GS->ApplyMovementSpeed();
     auto* Target = World->SpawnActor<AActor>();
     auto* Instances = NewObject<UInstancedStaticMeshComponent>(Target);
     Target->SetRootComponent(Instances);
@@ -123,7 +124,7 @@ bool FPropDisguiseTest::RunTest(const FString& Parameters)
     Character->PlayDigAnimation();
     TestFalse(TEXT("Digging does not expose the human staff"), Character->HandStaffMesh->IsVisible());
     TestTrue(TEXT("Digging preserves disguise"), Character->IsPropDisguised());
-    TestEqual(TEXT("Disguise does not slow walking"), Character->GetCharacterMovement()->MaxWalkSpeed, 520.f);
+    TestEqual(TEXT("Disguise does not slow walking"), Character->GetCharacterMovement()->MaxWalkSpeed, 1040.f);
     TestEqual(TEXT("Disguise preserves jumping"), Character->GetCharacterMovement()->JumpZVelocity, 620.f);
 
     Instances->ClearInstances();

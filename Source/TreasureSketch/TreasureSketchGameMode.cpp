@@ -68,7 +68,7 @@ bool ATreasureSketchGameMode::StartHeldDig(ATreasureSketchPlayerController* Hunt
     ATreasureSketchCharacter* Character = HunterController
         ? Cast<ATreasureSketchCharacter>(HunterController->GetPawn()) : nullptr;
     if (!HasAuthority() || !GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::HunterSearching
-        || !Hunter || Hunter->PlayerRole != ETreasurePlayerRole::Hunter || !GS->PlayerArray.Contains(Hunter)
+        || !Hunter || Hunter->PlayerRole != ETreasurePlayerRole::Hunter || Hunter->bHideEliminated || !GS->PlayerArray.Contains(Hunter)
         || !Character || !Character->GetCharacterMovement()->IsMovingOnGround() || Hunter->bDigging
         || Hunter->GetDigCooldownRemaining(GS->RoundSerial, GS->GetServerWorldTimeSeconds()) > 0.f) return false;
     Hunter->bDigging = true;
@@ -312,6 +312,10 @@ void ATreasureSketchGameMode::BuildRound()
         GS->HideCollectedMask = 0;
         GS->HideTreasureCount = 0;
         GS->bHideCaught = false;
+        GS->HidePreparationEndServerTime = 0.f;
+        for (APlayerState* State : GS->PlayerArray)
+            if (auto* PS = Cast<ATreasureSketchPlayerState>(State))
+            { PS->bHideEliminated = false; PS->ForceNetUpdate(); }
         GS->IslandSeed = IslandSeed;
         ++GS->RoundSerial;
         GS->Phase = ETreasureRoundPhase::ScoutDrawing;
@@ -554,11 +558,12 @@ void ATreasureSketchGameMode::BeginHideAndSeek()
     GS->HideTreasureCount = 0;
     GS->bHideCaught = false;
     FRandomStream Stream(IslandSeed ^ 0x7183);
-    GS->HideTreasures = Island->FindSeparatedTreasurePoints(Stream, 3,
+    const int32 TreasureTotal = 3 * GS->GetRemainingHiders();
+    GS->HideTreasures = Island->FindSeparatedTreasurePoints(Stream, TreasureTotal,
         2.f * TreasureRules::DigHorizontalRadius + 100.f);
-    if (GS->HideTreasures.Num() != 3)
+    if (TreasureTotal <= 0 || GS->HideTreasures.Num() != TreasureTotal)
     {
-        UE_LOG(LogTemp, Error, TEXT("HIDE_AND_SEEK_PLACEMENT_FAILED Seed=%d: no three separated land positions"), IslandSeed);
+        UE_LOG(LogTemp, Error, TEXT("HIDE_AND_SEEK_PLACEMENT_FAILED Seed=%d: cannot place %d separated treasures"), IslandSeed, TreasureTotal);
         ReturnToSetup();
         return;
     }
@@ -571,11 +576,13 @@ void ATreasureSketchGameMode::BeginHideAndSeek()
             PS->NextDigServerTime = 0.f;
             PS->NextShoveServerTime = 0.f;
             PS->ShoveProtectedUntilServerTime = 0.f;
+            PS->bHideEliminated = false;
             PS->ForceNetUpdate();
         }
     HideTreasureFromScout();
     GS->Phase = ETreasureRoundPhase::HunterSearching;
-    GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + GS->SearchingDurationSeconds;
+    GS->HidePreparationEndServerTime = GS->GetServerWorldTimeSeconds() + 10.f;
+    GS->RoundEndServerTime = GS->HidePreparationEndServerTime + GS->SearchingDurationSeconds;
     GS->ForceNetUpdate();
 }
 
@@ -585,7 +592,7 @@ void ATreasureSketchGameMode::FinishHideAndSeek(bool bCaught)
     if (!HasAuthority() || !GS || GS->RoomMode != ETreasureRoomMode::HideAndSeek
         || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::HunterSearching) return;
     GS->bHideCaught = bCaught;
-    GS->Phase = !bCaught && GS->HideTreasureCount >= 2
+    GS->Phase = !bCaught && GS->HideTreasureCount >= GS->GetHideWinThreshold()
         ? ETreasureRoundPhase::Won : ETreasureRoundPhase::HunterTimedOut;
     GS->ResultServerTime = GS->GetServerWorldTimeSeconds();
     for (APlayerState* State : GS->PlayerArray)
@@ -601,8 +608,7 @@ void ATreasureSketchGameMode::StartHostedRound()
         if (GS->bGameStarted || GS->Phase != ETreasureRoundPhase::ScoutDrawing) return;
         if (GS->PlayerArray.Num() < (GS->RoomMode == ETreasureRoomMode::ExplorerRace ? 3 : 2)
             || GS->PlayerArray.Num() > ATreasureSketchGameState::MaxRoomPlayers
-            || GS->RoomMode == ETreasureRoomMode::TeamVersus
-            || (GS->RoomMode == ETreasureRoomMode::HideAndSeek && GS->PlayerArray.Num() != 2))
+            || GS->RoomMode == ETreasureRoomMode::TeamVersus)
         {
             UE_LOG(LogTemp, Warning, TEXT("TREASURE_ONLINE_START waiting for second player"));
             return;
@@ -773,8 +779,6 @@ void ATreasureSketchGameMode::PreLogin(const FString& Options, const FString& Ad
     if (!ErrorMessage.IsEmpty() || !GS) return;
     if (GS->PlayerArray.Num() >= ATreasureSketchGameState::MaxRoomPlayers)
         ErrorMessage = TEXT("Room is full (4 players).");
-    else if (GS->RoomMode == ETreasureRoomMode::HideAndSeek && GS->PlayerArray.Num() >= 2)
-        ErrorMessage = TEXT("Hide and seek is a two-player mode.");
     else if (GS->bGameStarted)
         ErrorMessage = TEXT("Round already started. Join before the next game.");
 }
@@ -1074,7 +1078,7 @@ bool ATreasureSketchGameMode::TryDig(ATreasureSketchPlayerState* Hunter, const F
     if (FinishIfTimeExpired()) return false;
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (!GS || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::HunterSearching
-        || !GS->PlayerArray.Contains(Hunter)) return false;
+        || Hunter->bHideEliminated || !GS->PlayerArray.Contains(Hunter)) return false;
     const float ServerTime = GS->GetServerWorldTimeSeconds();
     if (Hunter->GetDigCooldownRemaining(GS->RoundSerial, ServerTime) > 0.f) return false;
     bAttempted = true;
@@ -1164,6 +1168,7 @@ void ATreasureSketchGameMode::RecordCompletedRound()
     Base.RoomMode = GS->RoomMode;
     Base.Outcome = GS->Phase;
     Base.HideTreasureCount = GS->HideTreasureCount;
+    Base.HideTreasureTotal = GS->HideTreasures.Num();
     Base.bHideCaught = GS->bHideCaught;
     Base.WinnerName = GS->RaceRoundWinner;
     Base.SearchSeconds = FMath::Clamp(GS->ResultServerTime
@@ -1200,6 +1205,7 @@ bool ATreasureSketchGameMode::TryShove(ATreasureSketchPlayerController* ShovingP
 {
     ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
     if (!HasAuthority() || !GS || (GS->RoomMode != ETreasureRoomMode::ExplorerRace && GS->RoomMode != ETreasureRoomMode::HideAndSeek)
+        || GS->IsHidePreparation()
         || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::HunterSearching
         || !ShovingPlayer || !ShovingPlayer->GetPawn()) return false;
     ATreasureSketchPlayerState* ShovingState = ShovingPlayer->GetPlayerState<ATreasureSketchPlayerState>();
@@ -1234,6 +1240,7 @@ void ATreasureSketchGameMode::ResolveShove(ATreasureSketchPlayerController* Shov
     ShovingCharacter->SetShoveWindingUp(false);
     if (FinishIfTimeExpired()) return;
     if ((GS->RoomMode != ETreasureRoomMode::ExplorerRace && GS->RoomMode != ETreasureRoomMode::HideAndSeek)
+        || GS->IsHidePreparation()
         || !GS->bGameStarted || GS->Phase != ETreasureRoundPhase::HunterSearching
         || !ShovingPlayer || ShovingPlayer->GetPawn() != ShovingCharacter) return;
     ATreasureSketchPlayerState* ShovingState = ShovingPlayer->GetPlayerState<ATreasureSketchPlayerState>();
@@ -1246,7 +1253,8 @@ void ATreasureSketchGameMode::ResolveShove(ATreasureSketchPlayerController* Shov
     const FVector Facing = ShovingPlayer->GetControlRotation().Vector().GetSafeNormal2D();
     for (APlayerState* State : GS->PlayerArray)
         if (ATreasureSketchPlayerState* OtherState = Cast<ATreasureSketchPlayerState>(State);
-            OtherState && OtherState != ShovingState && OtherState->PlayerRole == ETreasurePlayerRole::Hunter)
+            OtherState && OtherState != ShovingState && OtherState->PlayerRole == ETreasurePlayerRole::Hunter
+                && !OtherState->bHideEliminated)
             if (const ATreasureSketchPlayerController* Other = Cast<ATreasureSketchPlayerController>(OtherState->GetOwner()))
                 if (ATreasureSketchCharacter* OtherCharacter = Cast<ATreasureSketchCharacter>(Other->GetPawn()))
                 {
@@ -1268,7 +1276,12 @@ void ATreasureSketchGameMode::ResolveShove(ATreasureSketchPlayerController* Shov
     { ShovingPlayer->ClientShoveFeedback(2, FString()); return; }
     if (GS->RoomMode == ETreasureRoomMode::HideAndSeek)
     {
-        FinishHideAndSeek(true);
+        TargetState->bHideEliminated = true;
+        CancelHeldDig(TargetState, true);
+        TargetState->ForceNetUpdate();
+        Target->SetPropDisguise(FPropDisguise());
+        Target->SetSpectatorHidden(true);
+        if (GS->GetRemainingHiders() == 0) FinishHideAndSeek(true);
         return;
     }
     const FVector Direction = (Target->GetActorLocation() - Origin).GetSafeNormal2D();

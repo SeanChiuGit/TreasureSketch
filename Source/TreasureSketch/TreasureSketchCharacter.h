@@ -140,6 +140,7 @@ private:
     UPROPERTY(ReplicatedUsing=OnRep_ShoveWindingUp)
     bool bShoveWindingUp = false;
     bool bCanyonTestMode = false;
+    bool bHidePreparationLocked = false;
 
     UFUNCTION()
     void OnRep_ShoveWindingUp();

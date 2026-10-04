@@ -25,6 +25,9 @@ public:
     ETreasurePlayerRole PlayerRole = ETreasurePlayerRole::Unassigned;
 
     UPROPERTY(Replicated, BlueprintReadOnly)
+    bool bHideEliminated = false;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
     bool bSketchSubmitted = false;
 
     UPROPERTY(Replicated, BlueprintReadOnly)

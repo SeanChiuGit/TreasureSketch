@@ -26,6 +26,7 @@ struct FPlayedRoundRecord
     UPROPERTY() FString LocalPlayerName;
     UPROPERTY() ETreasurePlayerRole LocalRole = ETreasurePlayerRole::Unassigned;
     UPROPERTY() int32 HideTreasureCount = 0;
+    UPROPERTY() int32 HideTreasureTotal = 3;
     UPROPERTY() bool bHideCaught = false;
     UPROPERTY() FString WinnerName;
     UPROPERTY() float SearchSeconds = 0.f;

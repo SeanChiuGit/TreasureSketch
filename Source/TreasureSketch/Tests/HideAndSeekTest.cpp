@@ -31,7 +31,7 @@ bool FHideAndSeekFlowTest::RunTest(const FString& Parameters)
     GM->GameState = GS;
     TArray<ATreasureSketchPlayerState*> Players;
     TArray<ATreasureSketchPlayerController*> Controllers;
-    for (int32 Index = 0; Index < 3; ++Index)
+    for (int32 Index = 0; Index < 4; ++Index)
     {
         auto* PS = World->SpawnActor<ATreasureSketchPlayerState>();
         auto* PC = World->SpawnActor<ATreasureSketchPlayerController>();
@@ -43,8 +43,9 @@ bool FHideAndSeekFlowTest::RunTest(const FString& Parameters)
         Controllers.Add(PC);
     }
     TestTrue(TEXT("Hide and seek can be selected"), GM->SelectRoomMode(ETreasureRoomMode::HideAndSeek));
-    GM->StartHostedRound();
-    TestFalse(TEXT("Three players cannot start"), GS->bGameStarted);
+    TestEqual(TEXT("Hider default speed is two times"), GS->HiderSpeedMultiplier, 2.f);
+    TestEqual(TEXT("Catcher default speed is two times"), GS->CatcherSpeedMultiplier, 2.f);
+    GS->PlayerArray.Remove(Players[3]);
     GS->PlayerArray.Remove(Players[2]);
     GS->PlayerArray.Remove(Players[1]);
     GM->StartHostedRound();
@@ -90,6 +91,23 @@ bool FHideAndSeekFlowTest::RunTest(const FString& Parameters)
     auto* Hider = World->SpawnActor<ATreasureSketchCharacter>();
     Controllers[0]->Possess(Catcher);
     Controllers[1]->Possess(Hider);
+    Controllers[1]->SetAsLocalPlayerController();
+    TestTrue(TEXT("Opening preparation lasts ten seconds"), GS->IsHidePreparation()
+        && FMath::IsNearlyEqual(GS->HidePreparationEndServerTime - GS->GetServerWorldTimeSeconds(), 10.f));
+    TestTrue(TEXT("Opening map is only shown to the catcher"), Controllers[0]->IsCatcherStudyingMap()
+        && !Controllers[1]->IsCatcherStudyingMap());
+    TestEqual(TEXT("Preparation preserves full search time"), GS->GetSecondsRemaining(), GS->SearchingDurationSeconds);
+    TestFalse(TEXT("Catcher cannot attack during preparation"), GM->TryShove(Controllers[0]));
+    Catcher->Tick(0.f);
+    TestEqual(TEXT("Catcher cannot move during preparation"), Catcher->GetCharacterMovement()->MovementMode.GetValue(), MOVE_None);
+    Controllers[1]->UpdateHideTreasureMarkers();
+    TestTrue(TEXT("Treasure X markers are hidden during preparation"), Controllers[1]->VisibleHideTreasures.IsEmpty());
+    GS->HidePreparationEndServerTime = GS->GetServerWorldTimeSeconds();
+    Catcher->Tick(0.f);
+    TestEqual(TEXT("Catcher regains movement after preparation"), Catcher->GetCharacterMovement()->MovementMode.GetValue(), MOVE_Walking);
+    TestFalse(TEXT("Opening map closes after ten seconds"), Controllers[0]->IsCatcherStudyingMap());
+    Controllers[1]->UpdateHideTreasureMarkers();
+    TestEqual(TEXT("Three X markers appear after preparation"), Controllers[1]->VisibleHideTreasures.Num(), 3);
     GS->ApplyMovementSpeed();
     TestTrue(TEXT("Catcher uses its own speed"), FMath::IsNearlyEqual(Catcher->GetCharacterMovement()->MaxWalkSpeed, 572.f));
     TestTrue(TEXT("Hider uses its own precise speed"), FMath::IsNearlyEqual(Hider->GetCharacterMovement()->MaxWalkSpeed, 546.f));
@@ -174,6 +192,68 @@ bool FHideAndSeekFlowTest::RunTest(const FString& Parameters)
     TestFalse(TEXT("Return to lobby stops play"), GS->bGameStarted);
     TestEqual(TEXT("Lobby preserves mode"), GS->RoomMode, ETreasureRoomMode::HideAndSeek);
     TestTrue(TEXT("Lobby clears public treasures"), GS->HideTreasures.IsEmpty());
+    GS->PlayerArray.Add(Players[2]);
+    GM->NormalizeRoomRoles(nullptr, Players[0]);
+    GM->StartHostedRound();
+    TestTrue(TEXT("Three players can start"), GS->bGameStarted);
+    TestEqual(TEXT("Two hiders generate six treasures"), GS->HideTreasures.Num(), 6);
+    GM->ReturnToSetup();
+    GS->PlayerArray.Add(Players[3]);
+    GM->NormalizeRoomRoles(nullptr, Players[0]);
+    GM->StartHostedRound();
+    TestTrue(TEXT("Four players can start"), GS->bGameStarted);
+    TestEqual(TEXT("Three hiders generate nine treasures"), GS->HideTreasures.Num(), 9);
+    TestEqual(TEXT("Exactly three hiders are active"), GS->GetRemainingHiders(), 3);
+    for (int32 Index = 0; Index < GS->HideTreasures.Num(); ++Index)
+        for (int32 Other = 0; Other < Index; ++Other)
+            TestTrue(TEXT("All nine treasures retain nonoverlapping dig ranges"),
+                FVector::Dist2D(GS->HideTreasures[Index], GS->HideTreasures[Other]) > 950.f);
+    GS->HidePreparationEndServerTime = GS->GetServerWorldTimeSeconds();
+    TArray<ATreasureSketchCharacter*> Hiders = { Hider };
+    for (int32 Index = 2; Index < 4; ++Index)
+    {
+        auto* Extra = World->SpawnActor<ATreasureSketchCharacter>();
+        Controllers[Index]->Possess(Extra);
+        Hiders.Add(Extra);
+    }
+    Catcher->SetActorLocation(FVector(0.f, 0.f, 5000.f));
+    Controllers[0]->SetControlRotation(FRotator::ZeroRotator);
+    for (auto* Active : Hiders) Active->SetActorLocation(FVector(-2000.f, 0.f, 5000.f));
+    GS->DigCooldownSeconds = 0;
+    TestTrue(TEXT("First hider contributes to shared treasure count"),
+        GM->TryDig(Players[1], GS->HideTreasures[0], Distance, bAttempted));
+    TestTrue(TEXT("Another hider contributes to the same treasure count"),
+        GM->TryDig(Players[2], GS->HideTreasures[1], Distance, bAttempted));
+    TestEqual(TEXT("Team collected treasures are shared"), GS->HideTreasureCount, 2);
+    for (int32 Index = 0; Index < Hiders.Num(); ++Index)
+    {
+        Hiders[Index]->SetActorLocation(FVector(150.f, 0.f, 5000.f));
+        GM->ResolveShove(Controllers[0], Catcher, GS->RoundSerial);
+        TestTrue(TEXT("Caught hider is marked eliminated"), Players[Index + 1]->bHideEliminated);
+        TestFalse(TEXT("Caught hider cannot dig"), GM->StartHeldDig(Controllers[Index + 1]));
+        TestFalse(TEXT("Caught hider cannot collect treasure via a late request"),
+            GM->TryDig(Players[Index + 1], GS->HideTreasures[2], Distance, bAttempted));
+        TestEqual(TEXT("Each capture removes only one hider"), GS->GetRemainingHiders(), 2 - Index);
+        TestEqual(TEXT("Capture ends round only after all hiders are caught"), GS->Phase,
+            Index == 2 ? ETreasureRoundPhase::HunterTimedOut : ETreasureRoundPhase::HunterSearching);
+    }
+    TestTrue(TEXT("Catching all three wins despite team treasure progress"), GS->bHideCaught);
+    GM->StartNewRound(false);
+    TestEqual(TEXT("Replay resets all three eliminated hiders"), GS->GetRemainingHiders(), 3);
+    TestEqual(TEXT("Replay regenerates nine treasures"), GS->HideTreasures.Num(), 9);
+    TestTrue(TEXT("Replay restarts the ten-second map phase"), GS->IsHidePreparation());
+    for (int32 Count = 0; Count <= 9; ++Count)
+    {
+        GS->Phase = ETreasureRoundPhase::HunterSearching;
+        GS->HideTreasureCount = Count;
+        GS->HidePreparationEndServerTime = 0.f;
+        GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() - 1.f;
+        GM->FinishIfTimeExpired();
+        TestEqual(TEXT("Three-hider team needs six treasures to win"), GS->Phase,
+            Count >= 6 ? ETreasureRoundPhase::Won : ETreasureRoundPhase::HunterTimedOut);
+        TestEqual(TEXT("Three-hider draw threshold remains three even after elimination"), GS->GetHideDrawThreshold(), 3);
+    }
+    GM->ReturnToSetup();
     TestTrue(TEXT("Existing mode remains selectable"), GM->SelectRoomMode(ETreasureRoomMode::OneMapmaker));
     World->GetTimerManager().ClearAllTimersForObject(GM);
     World->SetNetDriver(nullptr);
