@@ -1,11 +1,19 @@
-## 躲猫猫收齐即胜与出局观战（开发分支，尚未发布）
+## 最新 Windows 测试 Release：v0.18.0
+
+- 已发布 [v0.18.0-hide-and-seek-rc1](https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.18.0-hide-and-seek-rc1)，源码标签指向 `ccd162b`。新增躲猫猫队伍收齐全部宝藏即时获胜，以及出局逃生者观战存活队友（Q 切换队友，Tab 切换跟随 / 自由视角）。保留 v0.17.0 的其他功能。
+- 附件 `TreasureSketch-v0.18.0-hide-and-seek-rc1-ccd162b-Windows.zip`，394482262 字节；SHA-256：`f67edd243658b894b5a0388e612db2f986d9b7fdb811ae840ac7d5c3aeee039e`。远端摘要和文件大小已核对，非 draft，prerelease。
+- Windows Development BuildCookRun、ZIP 完整性、EXE、PAK、Steam DLL、字体检查及 NullRHI 启动加载游戏地图后退出均通过。躲猫猫、变形、2v2、多地图师四项回归通过；实际多人 Steam 联机及画面仍需试玩。打包使用版本库配置，本机私有配置已逐字节恢复。
+
+本机发布脚本及日志：`Saved/CodexRelease/package-v0.18.py`、`publish-v0.18.ps1`、`package-v0.18.log`、`smoke-v0.18.log`。
+
+## 躲猫猫收齐即胜与出局观战（v0.18.0 已发布）
 
 - 基于 v0.17.0 的最新提交 `3088200`。队伍拿满全部宝藏立即获胜，适用于 3 / 6 / 9 个宝藏；未拿满时仍采用原计时门槛。
 - 被抓的逃生者自动进入队友跟随观战，Q 切换存活队友，Tab 切换跟随 / 自由视角；过滤自己、抓捕者及已出局队友。服务端以原 20 Hz 视角 RPC 同步存活队友的视角，目标出局后自动回退到其他存活者。
 - 观战者仍不能移动自己的角色、挖宝或变形；回合结束退出观战，新局恢复角色。HUD 与 README 同步新规则。
-- 编辑器编译和 HideAndSeek、PropDisguise、TeamVersus、MultiMapmaker 四项回归全部通过；新增多人最后一个宝藏即时胜利及观战启停、切换、跳过出局目标检查。验证日志 `Saved/Logs/HideFullLootSpectator-*.log`。下载包尚未更新，实际多人画面仍需试玩。
+- 编辑器编译和 HideAndSeek、PropDisguise、TeamVersus、MultiMapmaker 四项回归全部通过；新增多人最后一个宝藏即时胜利及观战启停、切换、跳过出局目标检查。验证日志 `Saved/Logs/HideFullLootSpectator-*.log`。已包含在 v0.18.0 下载包，实际多人画面仍需试玩。
 
-## 最新 Windows 测试 Release：v0.17.0
+## 先前 Windows 测试 Release：v0.17.0
 
 - 已发布 [v0.17.0-2v2-rc1](https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.17.0-2v2-rc1)，标签指向 `feature/hide-and-seek` 的 `adde218`。包含 2v2 藏宝对战与对位可见性，以及此前合并但尚未进入 v0.16.0 的峡谷物品和变形选取改进。
 - 附件 `TreasureSketch-v0.17.0-2v2-rc1-adde218-Windows.zip`，394493971 字节；SHA-256：`d5a5a74fde9fb45d05e32603bb88c291ac8f89553990e3cc7ac7973ecb80a8de`。远端摘要与本地一致，已发布为 prerelease。
