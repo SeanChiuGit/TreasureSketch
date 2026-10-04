@@ -1529,7 +1529,7 @@ void AProceduralIsland::BuildCanyonGrayboxLandmarks()
         CylinderMaterial->SetVectorParameterValue(TEXT("Color"), FLinearColor(0.92f, 0.80f, 0.53f));
         CanyonLandmarkCylinders->SetMaterial(0, CylinderMaterial);
     }
-    auto Box = [&](const FVector& Center, const FVector& Size, const FRotator& Rotation = FRotator::ZeroRotator)
+    auto Box = [&](const FVector& Center, const FVector& Size, const FRotator& Rotation = FRotator(0.0, 0.0, 0.0))
     {
         CanyonLandmarkBoxes->AddInstance(FTransform(Rotation, Center, Size * S / 100.f));
     };
