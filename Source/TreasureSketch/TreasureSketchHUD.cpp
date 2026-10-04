@@ -814,7 +814,9 @@ void ATreasureSketchHUD::DrawHUD()
             CenterY - 185.f, DisplayFont, TitleScale);
 
         const FString Hint = bHide ? FString::Printf(TEXT("%s  ·  队伍获得 %d / %d 个宝藏"),
-            GS->bHideCaught ? TEXT("逃生者全部被抓") : TEXT("时间结束"), GS->HideTreasureCount, GS->HideTreasures.Num()) : bRace ? FString::Printf(TEXT("第 %d / %d 局  |  找到越快分越高；挖错按接近程度计分"),
+            GS->bHideCaught ? TEXT("逃生者全部被抓")
+                : GS->HideTreasures.Num() == 3 && GS->HideTreasureCount == 3 ? TEXT("三个宝藏全部收集！") : TEXT("时间结束"),
+            GS->HideTreasureCount, GS->HideTreasures.Num()) : bRace ? FString::Printf(TEXT("第 %d / %d 局  |  找到越快分越高；挖错按接近程度计分"),
             GS->RaceRoundIndex, GS->RaceTotalRounds) : bWon ? TEXT("找到宝藏了！再来一座新岛屿？")
             : GS->Phase == ETreasureRoundPhase::ScoutTimedOut ? TEXT("侦察者未能及时交图，再试一次？")
             : TEXT("寻宝者未能及时找到宝藏，再试一次？");
@@ -990,6 +992,7 @@ void ATreasureSketchHUD::DrawHUD()
     const FString Objective = GS->RoomMode == ETreasureRoomMode::HideAndSeek
         ? FString::Printf(TEXT("%s  ·  队伍宝藏 %d / %d  ·  剩余逃生者 %d"), bScout ? TEXT("时间内抓到全部逃生者")
             : PS->bHideEliminated ? TEXT("已被抓，等待队友完成本局")
+            : GS->HideTreasures.Num() == 3 ? TEXT("1个平 / 2个计时胜 / 3个立即胜")
             : *FString::Printf(TEXT("队伍宝藏：%d个起平 / %d个起赢"), GS->GetHideDrawThreshold(), GS->GetHideWinThreshold()),
             GS->HideTreasureCount, GS->HideTreasures.Num(), GS->GetRemainingHiders()) : GS->bReviewingRound ? TEXT("自由复盘刚才的岛屿")
         : bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing && PC->HasSubmittedSketch()

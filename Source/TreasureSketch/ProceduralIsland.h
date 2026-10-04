@@ -130,6 +130,9 @@ private:
     UPROPERTY(Transient)
     TArray<TObjectPtr<UPointLightComponent>> CanyonFillLights;
 
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UHierarchicalInstancedStaticMeshComponent>> CanyonAssetInstances;
+
     FCanyonGrayboxLayout CanyonLayout;
     // Terrain cells owned by the single mountain/tunnel mesh, in grid coordinates.
     FIntRect CanyonCavePatchCells;
@@ -140,6 +143,7 @@ private:
     void BuildIsland();
     void BuildCanyonGrayboxTerrain();
     void BuildCanyonGrayboxLandmarks();
+    void BuildCanyonAssets();
     void BuildCanyonCaves();
     void BuildWater();
     void BuildDecorations();

@@ -1099,6 +1099,10 @@ bool ATreasureSketchGameMode::TryDig(ATreasureSketchPlayerState* Hunter, const F
             GS->HideCollectedMask |= 1 << Index;
             ++GS->HideTreasureCount;
             GS->ForceNetUpdate();
+            // Only the one-hider setup ends early when all three are collected.
+            // Eliminations in a larger party do not change this rule.
+            if (GS->HideTreasures.Num() == 3 && GS->HideTreasureCount == 3)
+                FinishHideAndSeek(false);
             return true;
         }
         return false;

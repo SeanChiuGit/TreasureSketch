@@ -155,6 +155,13 @@ bool FHideAndSeekFlowTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Second treasure is collectible"),
         GM->TryDig(Players[1], GS->HideTreasures[1], Distance, bAttempted));
     TestEqual(TEXT("Two treasures still require survival"), GS->Phase, ETreasureRoundPhase::HunterSearching);
+    TestTrue(TEXT("Third treasure is collectible"),
+        GM->TryDig(Players[1], GS->HideTreasures[2], Distance, bAttempted));
+    TestEqual(TEXT("A lone hider wins immediately after collecting all three"), GS->Phase, ETreasureRoundPhase::Won);
+    TestFalse(TEXT("A late capture cannot override the three-treasure win"), GM->TryShove(Controllers[0]));
+    GS->Phase = ETreasureRoundPhase::HunterSearching;
+    GS->HideTreasureCount = 2;
+    GS->HideCollectedMask = 3;
 
     Catcher->SetActorLocation(FVector(0.f, 0.f, 5000.f));
     Hider->SetActorLocation(FVector(150.f, 0.f, 5000.f));

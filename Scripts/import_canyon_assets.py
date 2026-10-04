@@ -2,6 +2,7 @@
 
 import json
 import os
+import runpy
 import unreal
 
 root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "SourceAssets", "CanyonModules"))
@@ -36,3 +37,4 @@ for filename in filenames:
 
 unreal.EditorLoadingAndSavingUtils.save_dirty_packages(True, True)
 unreal.log("TREASURE_CANYON_IMPORT_COMPLETE")
+runpy.run_path(os.path.join(os.path.dirname(__file__), "prepare_canyon_instance_materials.py"))
