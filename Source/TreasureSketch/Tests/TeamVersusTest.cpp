@@ -4,6 +4,7 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "IpNetDriver.h"
 #include "../ProceduralIsland.h"
 #include "../TreasureSketchCharacter.h"
@@ -49,10 +50,22 @@ bool FTeamVersusFlowTest::RunTest(const FString& Parameters)
         TestEqual(TEXT("Two players share each team"), Players[Index]->VersusTeam, Index / 2);
         TestEqual(TEXT("Each team has a hider and mapmaker"), Players[Index]->PlayerRole,
             Index % 2 == 0 ? ETreasurePlayerRole::Hunter : ETreasurePlayerRole::Scout);
+        for (int32 OtherIndex = 0; OtherIndex < 4; ++OtherIndex)
+            if (OtherIndex != Index)
+                TestEqual(TEXT("Only opposing hider and mapmaker can see and collide with each other"),
+                    Players[Index]->IsVersusCounterpart(Players[OtherIndex]),
+                    Index / 2 != OtherIndex / 2 && Index % 2 != OtherIndex % 2);
     }
     GM->StartHostedRound();
     TestTrue(TEXT("Four-player versus round starts"), GS->bGameStarted);
     TestEqual(TEXT("Hiding and drawing run together"), GS->Phase, ETreasureRoundPhase::ScoutDrawing);
+    for (int32 Index = 0; Index < 4; ++Index)
+        for (int32 OtherIndex = 0; OtherIndex < 4; ++OtherIndex)
+            if (OtherIndex != Index)
+                TestEqual(TEXT("Movement ignores everyone outside the visible pair"),
+                    CastChecked<ATreasureSketchCharacter>(Controllers[Index]->GetPawn())
+                        ->GetCapsuleComponent()->GetMoveIgnoreActors().Contains(Controllers[OtherIndex]->GetPawn()),
+                    !Players[Index]->IsVersusCounterpart(Players[OtherIndex]));
     TestFalse(TEXT("Mapmaker cannot place treasure"), GM->TryPlaceVersusTreasure(Controllers[1]));
     FRandomStream FirstHidingStream(1731);
     Controllers[0]->GetPawn()->SetActorLocation(
@@ -129,6 +142,10 @@ bool FTeamVersusFlowTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Role swap keeps first team together"), Players[0]->VersusTeam, Players[1]->VersusTeam);
     TestEqual(TEXT("Former hider can draw next round"), Players[0]->PlayerRole, ETreasurePlayerRole::Scout);
     TestEqual(TEXT("Former mapmaker can hide next round"), Players[1]->PlayerRole, ETreasurePlayerRole::Hunter);
+    TestFalse(TEXT("Opposing hider remains outside the visible pair after role swap"),
+        Players[0]->IsVersusCounterpart(Players[2]));
+    TestTrue(TEXT("Opposing mapmaker remains the visible counterpart after role swap"),
+        Players[0]->IsVersusCounterpart(Players[3]));
 
     World->SetNetDriver(nullptr);
     Driver->SetWorld(nullptr);

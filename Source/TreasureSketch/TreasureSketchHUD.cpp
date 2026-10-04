@@ -955,7 +955,7 @@ void ATreasureSketchHUD::DrawHUD()
         for (APlayerState* State : GS->PlayerArray)
             if (const ATreasureSketchPlayerState* Other = Cast<ATreasureSketchPlayerState>(State);
                 Other && Other != PS && !(GS->RoomMode == ETreasureRoomMode::TeamVersus
-                    && GS->bGameStarted && Other->VersusTeam == PS->VersusTeam))
+                    && GS->bGameStarted && !GS->IsRoundOver() && !PS->IsVersusCounterpart(Other)))
                 if (const ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(Other->GetPawn());
                     Character && !Character->IsHidden())
                 {

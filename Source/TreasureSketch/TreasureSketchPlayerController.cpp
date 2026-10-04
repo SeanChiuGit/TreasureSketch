@@ -472,7 +472,7 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
     UpdateHideTreasureMarkers();
     UpdateFrontEnd();
     UpdatePropSelection(DeltaTime);
-    UpdateVersusTeammateVisibility();
+    UpdateVersusCounterpartVisibility();
     if (IsFrontEndVisible()) { bCameraMode = false; return; }
     const ATreasureSketchGameState* CursorGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (bLocalDigHeld && (bMapOpen || !CursorGS || CursorGS->Phase != ETreasureRoundPhase::HunterSearching
@@ -977,26 +977,31 @@ bool ATreasureSketchPlayerController::IsHunterWaiting() const
         && PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->Phase == ETreasureRoundPhase::ScoutDrawing;
 }
 
-void ATreasureSketchPlayerController::UpdateVersusTeammateVisibility()
+void ATreasureSketchPlayerController::UpdateVersusCounterpartVisibility()
 {
     if (!IsLocalController()) return;
     const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
     const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
-    APawn* TeammatePawn = nullptr;
+    TArray<TWeakObjectPtr<APawn>> DesiredHidden;
     if (GS && GS->bGameStarted && !GS->IsRoundOver()
         && GS->RoomMode == ETreasureRoomMode::TeamVersus && PS)
         for (TActorIterator<ATreasureSketchCharacter> It(GetWorld()); It; ++It)
             if (const ATreasureSketchPlayerState* Other = It->GetPlayerState<ATreasureSketchPlayerState>();
-                Other && Other != PS && Other->VersusTeam == PS->VersusTeam)
-            { TeammatePawn = *It; break; }
-    if (HiddenVersusTeammate.Get() != TeammatePawn)
-    {
-        if (APawn* Previous = HiddenVersusTeammate.Get())
-            if (USceneComponent* Root = Previous->GetRootComponent()) Root->SetVisibility(true, true);
-        HiddenVersusTeammate = TeammatePawn;
-    }
-    if (TeammatePawn)
-        if (USceneComponent* Root = TeammatePawn->GetRootComponent()) Root->SetVisibility(false, true);
+                Other && Other != PS && !PS->IsVersusCounterpart(Other)) DesiredHidden.Add(*It);
+    for (const TWeakObjectPtr<APawn>& Previous : HiddenVersusPawns)
+        if (APawn* OtherPawn = Previous.Get(); OtherPawn && !DesiredHidden.Contains(Previous))
+        {
+            if (USceneComponent* Root = OtherPawn->GetRootComponent()) Root->SetVisibility(true, true);
+            if (APawn* LocalPawn = GetPawn()) LocalPawn->MoveIgnoreActorRemove(OtherPawn);
+        }
+    for (const TWeakObjectPtr<APawn>& Hidden : DesiredHidden)
+        if (APawn* OtherPawn = Hidden.Get())
+        {
+            if (USceneComponent* Root = OtherPawn->GetRootComponent()) Root->SetVisibility(false, true);
+            if (!HiddenVersusPawns.Contains(Hidden))
+                if (APawn* LocalPawn = GetPawn()) LocalPawn->MoveIgnoreActorAdd(OtherPawn);
+        }
+    HiddenVersusPawns = MoveTemp(DesiredHidden);
 }
 
 bool ATreasureSketchPlayerController::IsCatcherStudyingMap() const

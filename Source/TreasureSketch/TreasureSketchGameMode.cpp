@@ -497,26 +497,7 @@ void ATreasureSketchGameMode::PlaceRoundPlayers()
                     PC->SetControlRotation(Island->GetCanyonStartFacing());
             }
     const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
-    if (GS && GS->RoomMode == ETreasureRoomMode::TeamVersus)
-    {
-        for (APlayerState* State : GS->PlayerArray)
-            if (const ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State);
-                PS && PS->PlayerRole == ETreasurePlayerRole::Hunter)
-                if (const ATreasureSketchPlayerController* PC = Cast<ATreasureSketchPlayerController>(PS->GetOwner()))
-                    for (APlayerState* OtherState : GS->PlayerArray)
-                        if (const ATreasureSketchPlayerState* Other = Cast<ATreasureSketchPlayerState>(OtherState);
-                            Other && Other->VersusTeam == PS->VersusTeam
-                            && Other->PlayerRole == ETreasurePlayerRole::Scout)
-                            if (const ATreasureSketchPlayerController* OtherPC =
-                                Cast<ATreasureSketchPlayerController>(Other->GetOwner()))
-                                if (APawn* First = PC->GetPawn())
-                                    if (APawn* Second = OtherPC->GetPawn())
-                                    {
-                                        First->MoveIgnoreActorAdd(Second);
-                                        Second->MoveIgnoreActorAdd(First);
-                                    }
-    }
-    else if (GS)
+    if (GS)
     {
         for (APlayerState* State : GS->PlayerArray)
             if (const ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State))
@@ -527,7 +508,13 @@ void ATreasureSketchGameMode::PlaceRoundPlayers()
                                 Other && Other != PS)
                                 if (const ATreasureSketchPlayerController* OtherPC =
                                     Cast<ATreasureSketchPlayerController>(Other->GetOwner()))
-                                    if (APawn* Second = OtherPC->GetPawn()) First->MoveIgnoreActorRemove(Second);
+                                    if (APawn* Second = OtherPC->GetPawn())
+                                    {
+                                        First->MoveIgnoreActorRemove(Second);
+                                        if (GS->RoomMode == ETreasureRoomMode::TeamVersus
+                                            && !PS->IsVersusCounterpart(Other))
+                                            First->MoveIgnoreActorAdd(Second);
+                                    }
     }
 }
 

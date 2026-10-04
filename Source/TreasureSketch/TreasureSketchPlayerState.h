@@ -28,6 +28,16 @@ public:
     UPROPERTY(Replicated, BlueprintReadOnly)
     int32 VersusTeam = -1;
 
+    // Each 2v2 player interacts only with the opposing team's other role.
+    bool IsVersusCounterpart(const ATreasureSketchPlayerState* Other) const
+    {
+        return Other && Other != this && (VersusTeam == 0 || VersusTeam == 1)
+            && Other->VersusTeam == 1 - VersusTeam
+            && PlayerRole != ETreasurePlayerRole::Unassigned
+            && Other->PlayerRole != ETreasurePlayerRole::Unassigned
+            && PlayerRole != Other->PlayerRole;
+    }
+
     UPROPERTY(Replicated, BlueprintReadOnly)
     bool bVersusTreasurePlaced = false;
 
