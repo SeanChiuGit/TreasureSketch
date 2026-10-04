@@ -241,6 +241,29 @@ bool FHideAndSeekFlowTest::RunTest(const FString& Parameters)
         TestFalse(TEXT("Caught hider cannot collect treasure via a late request"),
             GM->TryDig(Players[Index + 1], GS->HideTreasures[2], Distance, bAttempted));
         TestEqual(TEXT("Each capture removes only one hider"), GS->GetRemainingHiders(), 2 - Index);
+        if (Index == 0)
+        {
+            TestTrue(TEXT("Caught hider becomes eligible to spectate"), Controllers[1]->IsEliminatedHiderSpectator());
+            Controllers[1]->SetAsLocalPlayerController();
+            Controllers[1]->UpdateSpectatorCamera(0.016f);
+            TestTrue(TEXT("Caught hider has a spectator camera"), Controllers[1]->IsScoutSpectating());
+            TestTrue(TEXT("Caught hider starts following a living teammate"), Controllers[1]->IsHunterFirstPersonView());
+            Controllers[1]->ToggleSpectatorView();
+            TestFalse(TEXT("Eliminated hider can switch to free camera"), Controllers[1]->IsHunterFirstPersonView());
+            Controllers[1]->ToggleSpectatorView();
+            TestTrue(TEXT("Spectating skips self and catcher"), Controllers[1]->FindHunterCharacter() == Hiders[1]);
+            Controllers[1]->ServerCycleSpectatedHunter_Implementation();
+            TestTrue(TEXT("Caught hider can cycle living teammates"), Controllers[1]->FindHunterCharacter() == Hiders[2]);
+            Controllers[1]->ViewedHunterState = Players[2];
+        }
+        if (Index == 1)
+            TestTrue(TEXT("A newly caught viewed teammate is skipped"), Controllers[1]->FindHunterCharacter() == Hiders[2]);
+        if (Index == 2)
+        {
+            TestFalse(TEXT("Spectating eligibility ends when the round ends"), Controllers[1]->IsEliminatedHiderSpectator());
+            Controllers[1]->UpdateSpectatorCamera(0.016f);
+            TestFalse(TEXT("Round end automatically restores the player camera"), Controllers[1]->IsScoutSpectating());
+        }
         TestEqual(TEXT("Capture ends round only after all hiders are caught"), GS->Phase,
             Index == 2 ? ETreasureRoundPhase::HunterTimedOut : ETreasureRoundPhase::HunterSearching);
     }
@@ -260,6 +283,16 @@ bool FHideAndSeekFlowTest::RunTest(const FString& Parameters)
             Count >= 6 ? ETreasureRoundPhase::Won : ETreasureRoundPhase::HunterTimedOut);
         TestEqual(TEXT("Three-hider draw threshold remains three even after elimination"), GS->GetHideDrawThreshold(), 3);
     }
+    GM->StartNewRound(false);
+    GS->HidePreparationEndServerTime = 0.f;
+    GS->RoundEndServerTime = GS->GetServerWorldTimeSeconds() + 300.f;
+    GS->HideCollectedMask = (1 << 8) - 1;
+    GS->HideTreasureCount = 8;
+    TestTrue(TEXT("Three-hider team collects the ninth treasure"),
+        GM->TryDig(Players[1], GS->HideTreasures[8], Distance, bAttempted));
+    TestEqual(TEXT("Collecting every multiplayer treasure wins immediately"), GS->Phase, ETreasureRoundPhase::Won);
+    TestFalse(TEXT("Treasure completion is not recorded as a capture loss"), GS->bHideCaught);
+    TestFalse(TEXT("Replay removes eliminated spectator eligibility"), Controllers[1]->IsEliminatedHiderSpectator());
     GM->ReturnToSetup();
     TestTrue(TEXT("Existing mode remains selectable"), GM->SelectRoomMode(ETreasureRoomMode::OneMapmaker));
     World->GetTimerManager().ClearAllTimersForObject(GM);

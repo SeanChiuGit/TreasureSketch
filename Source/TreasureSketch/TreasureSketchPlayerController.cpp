@@ -1101,17 +1101,29 @@ void ATreasureSketchPlayerController::UpdateReplayInput()
     }
 }
 
+bool ATreasureSketchPlayerController::IsEliminatedHiderSpectator() const
+{
+    const auto* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
+    const auto* PS = GetPlayerState<ATreasureSketchPlayerState>();
+    return GS && PS && GS->bGameStarted && GS->RoomMode == ETreasureRoomMode::HideAndSeek
+        && GS->Phase == ETreasureRoundPhase::HunterSearching
+        && PS->PlayerRole == ETreasurePlayerRole::Hunter && PS->bHideEliminated;
+}
+
 ATreasureSketchCharacter* ATreasureSketchPlayerController::FindHunterCharacter() const
 {
-    if (ViewedHunterState) return Cast<ATreasureSketchCharacter>(ViewedHunterState->GetPawn());
-    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    const auto* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (!GS) return nullptr;
-    int32 Index = 0;
+    if (const auto* Viewed = Cast<ATreasureSketchPlayerState>(ViewedHunterState);
+        Viewed && GS->PlayerArray.Contains(ViewedHunterState) && Viewed->PlayerRole == ETreasurePlayerRole::Hunter
+        && !Viewed->bHideEliminated && Viewed->GetPawn())
+        return Cast<ATreasureSketchCharacter>(Viewed->GetPawn());
+    TArray<ATreasureSketchCharacter*> Candidates;
     for (APlayerState* State : GS->PlayerArray)
-        if (const ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State))
-            if (PS->PlayerRole == ETreasurePlayerRole::Hunter && Index++ == SpectatedHunterIndex)
-                return Cast<ATreasureSketchCharacter>(PS->GetPawn());
-    return nullptr;
+        if (const auto* PS = Cast<ATreasureSketchPlayerState>(State))
+            if (PS->PlayerRole == ETreasurePlayerRole::Hunter && !PS->bHideEliminated)
+                if (auto* CandidateCharacter = Cast<ATreasureSketchCharacter>(PS->GetPawn())) Candidates.Add(CandidateCharacter);
+    return Candidates.IsEmpty() ? nullptr : Candidates[SpectatedHunterIndex % Candidates.Num()];
 }
 
 void ATreasureSketchPlayerController::StartSpectating(bool bDrawingView)
@@ -1132,7 +1144,7 @@ void ATreasureSketchPlayerController::StartSpectating(bool bDrawingView)
     if (!SpectatorCamera) return;
 
     SpectatorCamera->SetActorEnableCollision(false);
-    SpectatorView = EScoutSpectatorView::FreeFlight;
+    SpectatorView = IsEliminatedHiderSpectator() ? EScoutSpectatorView::HunterFirstPerson : EScoutSpectatorView::FreeFlight;
     bMapOpen = false;
     bShowMouseCursor = false;
     SetInputMode(FInputModeGameOnly());
@@ -1158,7 +1170,9 @@ void ATreasureSketchPlayerController::UpdateSpectatorCamera(float DeltaTime)
     if (GS && GS->Phase != ETreasureRoundPhase::ScoutDrawing) bDrawingOverheadView = false;
     const bool bDrawingView = GS && GS->Phase == ETreasureRoundPhase::ScoutDrawing && bDrawingOverheadView;
     const bool bShouldSpectate = GS && GS->bGameStarted && PendingSpectatorRoundSerial == 0
-        && GS->RoomMode != ETreasureRoomMode::HideAndSeek && GS->RoomMode != ETreasureRoomMode::TeamVersus && IsLocalScout() && (GS->Phase == ETreasureRoundPhase::HunterSearching || bDrawingView);
+        && (IsEliminatedHiderSpectator() || (GS->RoomMode != ETreasureRoomMode::HideAndSeek
+            && GS->RoomMode != ETreasureRoomMode::TeamVersus && IsLocalScout()
+            && (GS->Phase == ETreasureRoundPhase::HunterSearching || bDrawingView)));
     if (!bShouldSpectate)
     {
         StopSpectating();
@@ -1169,7 +1183,9 @@ void ATreasureSketchPlayerController::UpdateSpectatorCamera(float DeltaTime)
 
     if (SpectatorView == EScoutSpectatorView::HunterFirstPerson)
     {
-        if (bHasHunterView && GetWorld()->GetTimeSeconds() - HunterViewUpdatedAt < 1.f)
+        if (bHasHunterView && GetWorld()->GetTimeSeconds() - HunterViewUpdatedAt < 1.f
+            && (!IsEliminatedHiderSpectator() || (FindHunterCharacter()
+                && FindHunterCharacter()->GetPlayerState() == ViewedHunterState)))
         {
             SpectatorCamera->SetActorLocation(FMath::VInterpTo(
                 SpectatorCamera->GetActorLocation(), HunterViewLocation, DeltaTime, 18.f));
@@ -1208,7 +1224,7 @@ void ATreasureSketchPlayerController::UpdateSpectatorCamera(float DeltaTime)
 void ATreasureSketchPlayerController::ToggleSpectatorView()
 {
     const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
-    if (!GS || !GS->bGameStarted || !IsLocalScout() || bPauseMenuOpen) return;
+    if (!GS || !GS->bGameStarted || (!IsLocalScout() && !IsEliminatedHiderSpectator()) || bPauseMenuOpen) return;
     if (GS->Phase == ETreasureRoundPhase::ScoutDrawing)
     {
         if (GS->bSketchSceneLock && bSketchSceneCommitted) return;
@@ -1922,14 +1938,16 @@ void ATreasureSketchPlayerController::ClientReturnToLobby_Implementation()
 
 void ATreasureSketchPlayerController::ServerCycleSpectatedHunter_Implementation()
 {
-    if (!IsLocalScout()) return;
+    if (!IsLocalScout() && !IsEliminatedHiderSpectator()) return;
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (!GS || GS->Phase != ETreasureRoundPhase::HunterSearching) return;
     int32 Hunters = 0;
     for (APlayerState* State : GS->PlayerArray)
         if (const ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State))
-            Hunters += PS->PlayerRole == ETreasurePlayerRole::Hunter;
+            Hunters += PS->PlayerRole == ETreasurePlayerRole::Hunter && !PS->bHideEliminated && PS->GetPawn();
     if (Hunters > 0) SpectatedHunterIndex = (SpectatedHunterIndex + 1) % Hunters;
+    ViewedHunterState = nullptr;
+    bHasHunterView = false;
 }
 
 void ATreasureSketchPlayerController::NewRound()

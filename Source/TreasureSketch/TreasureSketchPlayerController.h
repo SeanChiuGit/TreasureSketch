@@ -109,6 +109,7 @@ public:
     bool IsLocalScout() const;
     bool IsHunterWaiting() const;
     bool IsCatcherStudyingMap() const;
+    bool IsEliminatedHiderSpectator() const;
     bool IsScoutSpectating() const { return SpectatorCamera != nullptr; }
     bool IsDrawingOverheadView() const { return bDrawingOverheadView; }
     bool IsHunterFirstPersonView() const { return SpectatorView == EScoutSpectatorView::HunterFirstPerson; }

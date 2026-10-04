@@ -934,7 +934,7 @@ void ATreasureSketchGameMode::HideTreasureFromScout()
 void ATreasureSketchGameMode::SendHunterViewToScout(float DeltaSeconds)
 {
     const ATreasureSketchGameState* GS = GetGameState<ATreasureSketchGameState>();
-    if (!GS || !GS->bGameStarted || GS->RoomMode == ETreasureRoomMode::HideAndSeek
+    if (!GS || !GS->bGameStarted
         || GS->Phase != ETreasureRoundPhase::HunterSearching)
     {
         HunterViewUpdateTime = 0.f;
@@ -948,13 +948,16 @@ void ATreasureSketchGameMode::SendHunterViewToScout(float DeltaSeconds)
     for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
     {
         ATreasureSketchPlayerController* ScoutPC = Cast<ATreasureSketchPlayerController>(It->Get());
-        if (!ScoutPC || !ScoutPC->IsLocalScout()) continue;
+        if (!ScoutPC || (GS->RoomMode == ETreasureRoomMode::HideAndSeek
+            ? !ScoutPC->IsEliminatedHiderSpectator() : !ScoutPC->IsLocalScout())) continue;
         ATreasureSketchPlayerController* HunterPC = nullptr;
-        int32 Index = 0;
+        TArray<ATreasureSketchPlayerController*> Candidates;
         for (APlayerState* State : GS->PlayerArray)
-            if (const ATreasureSketchPlayerState* PS = Cast<ATreasureSketchPlayerState>(State))
-                if (PS->PlayerRole == ETreasurePlayerRole::Hunter && Index++ == ScoutPC->GetSpectatedHunterIndex())
-                { HunterPC = Cast<ATreasureSketchPlayerController>(State->GetOwner()); break; }
+            if (const auto* PS = Cast<ATreasureSketchPlayerState>(State))
+                if (PS->PlayerRole == ETreasurePlayerRole::Hunter && !PS->bHideEliminated)
+                    if (auto* Candidate = Cast<ATreasureSketchPlayerController>(State->GetOwner()); Candidate && Candidate->GetPawn())
+                        Candidates.Add(Candidate);
+        if (!Candidates.IsEmpty()) HunterPC = Candidates[ScoutPC->GetSpectatedHunterIndex() % Candidates.Num()];
         if (!HunterPC || !HunterPC->GetPawn()) continue;
         const FRotator ViewRotation = HunterPC->GetControlRotation();
         const FVector ViewLocation = HunterPC->GetPawn()->GetActorLocation() + FVector(0.f, 0.f, 72.f)
@@ -1289,9 +1292,8 @@ bool ATreasureSketchGameMode::TryDig(ATreasureSketchPlayerState* Hunter, const F
             GS->HideCollectedMask |= 1 << Index;
             ++GS->HideTreasureCount;
             GS->ForceNetUpdate();
-            // Only the one-hider setup ends early when all three are collected.
-            // Eliminations in a larger party do not change this rule.
-            if (GS->HideTreasures.Num() == 3 && GS->HideTreasureCount == 3)
+            // Collecting all team treasures ends any party size immediately.
+            if (GS->HideTreasureCount >= GS->HideTreasures.Num())
                 FinishHideAndSeek(false);
             return true;
         }

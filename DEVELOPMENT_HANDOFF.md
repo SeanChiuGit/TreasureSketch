@@ -1,3 +1,10 @@
+## 躲猫猫收齐即胜与出局观战（开发分支，尚未发布）
+
+- 基于 v0.17.0 的最新提交 `3088200`。队伍拿满全部宝藏立即获胜，适用于 3 / 6 / 9 个宝藏；未拿满时仍采用原计时门槛。
+- 被抓的逃生者自动进入队友跟随观战，Q 切换存活队友，Tab 切换跟随 / 自由视角；过滤自己、抓捕者及已出局队友。服务端以原 20 Hz 视角 RPC 同步存活队友的视角，目标出局后自动回退到其他存活者。
+- 观战者仍不能移动自己的角色、挖宝或变形；回合结束退出观战，新局恢复角色。HUD 与 README 同步新规则。
+- 编辑器编译和 HideAndSeek、PropDisguise、TeamVersus、MultiMapmaker 四项回归全部通过；新增多人最后一个宝藏即时胜利及观战启停、切换、跳过出局目标检查。验证日志 `Saved/Logs/HideFullLootSpectator-*.log`。下载包尚未更新，实际多人画面仍需试玩。
+
 ## 最新 Windows 测试 Release：v0.17.0
 
 - 已发布 [v0.17.0-2v2-rc1](https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.17.0-2v2-rc1)，标签指向 `feature/hide-and-seek` 的 `adde218`。包含 2v2 藏宝对战与对位可见性，以及此前合并但尚未进入 v0.16.0 的峡谷物品和变形选取改进。
