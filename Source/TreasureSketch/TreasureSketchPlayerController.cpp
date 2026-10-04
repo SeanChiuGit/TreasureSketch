@@ -120,6 +120,17 @@ void ATreasureSketchPlayerController::ClientRecordCompletedRound_Implementation(
     LocalRecord.LocalTimeText = FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M"));
     if (CurrentSketchRoundSerial == Record.RoundSerial)
         LocalRecord.Pages = SketchPages;
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (GS && GS->RoomMode == ETreasureRoomMode::TeamVersus && LocalRecord.Pages.IsEmpty()
+        && Record.LocalRole == ETreasurePlayerRole::Scout)
+    {
+        FSketchPage OwnPage;
+        if (const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>())
+        { OwnPage.MapmakerId = PS->GetPlayerId(); OwnPage.MapmakerName = PS->GetPlayerName(); }
+        OwnPage.Strokes = Strokes;
+        OwnPage.PhotoJpeg = LocalPhotoJpeg;
+        LocalRecord.Pages.Add(MoveTemp(OwnPage));
+    }
     HistorySave->Records.Add(MoveTemp(LocalRecord));
     if (!UGameplayStatics::SaveGameToSlot(HistorySave, HistorySlot, 0))
         UE_LOG(LogTemp, Error, TEXT("TREASURE_HISTORY_SAVE_FAILED"));
@@ -420,6 +431,7 @@ void ATreasureSketchPlayerController::PlayerTick(float DeltaTime)
 {
     Super::PlayerTick(DeltaTime);
     UpdateFrontEnd();
+    UpdateVersusTeammateVisibility();
     if (IsFrontEndVisible()) { bCameraMode = false; return; }
     const ATreasureSketchGameState* CursorGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     if (bLocalDigHeld && (bMapOpen || !CursorGS || CursorGS->Phase != ETreasureRoundPhase::HunterSearching
@@ -818,13 +830,14 @@ void ATreasureSketchPlayerController::HandleFrontEndAction(FName ActionName)
         if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>()) GM->ToggleSurfacePaint();
     }
     else if (ActionName == TEXT("RoomModeCoop") || ActionName == TEXT("RoomModeOneExplorer")
-        || ActionName == TEXT("RoomModeRaceToggle"))
+        || ActionName == TEXT("RoomModeRaceToggle") || ActionName == TEXT("RoomModeTeamVersus"))
     {
         if (!IsLocalController() || FrontEndPage != EFrontEndPage::RoomLobby) return;
         if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
         {
             const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
-            const ETreasureRoomMode Mode = ActionName == TEXT("RoomModeOneExplorer") ? ETreasureRoomMode::OneExplorer
+            const ETreasureRoomMode Mode = ActionName == TEXT("RoomModeTeamVersus") ? ETreasureRoomMode::TeamVersus
+                : ActionName == TEXT("RoomModeOneExplorer") ? ETreasureRoomMode::OneExplorer
                 : ActionName == TEXT("RoomModeRaceToggle") && GS && GS->RoomMode != ETreasureRoomMode::ExplorerRace
                     ? ETreasureRoomMode::ExplorerRace : ETreasureRoomMode::OneMapmaker;
             GM->SelectRoomMode(Mode);
@@ -898,7 +911,30 @@ bool ATreasureSketchPlayerController::IsHunterWaiting() const
 {
     const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
     const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
-    return PS && GS && PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->Phase == ETreasureRoundPhase::ScoutDrawing;
+    return PS && GS && GS->RoomMode != ETreasureRoomMode::TeamVersus
+        && PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->Phase == ETreasureRoundPhase::ScoutDrawing;
+}
+
+void ATreasureSketchPlayerController::UpdateVersusTeammateVisibility()
+{
+    if (!IsLocalController()) return;
+    const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
+    const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
+    APawn* TeammatePawn = nullptr;
+    if (GS && GS->bGameStarted && !GS->IsRoundOver()
+        && GS->RoomMode == ETreasureRoomMode::TeamVersus && PS)
+        for (TActorIterator<ATreasureSketchCharacter> It(GetWorld()); It; ++It)
+            if (const ATreasureSketchPlayerState* Other = It->GetPlayerState<ATreasureSketchPlayerState>();
+                Other && Other != PS && Other->VersusTeam == PS->VersusTeam)
+            { TeammatePawn = *It; break; }
+    if (HiddenVersusTeammate.Get() != TeammatePawn)
+    {
+        if (APawn* Previous = HiddenVersusTeammate.Get())
+            if (USceneComponent* Root = Previous->GetRootComponent()) Root->SetVisibility(true, true);
+        HiddenVersusTeammate = TeammatePawn;
+    }
+    if (TeammatePawn)
+        if (USceneComponent* Root = TeammatePawn->GetRootComponent()) Root->SetVisibility(false, true);
 }
 
 void ATreasureSketchPlayerController::UpdateWaitingSketchInput()
@@ -944,11 +980,13 @@ void ATreasureSketchPlayerController::ApplyPhaseInputRules()
     const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
     if (!PS || !GS) return;
     const bool bReviewing = GS->bReviewingRound && GS->IsRoundOver();
-    const bool bShouldWait = !bReviewing && ((PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->Phase == ETreasureRoundPhase::ScoutDrawing)
+    const bool bVersus = GS->RoomMode == ETreasureRoomMode::TeamVersus;
+    const bool bShouldWait = !bReviewing && !bVersus && ((PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->Phase == ETreasureRoundPhase::ScoutDrawing)
         || (PS->PlayerRole == ETreasurePlayerRole::Scout && GS->Phase != ETreasureRoundPhase::ScoutDrawing)
-        || GS->IsRoundOver());
+        || GS->IsRoundOver()) || (!bReviewing && bVersus && GS->IsRoundOver());
     const bool bShouldLock = bPauseMenuOpen || bMapOpen || bDrawingOverheadView || bShouldWait
-        || (!bReviewing && IsLocalScout() && HasSubmittedSketch());
+        || (!bReviewing && IsLocalScout() && HasSubmittedSketch()
+            && (!bVersus || GS->Phase == ETreasureRoundPhase::ScoutDrawing));
     if (bInputLocked != bShouldLock)
     {
         SetIgnoreMoveInput(bShouldLock);
@@ -1045,7 +1083,8 @@ void ATreasureSketchPlayerController::UpdateSpectatorCamera(float DeltaTime)
         PendingSpectatorRoundSerial = 0;
     if (GS && GS->Phase != ETreasureRoundPhase::ScoutDrawing) bDrawingOverheadView = false;
     const bool bDrawingView = GS && GS->Phase == ETreasureRoundPhase::ScoutDrawing && bDrawingOverheadView;
-    const bool bShouldSpectate = GS && GS->bGameStarted && PendingSpectatorRoundSerial == 0
+    const bool bShouldSpectate = GS && GS->bGameStarted && GS->RoomMode != ETreasureRoomMode::TeamVersus
+        && PendingSpectatorRoundSerial == 0
         && IsLocalScout() && (GS->Phase == ETreasureRoundPhase::HunterSearching || bDrawingView);
     if (!bShouldSpectate)
     {
@@ -1170,11 +1209,14 @@ void ATreasureSketchPlayerController::ToggleMap()
     if (bPauseMenuOpen) return;
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
     const bool bReviewing = GS && GS->bReviewingRound && GS->IsRoundOver();
+    if (GS && GS->RoomMode == ETreasureRoomMode::TeamVersus
+        && GS->Phase == ETreasureRoundPhase::ScoutDrawing && !IsLocalScout()) return;
     const bool bSpectatingMapmaker = GS && GS->bGameStarted
         && GS->Phase == ETreasureRoundPhase::HunterSearching && IsLocalScout();
     if (!bReviewing && !bSpectatingMapmaker && ((GS && GS->IsRoundOver()) || IsHunterWaiting()
         || (IsLocalScout() && (HasSubmittedSketch() || (GS && GS->Phase != ETreasureRoundPhase::ScoutDrawing))))) return;
-    if (GS && GS->bSketchSceneLock && bSketchSceneCommitted && bMapOpen && IsLocalScout()
+    if (GS && GS->bSketchSceneLock && GS->RoomMode != ETreasureRoomMode::TeamVersus
+        && bSketchSceneCommitted && bMapOpen && IsLocalScout()
         && GS->Phase == ETreasureRoundPhase::ScoutDrawing) return;
     SetSprayCursorMode(false);
     bCameraMode = false;
@@ -1221,6 +1263,8 @@ void ATreasureSketchPlayerController::Handoff()
         const ATreasureSketchGameState* CurrentGS = GetWorld()->GetGameState<ATreasureSketchGameState>();
         StatusMessage = CurrentGS && CurrentGS->PlayerArray.Num() == 1
             ? TEXT("地图已交付，切换为探索者；按 M 查看自己的地图，按 E 挖掘。")
+            : CurrentGS && CurrentGS->RoomMode == ETreasureRoomMode::TeamVersus
+                ? TEXT("地图已交给本队藏宝者；等待双方完成后，守护本队宝藏并推开对手。")
             : CurrentGS && CurrentGS->RoomMode == ETreasureRoomMode::OneExplorer && CurrentGS->Phase == ETreasureRoundPhase::ScoutDrawing
                 ? TEXT("你的地图已交付，等待其他地图师；全部交齐或时间到后开始寻宝。")
                 : TEXT("地图已交给寻宝者；现在可以观战。");
@@ -1272,7 +1316,10 @@ void ATreasureSketchPlayerController::ClientReceiveSketchPages_Implementation(in
     bWasDrawing = false;
     bShowMouseCursor = false;
     SetInputMode(FInputModeGameOnly());
-    StatusMessage = IsLocalScout() ? TEXT("已交图，按 M 查看地图并继续观战。")
+    const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    StatusMessage = GS && GS->RoomMode == ETreasureRoomMode::TeamVersus
+        ? TEXT("寻宝开始！按 M 查看队友画的图，长按 E 挖对方的宝藏。")
+        : IsLocalScout() ? TEXT("已交图，按 M 查看地图并继续观战。")
         : FString::Printf(TEXT("收到 %d 张地图！M 查看，左右方向键切换图纸，E 挖掘。"), Pages.Num());
     StatusUntil = GetWorld()->GetTimeSeconds() + 8.f;
 }
@@ -1331,6 +1378,10 @@ void ATreasureSketchPlayerController::Dig()
     if (!GetPawn()) return;
     const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
     const ATreasureSketchGameState* GS = GetWorld()->GetGameState<ATreasureSketchGameState>();
+    if (PS && GS && GS->RoomMode == ETreasureRoomMode::TeamVersus
+        && GS->bGameStarted && GS->Phase == ETreasureRoundPhase::ScoutDrawing
+        && PS->PlayerRole == ETreasurePlayerRole::Hunter && !PS->bVersusTreasurePlaced)
+    { ServerPlaceVersusTreasure(); return; }
     const ATreasureSketchCharacter* DigCharacter = Cast<ATreasureSketchCharacter>(GetPawn());
     if (PS && GS && DigCharacter && DigCharacter->GetCharacterMovement()->IsMovingOnGround()
         && PS->PlayerRole == ETreasurePlayerRole::Hunter && GS->bGameStarted
@@ -1342,6 +1393,19 @@ void ATreasureSketchPlayerController::Dig()
         LocalDigStartLocation = GetPawn()->GetActorLocation();
         ServerTryDig();
     }
+}
+
+void ATreasureSketchPlayerController::ServerPlaceVersusTreasure_Implementation()
+{
+    if (ATreasureSketchGameMode* GM = GetWorld()->GetAuthGameMode<ATreasureSketchGameMode>())
+        ClientVersusPlacementResult(GM->TryPlaceVersusTreasure(this));
+}
+
+void ATreasureSketchPlayerController::ClientVersusPlacementResult_Implementation(bool bPlaced)
+{
+    StatusMessage = bPlaced ? TEXT("宝藏已埋好！对方地图师现在可以画下这里。")
+        : TEXT("这里不能藏宝：请站在陆地上，并远离另一处宝藏。 ");
+    StatusUntil = GetWorld()->GetTimeSeconds() + 3.f;
 }
 
 void ATreasureSketchPlayerController::StopDig()
@@ -1388,9 +1452,12 @@ void ATreasureSketchPlayerController::Shove()
     const ATreasureSketchGameState* GS = GetWorld() ? GetWorld()->GetGameState<ATreasureSketchGameState>() : nullptr;
     const ATreasureSketchPlayerState* PS = GetPlayerState<ATreasureSketchPlayerState>();
     if (!bPauseMenuOpen && !bMapOpen && GetPawn() && GS && PS
-        && GS->RoomMode == ETreasureRoomMode::ExplorerRace && GS->bGameStarted
+        && (GS->RoomMode == ETreasureRoomMode::ExplorerRace || GS->RoomMode == ETreasureRoomMode::TeamVersus)
+        && GS->bGameStarted
         && GS->Phase == ETreasureRoundPhase::HunterSearching
-        && PS->PlayerRole == ETreasurePlayerRole::Hunter
+        && (GS->RoomMode == ETreasureRoomMode::TeamVersus
+            ? PS->PlayerRole == ETreasurePlayerRole::Scout
+            : PS->PlayerRole == ETreasurePlayerRole::Hunter)
         && !PS->bDigging
         && PS->NextShoveServerTime <= GS->GetServerWorldTimeSeconds()) ServerTryShove();
 }

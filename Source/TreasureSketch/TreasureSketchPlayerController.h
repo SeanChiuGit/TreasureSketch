@@ -131,6 +131,9 @@ public:
     void ClientDigInterrupted();
 
     UFUNCTION(Client, Reliable)
+    void ClientVersusPlacementResult(bool bPlaced);
+
+    UFUNCTION(Client, Reliable)
     void ClientShoveFeedback(uint8 Result, const FString& OtherName);
 
     UFUNCTION(Client, Reliable)
@@ -248,6 +251,7 @@ private:
     bool bPauseMenuOpen = false;
     bool bInputLocked = false;
     bool bLocalDigHeld = false;
+    TWeakObjectPtr<APawn> HiddenVersusTeammate;
     float LocalDigStartedAt = 0.f;
     FVector LocalDigStartLocation = FVector::ZeroVector;
     FString StatusMessage;
@@ -274,6 +278,7 @@ private:
     bool IsPointOnPaper(const FVector2D& Point) const;
     void ApplyPhaseInputRules();
     void UpdateWaitingSketchInput();
+    void UpdateVersusTeammateVisibility();
     void ApplyKeyboardMovementFallback();
     void UpdateReplayInput();
     void UpdateSpectatorCamera(float DeltaTime);
@@ -290,6 +295,9 @@ private:
 
     UFUNCTION(Server, Reliable)
     void ServerTryDig();
+
+    UFUNCTION(Server, Reliable)
+    void ServerPlaceVersusTreasure();
 
     UFUNCTION(Server, Reliable)
     void ServerCancelDig();

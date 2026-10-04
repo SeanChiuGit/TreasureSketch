@@ -34,6 +34,7 @@ void ATreasureSketchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProper
     DOREPLIFETIME(ATreasureSketchGameState, RaceRoundIndex);
     DOREPLIFETIME(ATreasureSketchGameState, RaceTotalRounds);
     DOREPLIFETIME(ATreasureSketchGameState, RaceRoundWinner);
+    DOREPLIFETIME(ATreasureSketchGameState, VersusWinningTeam);
     DOREPLIFETIME(ATreasureSketchGameState, ResultServerTime);
     DOREPLIFETIME(ATreasureSketchGameState, Phase);
     DOREPLIFETIME(ATreasureSketchGameState, RoundEndServerTime);

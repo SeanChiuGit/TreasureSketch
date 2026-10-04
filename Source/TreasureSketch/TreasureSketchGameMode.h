@@ -37,6 +37,7 @@ public:
     bool StartHeldDig(ATreasureSketchPlayerController* HunterController);
     void CancelHeldDig(ATreasureSketchPlayerState* Hunter, bool bNotifyInterrupted = false);
     bool TryShove(ATreasureSketchPlayerController* ShovingPlayer);
+    bool TryPlaceVersusTreasure(ATreasureSketchPlayerController* HiderController);
     void StartNewRound(bool bSwapRoles = false, ATreasureSketchPlayerState* RoleRequester = nullptr);
     void SetRoundReview(bool bReviewing);
     void StartHostedRound();
@@ -54,12 +55,16 @@ public:
 private:
     friend class FMultiMapmakerFlowTest;
     friend class FExplorerRaceFlowTest;
+    friend class FTeamVersusFlowTest;
     void ResolveShove(ATreasureSketchPlayerController* ShovingPlayer,
         class ATreasureSketchCharacter* ShovingCharacter, int32 RoundSerial);
     UPROPERTY()
     TObjectPtr<AProceduralIsland> Island;
 
     FVector TreasureLocation = FVector::ZeroVector;
+    FVector VersusTreasureLocations[2] = { FVector::ZeroVector, FVector::ZeroVector };
+    bool bVersusTreasurePlaced[2] = { false, false };
+    void TryBeginVersusSearch();
     int32 IslandSeed = 0;
     float HunterViewUpdateTime = 0.f;
     UPROPERTY() TObjectPtr<ATreasureSurfacePaint> SurfacePaint;
@@ -78,6 +83,7 @@ private:
     bool FinishIfTimeExpired();
     void BeginHunterSearching(const TArray<FSketchPage>& Pages);
     TArray<FSketchPage> CollectSketchPages() const;
+    TArray<FSketchPage> VersusPagesForTeam(const TArray<FSketchPage>& Pages, int32 Team) const;
     void ResetSubmittedSketches();
     UPROPERTY()
     TMap<int32, FSketchPage> SubmittedSketches;

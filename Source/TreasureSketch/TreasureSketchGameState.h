@@ -59,6 +59,9 @@ public:
     FString RaceRoundWinner;
 
     UPROPERTY(Replicated, BlueprintReadOnly)
+    int32 VersusWinningTeam = -1;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
     float ResultServerTime = 0.f;
 
     UPROPERTY(Replicated, BlueprintReadOnly)

@@ -59,7 +59,8 @@ bool FMultiMapmakerFlowTest::RunTest(const FString& Parameters)
     }
     TestEqual(TEXT("Original mode retains first mapmaker"), Players[0]->PlayerRole, ETreasurePlayerRole::Scout);
     TestTrue(TEXT("New mode is selectable"), GM->SelectRoomMode(ETreasureRoomMode::OneExplorer));
-    TestFalse(TEXT("Versus is still unavailable"), GM->SelectRoomMode(ETreasureRoomMode::TeamVersus));
+    TestTrue(TEXT("Versus mode can be selected"), GM->SelectRoomMode(ETreasureRoomMode::TeamVersus));
+    TestTrue(TEXT("Mapmaker mode can be selected again"), GM->SelectRoomMode(ETreasureRoomMode::OneExplorer));
     TestEqual(TEXT("Host becomes sole explorer when switching mode"), Players[0]->PlayerRole, ETreasurePlayerRole::Hunter);
     for (int32 I = 1; I < 4; ++I) TestEqual(TEXT("Others become mapmakers"), Players[I]->PlayerRole, ETreasurePlayerRole::Scout);
     TestTrue(TEXT("A player can claim the sole explorer role in the lobby"), GM->ClaimSingleRoomRole(Players[2]));
