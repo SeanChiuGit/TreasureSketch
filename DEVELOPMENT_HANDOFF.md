@@ -1,44 +1,52 @@
-## 2v2 对位可见性（开发分支，尚未发布）
+## 最新 Windows 测试 Release：v0.17.0
+
+- 已发布 [v0.17.0-2v2-rc1](https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.17.0-2v2-rc1)，标签指向 `feature/hide-and-seek` 的 `adde218`。包含 2v2 藏宝对战与对位可见性，以及此前合并但尚未进入 v0.16.0 的峡谷物品和变形选取改进。
+- 附件 `TreasureSketch-v0.17.0-2v2-rc1-adde218-Windows.zip`，394493971 字节；SHA-256：`d5a5a74fde9fb45d05e32603bb88c291ac8f89553990e3cc7ac7973ecb80a8de`。远端摘要与本地一致，已发布为 prerelease。
+- Windows Development BuildCookRun、ZIP 完整性、EXE、PAK、Steam DLL、字体检查及 NullRHI 启动通过；2v2 自动回归通过。实际四人 Steam 联机、对位可见性及碰撞手感仍待玩家测试。打包使用版本库配置，本机私有配置已逐字节恢复。
+- 本机脚本和日志：`Saved/CodexRelease/package-v0.17.py`、`publish-v0.17.ps1`、`package-v0.17.log`、`smoke-v0.17.log`。
+
+## 2v2 对位可见性（v0.17.0 已发布）
 
 - 在合并分支 `feature/hide-and-seek` 上，2v2 两阶段均只显示跨队、不同职责的对应玩家：红队藏宝寻宝者与蓝队绘图守护者互相可见，蓝队藏宝寻宝者与红队绘图守护者互相可见。其他玩家的角色、头顶姓名在本地隐藏，移动碰撞也忽略；回合结束后恢复显示。
 - 编辑器与 Win64 Development 游戏目标编译通过，`TreasureSketch.RoomSettings.TeamVersus` 无窗口回归通过，覆盖四人可见配对及交换职责后配对。实际四人联机画面与碰撞仍需玩家测试。
 
-## 合并 2v2 藏宝对战（开发分支，尚未发布）
+## 合并 2v2 藏宝对战（v0.17.0 已发布）
 
 - 合并 `origin/codex/team-versus` / `fe98fbe`，保留当前躲猫猫、按住选取松开变形、准星容错、轮廓描边及朋友峡谷物品。
 - 手工协调房间模式、开局人数、绘图等待与旁观、挖宝结算、推人角色及目标限制、结果与历史 HUD；房间五个模式沿用当前界面样式，2v2 禁止抢占单人职责按钮。
 - `ETreasureRoomMode::HideAndSeek` 保留原数值 3，2v2 追加为 4，避免已有躲猫猫历史被解读成新模式。两个玩法的 PlayerState 复制字段均保留。
-- 编辑器编译及八项 RoomSettings 回归全部通过（TeamVersus、HideAndSeek、PropDisguise、MultiMapmaker、ExplorerRace、RoundFlow、HistorySave、HideTreasureScaling）；使用种子 75605，各测试独立进程，日志 `Saved/Logs/Merge2v2-*.log`。实际四人 Steam 联机、队友可见性和操作手感仍需试玩。下载包尚未更新。
+- 编辑器编译及八项 RoomSettings 回归全部通过（TeamVersus、HideAndSeek、PropDisguise、MultiMapmaker、ExplorerRace、RoundFlow、HistorySave、HideTreasureScaling）；使用种子 75605，各测试独立进程，日志 `Saved/Logs/Merge2v2-*.log`。实际四人 Steam 联机、队友可见性和操作手感仍需试玩。已进入 v0.17.0 下载包。
 
-## 按住选取、松开变形（开发分支，尚未发布）
+## 按住选取、松开变形（v0.17.0 已发布）
 
 - 左键按下立即进入选取相机，取消原 0.4 秒等待及第二次点击确认；持续按住仅瞄准，松开按最后显示高亮的射线确认变形并恢复镜头。
 - 松开时无目标、角色不可选取或局次不符则退出，不变形；Esc / Q / 换局取消后松开也不会确认。HUD 和 README 已同步新操作。
-- PropDisguise 回归覆盖按下立即进入、持续按住不变形、空目标松开退出、松开高亮目标变形及取消后松开。验证日志 `Saved/Logs/PropHoldReleaseRegression.log`。下载包尚未更新。
+- PropDisguise 回归覆盖按下立即进入、持续按住不变形、空目标松开退出、松开高亮目标变形及取消后松开。验证日志 `Saved/Logs/PropHoldReleaseRegression.log`。已进入 v0.17.0 下载包。
 
-## 变形选取以准星中心优先（开发分支，尚未发布）
+## 变形选取以准星中心优先（v0.17.0 已发布）
 
 - 旧判定按射线最先进入的模型包围盒选择，近处的大包围盒会抢走小物品。改为先按物品包围盒中心相对准星的角度排序，角度接近时选近处实例；容错约 0.6 度，不设选取距离限制。
 - 本地选取使用屏幕正中心反投影，服务端使用同一条射线及相同判定。增加可见性碰撞遮挡检查，忽略人物，保留无碰撞装饰实例选取及原轮廓高亮。
-- 编辑器编译及 PropDisguise 回归通过，新增中心小物品优先于近处大包围盒、轻微偏离容错、容错边界和同角度近处优先检查。日志 `Saved/Logs/PropCenterAimRegression.log`。实际游戏镜头操作仍需试玩，下载包尚未更新。
+- 编辑器编译及 PropDisguise 回归通过，新增中心小物品优先于近处大包围盒、轻微偏离容错、容错边界和同角度近处优先检查。日志 `Saved/Logs/PropCenterAimRegression.log`。实际游戏镜头操作仍需试玩，已进入 v0.17.0 下载包。
 
-## 变形选取镜头与真实轮廓（开发分支，尚未发布）
+## 变形选取镜头与真实轮廓（v0.17.0 已发布）
 
 - 长按进入选取时临时使用眼部视角，对本地自己隐藏人物及变形外观；确认、取消、换局恢复镜头与原可见性。
 - 目标使用独立 CustomDepth / Stencil 253 代理及后处理材质，沿真实模型外形显示约 3 像素亮黄色描边，内部原材质不变，仅标记当前实例。代理归属 Pawn，避免 Controller 隐藏导致描边不可见。
 - 材质生成脚本 `Scripts/create_prop_selection_outline.py`，资产 `Content/UI/Materials/M_PropSelectionOutline.uasset`。交互回归覆盖镜头、局部隐藏、目标代理、取消与确认恢复。
 - D3D11 / SM5 实际材质编译通过；离屏仙人掌对照图确认真实轮廓亮黄色描边，日志 `Saved/Logs/PropOutlineRenderCompare.log`。离屏场景较暗，完整游戏及联机仍需试玩。
-- 这些修改尚未打包到 v0.16.0 下载包。
-## 修正峡谷物品来源（开发分支，尚未发布）
+- 这些修改已进入 v0.17.0 下载包。
+
+## 修正峡谷物品来源（v0.17.0 已发布）
 
 - 原资源提交 `c846fb8` 来自朋友 `origin/codex/ui-readability-refresh`，以 `47627e0` 合入十个物品及材质、Blender／FBX 源文件。
 - `BuildCanyonAssets` 改用 `/Game/IslandAssets/Canyon/Props` 中的十个物品，不再生成此前误选的 CanyonModules 谷底、岩壁和 Talus。旧资源文件仍保留。
 - 室外下层路线两侧确定性摆放，保留原材质，小物品接近原始尺寸、大物品按路宽缩小，按包围盒贴地并检查坡度及占地高度变化，跳过洞口及邻近实例。没有额外碰撞，继续支持无碰撞实例的变形选取。重建及主题切换清理原实例。
 - `Scripts/prepare_canyon_prop_materials.py` 为 29 个导入材质启用实例化渲染；导入脚本按当前项目目录定位源文件，并调用材质准备。
 - 编辑器编译通过，0.5／1／2 倍生成、资源来源、材质、重建和主题清理、变形及多人宝藏三项最终回归全部通过（`Saved/Logs/CanyonApprovedPropsFinalRegression.log`）。种子 1050、1 倍地图实际生成全部十种物品，共十一实例（`Saved/Logs/CanyonApprovedPropsFinalCounts.log`）。
-- v0.16.0 下载包仍包含替换前的资源，修正尚未重新打包发布。实际画面和多人联机仍需试玩。
+- v0.16.0 下载包仍包含替换前的资源，修正已进入 v0.17.0。实际画面和多人联机仍需试玩。
 
-## 最新 Windows 测试 Release：v0.16.0
+## 上一版 Windows 测试 Release：v0.16.0
 
 - 已发布 [v0.16.0-hide-and-seek-rc1](https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.16.0-hide-and-seek-rc1)。包含四人躲猫猫、默认 2 倍速度、开局 10 秒看图、人数对应宝藏和队伍结算、两步变形、峡谷实际资源及单名逃生者三宝即时胜利。
 - 源码及版本标签提交 `058770e`，分支 `feature/hide-and-seek`。附件 `TreasureSketch-v0.16.0-hide-and-seek-rc1-058770e-Windows.zip`，394137445 字节；SHA-256：`f57d79d7fe5dc74d72395de78b798d9ce00de3233b32da83ccc003baa0a651ff`。GitHub 大小与摘要已核对，非 draft，prerelease。
