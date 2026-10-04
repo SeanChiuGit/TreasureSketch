@@ -1,6 +1,12 @@
 # TreasureSketch
 
-## 最新 Windows 测试 Release：v0.18.0
+## 最新 Windows 测试 Release：v0.19.0
+
+- 已发布 [v0.19.0-hide-and-seek-rc1](https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.19.0-hide-and-seek-rc1)，源码标签指向 `e642a2f`。抓捕默认范围 4.5 米、前方 160°、高差 ±3 米、出手等待 0.15 秒，增加范围轮廓及房间 2–10 米设置（每次微调 0.25 米）；修正自由观战鼠标上下反向。包含 v0.18.0 的其他功能。
+- 附件 `TreasureSketch-v0.19.0-hide-and-seek-rc1-e642a2f-Windows.zip`，394516994 字节；SHA-256：`ac2202e45b29acb39e7f72355c49eb4b9d5b391831bf2c4f6752bf4441d4863d`。远端大小、摘要已核对，非 draft，prerelease。
+- 编辑器编译及抓捕、躲猫猫、2v2、探索者对抗、变形五项回归通过；Windows Development BuildCookRun、ZIP 完整性、EXE、PAK、Steam DLL、字体和 NullRHI 启动加载地图后退出均通过。实际多人画面及手感仍需试玩；所有玩家应使用同一版本。打包使用版本库配置，本机私有配置已逐字节恢复。
+
+## 先前 Windows 测试 Release：v0.18.0
 
 - 已发布 [v0.18.0-hide-and-seek-rc1](https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.18.0-hide-and-seek-rc1)，源码标签指向 `ccd162b`。新增躲猫猫队伍收齐全部宝藏即时获胜，以及出局逃生者观战存活队友（Q 切换队友，Tab 切换跟随 / 自由视角）。保留 v0.17.0 的其他功能。
 - 附件 `TreasureSketch-v0.18.0-hide-and-seek-rc1-ccd162b-Windows.zip`，394482262 字节；SHA-256：`f67edd243658b894b5a0388e612db2f986d9b7fdb811ae840ac7d5c3aeee039e`。远端摘要和文件大小已核对，非 draft，prerelease。
@@ -22,7 +28,7 @@
 
 ## 躲猫猫模式
 
-### 抓捕范围（开发分支，尚未发布）
+### 抓捕范围（v0.19.0 已发布）
 
 - 默认抓捕距离从 2.6 米增加到 4.5 米，前方 160° 扇形，高差 ±3 米，出手等待从 0.35 秒缩短为 0.15 秒。
 - 抓捕者可看到对应范围的空间轮廓；就绪时黄色，出手时橙色，冷却时灰色。房主可输入 2–10 米范围，加减按钮每次调整 0.25 米，开局后锁定。
