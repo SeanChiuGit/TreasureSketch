@@ -10,6 +10,8 @@
 #include "TreasureOnlineSubsystem.h"
 #include "SketchRotation.h"
 #include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
+#include "HAL/IConsoleManager.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Engine/Engine.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -1477,8 +1479,56 @@ bool ATreasureSketchPlayerController::HasPropSelectionTarget() const
         && PropSelectionHighlight->GetStaticMesh();
 }
 
+void ATreasureSketchPlayerController::BeginPropSelectionView()
+{
+    APawn* SelectionPawn = GetPawn();
+    if (!SelectionPawn) return;
+    PropSelectionBoom = SelectionPawn->FindComponentByClass<USpringArmComponent>();
+    PropSelectionCamera = SelectionPawn->FindComponentByClass<UCameraComponent>();
+    if (auto* Boom = PropSelectionBoom.Get())
+    {
+        PropSelectionSavedArmLength = Boom->TargetArmLength;
+        PropSelectionSavedOffset = Boom->TargetOffset;
+        PropSelectionSavedSocketOffset = Boom->SocketOffset;
+        Boom->TargetArmLength = 0.f;
+        Boom->TargetOffset = FVector(0.f, 0.f, SelectionPawn->GetDefaultHalfHeight() * 0.8f);
+        Boom->SocketOffset = FVector::ZeroVector;
+    }
+    TArray<UPrimitiveComponent*> Parts;
+    SelectionPawn->GetComponents(Parts);
+    for (auto* Part : Parts)
+    {
+        if (Part->ComponentHasTag(TEXT("PropSelectionHighlight"))) continue;
+        PropSelectionOwnerVisibility.Add(Part, Part->bOwnerNoSee);
+        Part->SetOwnerNoSee(true);
+    }
+    if (auto* Depth = IConsoleManager::Get().FindConsoleVariable(TEXT("r.CustomDepth")))
+        Depth->Set(3, ECVF_SetByCode);
+    if (auto* Camera = PropSelectionCamera.Get())
+    {
+        auto* Outline = LoadObject<UMaterialInterface>(nullptr,
+            TEXT("/Game/UI/Materials/M_PropSelectionOutline.M_PropSelectionOutline"));
+        if (Outline) Camera->PostProcessSettings.AddBlendable(Outline, 1.f);
+    }
+}
+
 void ATreasureSketchPlayerController::CancelPropSelection()
 {
+    if (auto* Boom = PropSelectionBoom.Get())
+    {
+        Boom->TargetArmLength = PropSelectionSavedArmLength;
+        Boom->TargetOffset = PropSelectionSavedOffset;
+        Boom->SocketOffset = PropSelectionSavedSocketOffset;
+    }
+    for (const auto& Pair : PropSelectionOwnerVisibility)
+        if (auto* Part = Pair.Key.Get()) Part->SetOwnerNoSee(Pair.Value);
+    if (auto* Camera = PropSelectionCamera.Get())
+        if (auto* Outline = LoadObject<UMaterialInterface>(nullptr,
+            TEXT("/Game/UI/Materials/M_PropSelectionOutline.M_PropSelectionOutline")))
+            Camera->PostProcessSettings.RemoveBlendable(Outline);
+    PropSelectionOwnerVisibility.Empty();
+    PropSelectionBoom.Reset();
+    PropSelectionCamera.Reset();
     bPropSelectionMode = false;
     bPropButtonHeld = false;
     PropButtonHeldSeconds = 0.f;
@@ -1511,11 +1561,15 @@ void ATreasureSketchPlayerController::UpdatePropSelectionTarget(const FVector& O
         }
         return;
     }
-    if (!PropSelectionHighlight)
+    if (IsValid(PropSelectionHighlight) && PropSelectionHighlight->GetOwner() != GetPawn())
     {
-        // This unreplicated overlay colors only the selected instance, leaving
-        // the source prop and the other player's view unchanged.
-        PropSelectionHighlight = NewObject<UStaticMeshComponent>(this, TEXT("PropSelectionHighlight"));
+        PropSelectionHighlight->DestroyComponent();
+        PropSelectionHighlight = nullptr;
+    }
+    if (!IsValid(PropSelectionHighlight))
+    {
+        // Local depth proxy isolates the selected instance for the outline pass.
+        PropSelectionHighlight = NewObject<UStaticMeshComponent>(GetPawn() ? static_cast<UObject*>(GetPawn()) : static_cast<UObject*>(this), TEXT("PropSelectionHighlight"));
         PropSelectionHighlight->ComponentTags.Add(TEXT("PropSelectionHighlight"));
         PropSelectionHighlight->SetIsReplicated(false);
         PropSelectionHighlight->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -1523,16 +1577,14 @@ void ATreasureSketchPlayerController::UpdatePropSelectionTarget(const FVector& O
         PropSelectionHighlight->SetCastShadow(false);
         PropSelectionHighlight->SetMobility(EComponentMobility::Movable);
         PropSelectionHighlight->RegisterComponentWithWorld(GetWorld());
-        auto* Base = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
-        PropHighlightMaterial = UMaterialInstanceDynamic::Create(Base, this);
-        PropHighlightMaterial->SetVectorParameterValue(TEXT("Color"), FLinearColor(2.f, 1.4f, 0.05f));
+        // A depth-only proxy marks exactly this instance. Its visible source keeps its materials.
+        PropSelectionHighlight->SetRenderInMainPass(false);
+        PropSelectionHighlight->SetRenderInDepthPass(false);
+        PropSelectionHighlight->SetRenderCustomDepth(true);
+        PropSelectionHighlight->SetCustomDepthStencilValue(253);
     }
     PropSelectionHighlight->SetStaticMesh(Form.Mesh);
-    FTransform OverlayTransform = Target.Transform;
-    OverlayTransform.SetScale3D(OverlayTransform.GetScale3D() * 1.01f);
-    PropSelectionHighlight->SetWorldTransform(OverlayTransform);
-    for (int32 Slot = 0; Slot < PropSelectionHighlight->GetNumMaterials(); ++Slot)
-        PropSelectionHighlight->SetMaterial(Slot, PropHighlightMaterial);
+    PropSelectionHighlight->SetWorldTransform(Target.Transform);
     PropSelectionHighlight->SetVisibility(true);
     PropSelectionHighlight->SetHiddenInGame(false);
 }
@@ -1553,6 +1605,7 @@ void ATreasureSketchPlayerController::UpdatePropSelection(float DeltaSeconds)
         {
             bPropSelectionMode = true;
             bCameraMode = false;
+            BeginPropSelectionView();
         }
     }
     if (!bPropSelectionMode) return;

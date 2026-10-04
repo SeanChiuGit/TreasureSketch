@@ -4,6 +4,8 @@
 #include "Engine/World.h"
 #include "Engine/StaticMesh.h"
 #include "InputKeyEventArgs.h"
+#include "GameFramework/SpringArmComponent.h"
+#include "Camera/CameraComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -70,10 +72,18 @@ bool FPropDisguiseTest::RunTest(const FString& Parameters)
     PC->TransformIntoProp();
     PC->UpdatePropSelection(0.4f);
     TestTrue(TEXT("Holding left click opens the selection viewfinder"), PC->IsPropSelectionMode());
+    TestEqual(TEXT("Selection camera is at eye position rather than behind the body"), Character->CameraBoom->TargetArmLength, 0.f);
+    TestTrue(TEXT("The local human mesh cannot block the reticle"), Character->GetMesh()->bOwnerNoSee);
+    TestTrue(TEXT("The local disguise cannot block the reticle"), Character->DisguiseMesh->bOwnerNoSee);
+    TestTrue(TEXT("Selection has an outline post-process"), Character->FollowCamera->PostProcessSettings.WeightedBlendables.Array.Num() > 0);
     PC->UpdatePropSelection(0.8f);
     TestFalse(TEXT("Continuing the opening hold never confirms a disguise"), Character->IsPropDisguised());
     PC->UpdatePropSelectionTarget(FVector::ZeroVector, SecondLocation.GetSafeNormal());
     TestTrue(TEXT("Aimed instance is highlighted"), PC->HasPropSelectionTarget());
+    TestTrue(TEXT("Outline proxy has a visible actor owner"), !PC->PropSelectionHighlight->GetOwner()->IsHidden());
+    TestTrue(TEXT("Outline proxy writes custom depth"), PC->PropSelectionHighlight->bRenderCustomDepth);
+    TestEqual(TEXT("Selected instance has dedicated outline stencil"), PC->PropSelectionHighlight->CustomDepthStencilValue, 253);
+    TestFalse(TEXT("Outline proxy never covers the source object"), PC->PropSelectionHighlight->bRenderInMainPass);
     TestTrue(TEXT("Highlight matches only the aimed instance location"),
         PC->PropSelectionHighlight->GetComponentLocation().Equals(SecondLocation, 0.001f));
     PropDisguise::FTarget Picked;
@@ -95,6 +105,9 @@ bool FPropDisguiseTest::RunTest(const FString& Parameters)
     PC->TransformIntoProp();
     TestTrue(TEXT("The next click confirms the highlighted prop"), Character->IsPropDisguised());
     TestFalse(TEXT("Confirming closes the viewfinder"), PC->IsPropSelectionMode());
+    TestTrue(TEXT("Normal camera distance returns after confirming"), Character->CameraBoom->TargetArmLength >= 500.f);
+    TestFalse(TEXT("Normal local visibility returns after confirming"), Character->DisguiseMesh->bOwnerNoSee);
+    TestEqual(TEXT("Confirmation removes the outline post-process"), Character->FollowCamera->PostProcessSettings.WeightedBlendables.Array.Num(), 0);
     TestFalse(TEXT("Confirming removes the local highlight"), PC->PropSelectionHighlight->IsVisible());
     Character->SetPropDisguise(FPropDisguise());
     PC->TransformIntoProp();

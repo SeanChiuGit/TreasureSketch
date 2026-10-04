@@ -12,6 +12,9 @@ class ATreasureSketchCharacter;
 class APlayerState;
 class UStaticMeshComponent;
 class UMaterialInstanceDynamic;
+class UCameraComponent;
+class USpringArmComponent;
+class UPrimitiveComponent;
 
 enum class EScoutSpectatorView : uint8
 {
@@ -270,6 +273,13 @@ private:
     FVector PropSelectionDirection = FVector::ForwardVector;
     UPROPERTY(Transient) TObjectPtr<UStaticMeshComponent> PropSelectionHighlight;
     UPROPERTY(Transient) TObjectPtr<UMaterialInstanceDynamic> PropHighlightMaterial;
+    TWeakObjectPtr<USpringArmComponent> PropSelectionBoom;
+    TWeakObjectPtr<UCameraComponent> PropSelectionCamera;
+    TMap<TWeakObjectPtr<UPrimitiveComponent>, bool> PropSelectionOwnerVisibility;
+    float PropSelectionSavedArmLength = 0.f;
+    FVector PropSelectionSavedOffset = FVector::ZeroVector;
+    FVector PropSelectionSavedSocketOffset = FVector::ZeroVector;
+    void BeginPropSelectionView();
     bool CanSelectProp() const;
     void UpdatePropSelection(float DeltaSeconds);
     void UpdatePropSelectionTarget(const FVector& Origin, const FVector& Direction);

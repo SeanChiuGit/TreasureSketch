@@ -1,3 +1,10 @@
+## 变形选取镜头与真实轮廓（开发分支，尚未发布）
+
+- 长按进入选取时临时使用眼部视角，对本地自己隐藏人物及变形外观；确认、取消、换局恢复镜头与原可见性。
+- 目标使用独立 CustomDepth / Stencil 253 代理及后处理材质，沿真实模型外形显示约 3 像素亮黄色描边，内部原材质不变，仅标记当前实例。代理归属 Pawn，避免 Controller 隐藏导致描边不可见。
+- 材质生成脚本 `Scripts/create_prop_selection_outline.py`，资产 `Content/UI/Materials/M_PropSelectionOutline.uasset`。交互回归覆盖镜头、局部隐藏、目标代理、取消与确认恢复。
+- D3D11 / SM5 实际材质编译通过；离屏仙人掌对照图确认真实轮廓亮黄色描边，日志 `Saved/Logs/PropOutlineRenderCompare.log`。离屏场景较暗，完整游戏及联机仍需试玩。
+- 这些修改尚未打包到 v0.16.0 下载包。
 ## 修正峡谷物品来源（开发分支，尚未发布）
 
 - 原资源提交 `c846fb8` 来自朋友 `origin/codex/ui-readability-refresh`，以 `47627e0` 合入十个物品及材质、Blender／FBX 源文件。
