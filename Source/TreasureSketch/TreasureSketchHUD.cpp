@@ -278,9 +278,9 @@ void ATreasureSketchHUD::DrawHUD()
                 const TCHAR* ThemeName = Selected->Theme == EIslandTheme::MistForest ? TEXT("雾森林")
                     : Selected->Theme == EIslandTheme::JungleRuins ? TEXT("遗迹")
                     : Selected->Theme == EIslandTheme::CanyonGraybox ? TEXT("峡谷") : TEXT("海盗沙滩");
-                const TCHAR* ModeName = Selected->RoomMode == ETreasureRoomMode::HideAndSeek ? TEXT("躲猫猫") : Selected->RoomMode == ETreasureRoomMode::ExplorerRace ? TEXT("探索者对抗")
+                const TCHAR* ModeName = Selected->RoomMode == ETreasureRoomMode::TeamVersus ? TEXT("2v2 藏宝对战") : Selected->RoomMode == ETreasureRoomMode::HideAndSeek ? TEXT("躲猫猫") : Selected->RoomMode == ETreasureRoomMode::ExplorerRace ? TEXT("探索者对抗")
                     : Selected->RoomMode == ETreasureRoomMode::OneExplorer ? TEXT("多地图师") : TEXT("合作寻宝");
-                const TCHAR* RoleName = Selected->RoomMode == ETreasureRoomMode::HideAndSeek
+                const TCHAR* RoleName = Selected->RoomMode == ETreasureRoomMode::TeamVersus ? (Selected->LocalRole == ETreasurePlayerRole::Scout ? TEXT("绘图守护者") : TEXT("藏宝寻宝者")) : Selected->RoomMode == ETreasureRoomMode::HideAndSeek
                     ? (Selected->LocalRole == ETreasurePlayerRole::Scout ? TEXT("抓捕者") : TEXT("躲藏者")) : Selected->LocalRole == ETreasurePlayerRole::Scout ? TEXT("地图师") : TEXT("探索者");
                 const FString Outcome = Selected->RoomMode == ETreasureRoomMode::HideAndSeek
                     ? FString::Printf(TEXT("%s · 宝藏 %d / %d"), Selected->bHideCaught ? TEXT("抓捕者获胜：全部抓到")
@@ -510,21 +510,21 @@ void ATreasureSketchHUD::DrawHUD()
             DrawText(TEXT("画图规则 →"), BrightJade, DrawingRulesMin.X + 12.f,
                 DrawingRulesMin.Y + 7.f, BodyFont, 0.82f);
             AddHitBox(DrawingRulesMin, FVector2D(154.f, 34.f), TEXT("RoomDrawingRules"), true, 10);
-            const TCHAR* Modes[] = { TEXT("一名地图师，多名探索者"), TEXT("多名地图师，一名探索者"), TEXT("探索者对抗：开启后至少三人"), TEXT("躲猫猫：一抓多人（2–4人）") };
-            for (int32 ModeIndex = 0; ModeIndex < 4; ++ModeIndex)
+            const TCHAR* Modes[] = { TEXT("一名地图师，多名探索者"), TEXT("多名地图师，一名探索者"), TEXT("探索者对抗：开启后至少三人"), TEXT("躲猫猫：一抓多人（2–4人）"), TEXT("2v2 藏宝对战：四人") };
+            for (int32 ModeIndex = 0; ModeIndex < 5; ++ModeIndex)
             {
-                const float ModeY = PanelY + 204.f + ModeIndex * 36.f;
+                const float ModeY = PanelY + 204.f + ModeIndex * 29.f;
                 const bool bSelected = ModeIndex == 0 ? GS->RoomMode == ETreasureRoomMode::OneMapmaker
                     || GS->RoomMode == ETreasureRoomMode::ExplorerRace : ModeIndex == 1
                     ? GS->RoomMode == ETreasureRoomMode::OneExplorer : ModeIndex == 2
-                    ? GS->RoomMode == ETreasureRoomMode::ExplorerRace : GS->RoomMode == ETreasureRoomMode::HideAndSeek;
-                DrawRect(bSelected ? FLinearColor(0.62f, 0.37f, 0.13f) : FLinearColor(0.065f, 0.14f, 0.14f), ModeX + 14.f, ModeY, ModeW - 28.f, 32.f);
+                    ? GS->RoomMode == ETreasureRoomMode::ExplorerRace : ModeIndex == 3 ? GS->RoomMode == ETreasureRoomMode::HideAndSeek : GS->RoomMode == ETreasureRoomMode::TeamVersus;
+                DrawRect(bSelected ? FLinearColor(0.62f, 0.37f, 0.13f) : FLinearColor(0.065f, 0.14f, 0.14f), ModeX + 14.f, ModeY, ModeW - 28.f, 27.f);
                 const FString Label = ModeIndex == 2 ? FString::Printf(TEXT("%s %s"), bSelected ? TEXT("✓") : TEXT("○"), Modes[ModeIndex])
                     : FString(Modes[ModeIndex]) + (bSelected ? TEXT("（已选择）") : TEXT(""));
                 DrawText(Label, FLinearColor::White, ModeX + 28.f, ModeY + 6.f, BodyFont, 0.86f);
                 if (bHost)
-                    AddHitBox(FVector2D(ModeX + 14.f, ModeY), FVector2D(ModeW - 28.f, 32.f), ModeIndex == 0 ? TEXT("RoomModeCoop")
-                        : ModeIndex == 1 ? TEXT("RoomModeOneExplorer") : ModeIndex == 2 ? TEXT("RoomModeRaceToggle") : TEXT("RoomModeHideAndSeek"), true, 10);
+                    AddHitBox(FVector2D(ModeX + 14.f, ModeY), FVector2D(ModeW - 28.f, 27.f), ModeIndex == 0 ? TEXT("RoomModeCoop")
+                        : ModeIndex == 1 ? TEXT("RoomModeOneExplorer") : ModeIndex == 2 ? TEXT("RoomModeRaceToggle") : ModeIndex == 3 ? TEXT("RoomModeHideAndSeek") : TEXT("RoomModeTeamVersus"), true, 10);
             }
             DrawText(TEXT("难度与地图"), Parchment, ModeX + 18.f, PanelY + 360.f, BodyFont, 1.05f);
             DrawDifficultySettings(ModeX + 14.f, PanelY + 392.f, ModeW - 28.f, bHost);
@@ -547,11 +547,11 @@ void ATreasureSketchHUD::DrawHUD()
                     Hunters += Member->PlayerRole == ETreasurePlayerRole::Hunter;
                     const bool bOwnRow = Member == PS;
                     DrawText(FString::Printf(TEXT("%s%s — %s"), bOwnRow ? TEXT("你：") : TEXT(""), *Member->GetPlayerName(),
-                        GS->RoomMode == ETreasureRoomMode::HideAndSeek
+                        GS->RoomMode == ETreasureRoomMode::TeamVersus ? *FString::Printf(TEXT("%s队 %s"), Member->VersusTeam == 0 ? TEXT("红") : TEXT("蓝"), Member->PlayerRole == ETreasurePlayerRole::Scout ? TEXT("绘图守护者") : TEXT("藏宝寻宝者")) : GS->RoomMode == ETreasureRoomMode::HideAndSeek
                             ? (Member->PlayerRole == ETreasurePlayerRole::Scout ? TEXT("抓捕者") : TEXT("躲藏者"))
                             : Member->PlayerRole == ETreasurePlayerRole::Scout ? TEXT("地图师") : TEXT("探索者")),
                         FLinearColor::White, PanelX + 60.f, PlayerY, BodyFont, 0.96f);
-                    if (bOwnRow && Member->PlayerRole != SingleRole)
+                    if (bOwnRow && GS->RoomMode != ETreasureRoomMode::TeamVersus && Member->PlayerRole != SingleRole)
                     {
                         const float ClaimX = PanelX + PanelW - 206.f;
                         DrawRect(HitBoxesOver.Contains(TEXT("RoomClaimSingleRole")) ? FLinearColor(0.23f, 0.49f, 0.40f)
@@ -562,7 +562,7 @@ void ATreasureSketchHUD::DrawHUD()
                     }
                     PlayerY += 42.f;
                 }
-            DrawText(GS->RoomMode == ETreasureRoomMode::HideAndSeek ? TEXT("躲猫猫房间") : TEXT("合作房间"), FLinearColor::White, PanelX + 48.f, PanelY + 150.f,
+            DrawText(GS->RoomMode == ETreasureRoomMode::TeamVersus ? TEXT("2v2 藏宝对战房间") : GS->RoomMode == ETreasureRoomMode::HideAndSeek ? TEXT("躲猫猫房间") : TEXT("合作房间"), FLinearColor::White, PanelX + 48.f, PanelY + 150.f,
                 DisplayFont, 1.2f);
             DrawText(FString::Printf(TEXT("玩家  %d / %d"), GS->PlayerArray.Num(), ATreasureSketchGameState::MaxRoomPlayers),
                 FLinearColor(0.86f, 0.92f, 0.90f), PanelX + 48.f, PanelY + 215.f,
@@ -598,8 +598,8 @@ void ATreasureSketchHUD::DrawHUD()
                 BodyFont, 1.05f);
             if (GetNetMode() == NM_ListenServer)
             {
-                const int32 ExpectedScouts = GS->RoomMode == ETreasureRoomMode::OneExplorer ? GS->PlayerArray.Num() - 1 : 1;
-                const bool bCanStart = GS->PlayerArray.Num() >= (GS->RoomMode == ETreasureRoomMode::ExplorerRace ? 3 : 2)
+                const int32 ExpectedScouts = GS->RoomMode == ETreasureRoomMode::TeamVersus ? 2 : GS->RoomMode == ETreasureRoomMode::OneExplorer ? GS->PlayerArray.Num() - 1 : 1;
+                const bool bCanStart = GS->PlayerArray.Num() >= (GS->RoomMode == ETreasureRoomMode::TeamVersus ? 4 : GS->RoomMode == ETreasureRoomMode::ExplorerRace ? 3 : 2)
                     && GS->PlayerArray.Num() <= ATreasureSketchGameState::MaxRoomPlayers
                     && Scouts == ExpectedScouts
                     && Hunters == GS->PlayerArray.Num() - ExpectedScouts;
@@ -802,7 +802,11 @@ void ATreasureSketchHUD::DrawHUD()
         DrawRect(FLinearColor(0.91f, 0.68f, 0.27f), CenterX - PanelWidth * 0.5f,
             CenterY - PanelHeight * 0.5f, PanelWidth, 6.f);
 
-        const FString Title = bHide ? (GS->bHideCaught ? TEXT("抓捕者获胜！")
+        const bool bVersus = GS->RoomMode == ETreasureRoomMode::TeamVersus;
+        const FString Title = bVersus ? (bWon && GS->VersusWinningTeam >= 0
+            ? FString::Printf(TEXT("%s队率先找到宝藏！"), GS->VersusWinningTeam == 0 ? TEXT("红") : TEXT("蓝"))
+            : TEXT("双方都未找到宝藏"))
+            : bHide ? (GS->bHideCaught ? TEXT("抓捕者获胜！")
             : GS->HideTreasureCount < GS->GetHideDrawThreshold() ? TEXT("抓捕者获胜！")
             : bWon ? TEXT("逃生者队伍获胜！") : TEXT("平局！")) : bRace ? (bWon ? FString::Printf(TEXT("本局胜者：%s"), *GS->RaceRoundWinner)
             : TEXT("本局无人找到宝藏")) : bWon ? TEXT("合作成功！") : TEXT("时间到！");
@@ -813,7 +817,11 @@ void ATreasureSketchHUD::DrawHUD()
             CenterX - TextWidth * 0.5f,
             CenterY - 185.f, DisplayFont, TitleScale);
 
-        const FString Hint = bHide ? FString::Printf(TEXT("%s  ·  队伍获得 %d / %d 个宝藏"),
+        const FString Hint = bVersus ? (bWon
+            ? (GS->VersusWinningTeam == PS->VersusTeam ? TEXT("你们队获胜！藏宝者找到了对方宝藏。")
+                : TEXT("对方队伍先找到了宝藏。"))
+            : TEXT("寻宝时间结束，双方都未挖到对方宝藏。"))
+            : bHide ? FString::Printf(TEXT("%s  ·  队伍获得 %d / %d 个宝藏"),
             GS->bHideCaught ? TEXT("逃生者全部被抓")
                 : GS->HideTreasures.Num() == 3 && GS->HideTreasureCount == 3 ? TEXT("三个宝藏全部收集！") : TEXT("时间结束"),
             GS->HideTreasureCount, GS->HideTreasures.Num()) : bRace ? FString::Printf(TEXT("第 %d / %d 局  |  找到越快分越高；挖错按接近程度计分"),
@@ -899,7 +907,7 @@ void ATreasureSketchHUD::DrawHUD()
             const bool bSwapRolesHovered = HitBoxesOver.Contains(SwapRolesButtonName);
             DrawRect(bSwapRolesHovered ? FLinearColor(0.30f, 0.57f, 0.82f) : FLinearColor(0.20f, 0.42f, 0.67f),
                 SwapRolesButtonMin.X, SwapRolesButtonMin.Y, ButtonWidth, ButtonHeight);
-            const FString SwapRolesText = bHide ? (PS->PlayerRole == ETreasurePlayerRole::Scout
+            const FString SwapRolesText = bVersus ? TEXT("双方交换藏宝与绘图身份") : bHide ? (PS->PlayerRole == ETreasurePlayerRole::Scout
                 ? TEXT("我来躲，开始下一局") : TEXT("我来抓，开始下一局")) : PS->PlayerRole == ETreasurePlayerRole::Scout
                 ? TEXT("我来探索，开始下一局") : TEXT("我来画图，开始下一局");
             GetTextSize(SwapRolesText, TextWidth, TextHeight, DisplayFont, 1.f);
@@ -945,14 +953,21 @@ void ATreasureSketchHUD::DrawHUD()
 
     if (GS->RoomMode != ETreasureRoomMode::HideAndSeek && !PC->IsMapOpen() && !PC->IsHunterWaiting())
         for (APlayerState* State : GS->PlayerArray)
-            if (const ATreasureSketchPlayerState* Other = Cast<ATreasureSketchPlayerState>(State); Other && Other != PS)
+            if (const ATreasureSketchPlayerState* Other = Cast<ATreasureSketchPlayerState>(State);
+                Other && Other != PS && !(GS->RoomMode == ETreasureRoomMode::TeamVersus
+                    && GS->bGameStarted && Other->VersusTeam == PS->VersusTeam))
                 if (const ATreasureSketchCharacter* Character = Cast<ATreasureSketchCharacter>(Other->GetPawn());
                     Character && !Character->IsHidden())
                 {
                     FVector2D Screen;
                     if (PC->ProjectWorldLocationToScreen(Character->GetActorLocation() + FVector(0.f, 0.f, 135.f), Screen))
                     {
-                        const FString Name = Other->GetPlayerName()
+                        const FString Name = (GS->RoomMode == ETreasureRoomMode::TeamVersus
+                            ? (Other->VersusTeam == 0 ? TEXT("红队 · ") : TEXT("蓝队 · ")) : TEXT(""))
+                            + Other->GetPlayerName()
+                            + (GS->RoomMode == ETreasureRoomMode::TeamVersus
+                                ? (Other->PlayerRole == ETreasurePlayerRole::Hunter ? TEXT(" · 藏宝寻宝者")
+                                    : TEXT(" · 绘图守护者")) : TEXT(""))
                             + (Other->bDigging ? TEXT(" · 挖掘中")
                                 : Character->IsShoveWindingUp() ? TEXT(" · 正在推人") : TEXT(""));
                         float NameW = 0.f, NameH = 0.f;
@@ -965,19 +980,28 @@ void ATreasureSketchHUD::DrawHUD()
                 }
 
     const bool bScout = PS->PlayerRole == ETreasurePlayerRole::Scout;
+    const bool bVersus = GS->RoomMode == ETreasureRoomMode::TeamVersus;
     int32 Mapmakers = 0, Submitted = 0;
     for (APlayerState* State : GS->PlayerArray)
         if (const ATreasureSketchPlayerState* Member = Cast<ATreasureSketchPlayerState>(State))
             if (Member->PlayerRole == ETreasurePlayerRole::Scout)
             { ++Mapmakers; Submitted += Member->bSketchSubmitted; }
-    const FString RoleLabel = FString::Printf(TEXT("%s / %s"),
-        GS->RoomMode == ETreasureRoomMode::HideAndSeek ? (bScout ? TEXT("抓捕者") : TEXT("躲藏者"))
-            : bScout ? TEXT("侦察者") : TEXT("寻宝者"),
+    const FString RoleLabel = FString::Printf(TEXT("%s%s / %s"),
+        bVersus ? (PS->VersusTeam == 0 ? TEXT("红队 ") : TEXT("蓝队 ")) : TEXT(""),
+        bVersus ? (bScout ? TEXT("绘图守护者") : TEXT("藏宝寻宝者"))
+            : GS->RoomMode == ETreasureRoomMode::HideAndSeek ? (bScout ? TEXT("抓捕者") : TEXT("躲藏者")) : bScout ? TEXT("侦察者") : TEXT("寻宝者"),
         GetNetMode() == NM_ListenServer ? TEXT("主机") : TEXT("已连接客户端"));
     const FString Help = GS->RoomMode == ETreasureRoomMode::HideAndSeek
         ? (GS->bReviewingRound ? TEXT("WASD 逛岛  ·  Esc 返回结算")
             : bScout ? TEXT("鼠标左键 / G 抓人  ·  出手冷却 5 秒  ·  Esc 菜单")
-            : TEXT("按住左键选物 · 松开变形 · Q 还原 · 长按 E 3 秒挖宝")) : GS->bReviewingRound ? TEXT("WASD 逛岛  ·  M 查看地图  ·  T 宝箱标记  ·  Esc 返回结算")
+            : TEXT("按住左键选物 · 松开变形 · Q 还原 · 长按 E 3 秒挖宝"))         : bVersus && GS->Phase == ETreasureRoundPhase::ScoutDrawing
+        ? (bScout ? TEXT("跟踪对方藏宝者并画图：M 画图 | Enter 交图；你的队友不可见")
+            : PS->bVersusTreasurePlaced ? TEXT("宝藏已埋：等待双方交图；留意对方绘图者")
+            : TEXT("寻找陆地上的藏宝点，按 E 埋藏宝藏；对方地图师正在跟踪你"))
+        : bVersus && GS->Phase == ETreasureRoundPhase::HunterSearching
+        ? (bScout ? TEXT("守住本队宝藏：鼠标左键或 G 推开对方寻宝者")
+            : TEXT("按 M 查看队友的图 | 长按 E 挖对方宝藏 | 躲避对方守护者"))
+        : GS->bReviewingRound ? TEXT("WASD 逛岛  ·  M 查看地图  ·  T 宝箱标记  ·  Esc 返回结算")
         : bScout && GS->Phase == ETreasureRoundPhase::ScoutDrawing && PC->IsDrawingOverheadView()
         ? (PC->HasSubmittedSketch() ? TEXT("WASD 飞行  ·  Space / Ctrl 升降  ·  Tab 返回地面")
             : TEXT("WASD 飞行  ·  Space / Ctrl 升降  ·  Tab 返回地面  ·  M 画图"))
@@ -1061,7 +1085,7 @@ void ATreasureSketchHUD::DrawHUD()
             PC->IsSpectatorTreasureVisible() ? TEXT("显示") : TEXT("隐藏")),
             FLinearColor(0.24f, 0.98f, 0.75f), 35.f, ContextY + 30.f, BodyFont, 0.95f);
     }
-    if (!bScout && GS->Phase == ETreasureRoundPhase::HunterSearching)
+    if ((!bScout || bVersus) && GS->Phase == ETreasureRoundPhase::HunterSearching)
     {
         const int32 CooldownRemaining = FMath::CeilToInt(PS->GetDigCooldownRemaining(
             GS->RoundSerial, GS->GetServerWorldTimeSeconds()));
@@ -1077,7 +1101,7 @@ void ATreasureSketchHUD::DrawHUD()
         DrawReadableText(DigStatus,
             CooldownRemaining > 0 ? FLinearColor(1.f, 0.72f, 0.28f) : FLinearColor(0.42f, 1.f, 0.72f),
             32.f, DigPanelY + 7.f, BodyFont, 0.96f, false);
-        if (GS->RoomMode == ETreasureRoomMode::ExplorerRace)
+        if (GS->RoomMode == ETreasureRoomMode::ExplorerRace || (bVersus && bScout))
         {
             const int32 ShoveCooldown = FMath::CeilToInt(FMath::Max(0.f,
                 PS->NextShoveServerTime - GS->GetServerWorldTimeSeconds()));

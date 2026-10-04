@@ -12,6 +12,8 @@ void ATreasureSketchPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProp
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
     DOREPLIFETIME(ATreasureSketchPlayerState, PlayerRole);
     DOREPLIFETIME(ATreasureSketchPlayerState, bHideEliminated);
+    DOREPLIFETIME(ATreasureSketchPlayerState, VersusTeam);
+    DOREPLIFETIME(ATreasureSketchPlayerState, bVersusTreasurePlaced);
     DOREPLIFETIME(ATreasureSketchPlayerState, bSketchSubmitted);
     DOREPLIFETIME(ATreasureSketchPlayerState, DigCooldownRoundSerial);
     DOREPLIFETIME(ATreasureSketchPlayerState, NextDigServerTime);

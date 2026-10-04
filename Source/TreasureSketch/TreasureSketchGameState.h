@@ -20,8 +20,8 @@ enum class ETreasureRoomMode : uint8
     OneMapmaker,
     OneExplorer,
     ExplorerRace,
-    TeamVersus,
-    HideAndSeek
+    HideAndSeek,
+    TeamVersus
 };
 
 UCLASS()
@@ -79,6 +79,9 @@ public:
 
     UPROPERTY(Replicated, BlueprintReadOnly)
     FString RaceRoundWinner;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    int32 VersusWinningTeam = -1;
 
     UPROPERTY(Replicated, BlueprintReadOnly)
     float ResultServerTime = 0.f;

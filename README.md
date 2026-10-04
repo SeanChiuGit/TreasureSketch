@@ -6,6 +6,14 @@
 - 源码及版本标签提交 `058770e`，分支 `feature/hide-and-seek`。附件 `TreasureSketch-v0.16.0-hide-and-seek-rc1-058770e-Windows.zip`，394137445 字节；SHA-256：`f57d79d7fe5dc74d72395de78b798d9ce00de3233b32da83ccc003baa0a651ff`。GitHub 大小与摘要已核对，非 draft，prerelease。
 - Windows Development BuildCookRun、ZIP 完整性、EXE、PAK、Steam DLL、字体检查通过；NullRHI 启动加载游戏地图后正常退出。相关玩法自动回归通过；实际画面及多人 Steam 联机仍需试玩。所有玩家需使用同一版本。
 
+## 2v2 藏宝对战（开发分支，尚未发布）
+
+- 房间选择“四人 2v2 藏宝对战”，红蓝两队各一名藏宝寻宝者、一名绘图守护者。
+- 第一阶段藏宝者按 E 埋藏本队宝藏，绘图者跟踪对方藏宝者画图；双方藏宝、交图完成后进入寻宝。
+- 第二阶段藏宝者使用本队绘图者的图寻找对方宝藏；绘图守护者用左键或 G 推开对方寻宝者，先找到对方宝藏的队伍获胜。
+- 对局中队友模型、姓名互不可见且互不阻挡；结算可重玩、双方交换职责或复盘。
+- 合并自 `codex/team-versus` 的 `fe98fbe`，保留现有躲猫猫、变形选取和峡谷资源。
+
 ## 躲猫猫模式
 
 ### 峡谷资源

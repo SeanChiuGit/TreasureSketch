@@ -24,6 +24,13 @@ public:
     UPROPERTY(Replicated, BlueprintReadOnly)
     ETreasurePlayerRole PlayerRole = ETreasurePlayerRole::Unassigned;
 
+    // Team 0/1 in the four-player versus mode; -1 in other modes.
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    int32 VersusTeam = -1;
+
+    UPROPERTY(Replicated, BlueprintReadOnly)
+    bool bVersusTreasurePlaced = false;
+
     UPROPERTY(Replicated, BlueprintReadOnly)
     bool bHideEliminated = false;
 
