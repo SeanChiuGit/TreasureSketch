@@ -1,6 +1,6 @@
 import unreal
 from pathlib import Path
-root=Path(r'C:\Users\seanc\OneDrive\文档\ChatGPT\游戏研究\TreasureSketch')
+root=Path(__file__).resolve().parents[1]
 names=['SM_SupplyCrate','SM_WaterBarrel','SM_MineCart','SM_Cactus','SM_OreCluster','SM_RockCluster','SM_ThreeStoneStack','SM_Campfire','SM_FallenLog','SM_SkullIdol']
 for name in names:
     task=unreal.AssetImportTask()
@@ -18,3 +18,6 @@ for name in names:
     unreal.log('CANYON_PROP_VERIFIED '+name)
 unreal.EditorAssetLibrary.save_directory('/Game/IslandAssets/Canyon')
 unreal.log('CANYON_THEME_IMPORT_COMPLETE 10')
+
+import runpy
+runpy.run_path(str(root / "Scripts" / "prepare_canyon_prop_materials.py"))

@@ -1435,11 +1435,15 @@ void AProceduralIsland::BuildCanyonGrayboxTerrain()
 void AProceduralIsland::BuildCanyonAssets()
 {
     if (!CanyonLayout.Validate()) return;
-    auto MakeInstances = [&](const FString& Name, FName Part)
+    const TCHAR* Names[] = { TEXT("SM_SupplyCrate"), TEXT("SM_WaterBarrel"), TEXT("SM_MineCart"),
+        TEXT("SM_Cactus"), TEXT("SM_OreCluster"), TEXT("SM_RockCluster"), TEXT("SM_ThreeStoneStack"),
+        TEXT("SM_Campfire"), TEXT("SM_FallenLog"), TEXT("SM_SkullIdol") };
+    TArray<UHierarchicalInstancedStaticMeshComponent*> Props;
+    for (const TCHAR* Name : Names)
     {
-        const FString Path = FString::Printf(TEXT("/Game/IslandAssets/CanyonModules/%s/StaticMeshes/%s.%s"), *Name, *Name, *Name);
+        const FString Path = FString::Printf(TEXT("/Game/IslandAssets/Canyon/Props/%s/%s.%s"), Name, Name, Name);
         auto* Mesh = LoadObject<UStaticMesh>(nullptr, *Path);
-        if (!Mesh) return static_cast<UHierarchicalInstancedStaticMeshComponent*>(nullptr);
+        if (!Mesh) continue;
         auto* Component = NewObject<UHierarchicalInstancedStaticMeshComponent>(this);
         Component->SetupAttachment(RootComponent);
         Component->SetStaticMesh(Mesh);
@@ -1447,82 +1451,51 @@ void AProceduralIsland::BuildCanyonAssets()
         Component->SetGenerateOverlapEvents(false);
         Component->SetCanEverAffectNavigation(false);
         Component->ComponentTags.Add(TEXT("CanyonAsset"));
-        Component->ComponentTags.Add(Part);
+        Component->ComponentTags.Add(TEXT("CanyonProp"));
         Component->RegisterComponent();
         CanyonAssetInstances.Add(Component);
-        return Component;
-    };
-    UHierarchicalInstancedStaticMeshComponent* Modules[3][3] = {};
-    const TCHAR* Variants[] = { TEXT("Straight_A"), TEXT("Straight_B_Wide"), TEXT("Straight_C_Narrow") };
-    const TCHAR* Parts[] = { TEXT("Floor"), TEXT("Wall_L"), TEXT("Wall_R") };
-    for (int32 Variant = 0; Variant < 3; ++Variant)
-        for (int32 Part = 0; Part < 3; ++Part)
-            Modules[Variant][Part] = MakeInstances(FString::Printf(TEXT("SM_Canyon%s_%s"), Parts[Part], Variants[Variant]), FName(Parts[Part]));
-    UHierarchicalInstancedStaticMeshComponent* Talus[3] = {};
-    for (int32 Index = 0; Index < 3; ++Index)
-        Talus[Index] = MakeInstances(FString::Printf(TEXT("SM_CanyonTalus_%02d"), Index + 1), TEXT("Talus"));
-
+        Props.Add(Component);
+    }
+    if (Props.IsEmpty()) return;
     FRandomStream Stream(Seed ^ 0x4c178);
-    const float S = CanyonLayout.LengthScale;
-    const float WallScale = 4400.f * S / 9400.f;
-    const float JunctionGap = FMath::Max(140.f, 280.f * S);
-    auto NearMouth = [&](const FVector& Point, float Extra)
-    {
-        for (const int32 Node : CanyonLayout.AllCaveMouthNodes)
-            if (FVector::Dist2D(Point, CanyonLayout.Nodes[Node].Position) < 550.f + Extra) return true;
-        return false;
-    };
+    TArray<FVector> Placed;
+    int32 NextProp = Stream.RandRange(0, Props.Num() - 1);
     for (const auto& Edge : CanyonLayout.Edges)
     {
         if (Edge.bCave || Edge.Layer != ECanyonRouteLayer::Lower) continue;
         const FVector A = CanyonLayout.Nodes[Edge.A].Position, B = CanyonLayout.Nodes[Edge.B].Position;
         if (CanyonLayout.Nodes[Edge.A].bCaveInterior || CanyonLayout.Nodes[Edge.B].bCaveInterior) continue;
-        const float Length = FVector::Dist2D(A, B), Span = Length - 2.f * JunctionGap;
-        if (Span < 200.f) continue;
+        const float Length = FVector::Dist2D(A, B);
         const FVector Forward = (B - A).GetSafeNormal2D();
         const FVector Right(-Forward.Y, Forward.X, 0.f);
-        const FRotator Rotation = Forward.Rotation();
-        const int32 Tiles = FMath::Max(1, FMath::CeilToInt(Span / (2400.f * WallScale)));
-        const float TileLength = Span / Tiles;
-        for (int32 Tile = 0; Tile < Tiles; ++Tile)
-        {
-            const FVector Start = A + Forward * (JunctionGap + Tile * TileLength);
-            const FVector Center = Start + Forward * (TileLength * 0.5f);
-            if (NearMouth(Center, TileLength * 0.5f)) continue;
-            const int32 Variant = Stream.RandRange(0, 2);
-            const float FloorZ = CanyonLayout.SurfaceHeightAt(Center.X, Center.Y);
-            if (auto* Floor = Modules[Variant][0])
-                Floor->AddInstance(FTransform(Rotation, FVector(Start.X, Start.Y, FloorZ + 2.f),
-                    FVector(TileLength / 2400.f, Edge.HalfWidth / 970.f, WallScale)));
-            for (int32 Part = 1; Part <= 2; ++Part)
+        // Keep authored sizes where possible; shrink larger props to fit narrow routes.
+        for (float Along = 160.f; Along < Length - 160.f; Along += 280.f)
+            for (const float Side : { -1.f, 1.f })
             {
-                auto* Wall = Modules[Variant][Part];
-                if (!Wall) continue;
-                const float Side = Part == 1 ? -1.f : 1.f;
-                const FBox Box = Wall->GetStaticMesh()->GetBoundingBox();
-                const float InnerY = Part == 1 ? Box.Max.Y : Box.Min.Y;
-                const float Shift = Side * (Edge.HalfWidth + 100.f) - InnerY * WallScale;
-                const FVector Foot = Center + Right * (Side * (Edge.HalfWidth + 100.f));
-                // Keep skins off other routes and their connecting junctions.
-                if (CanyonLayout.SurfaceHeightAt(Foot.X, Foot.Y) < FloorZ + 100.f) continue;
-                const FVector Position = Start + Right * Shift;
-                Wall->AddInstance(FTransform(Rotation, FVector(Position.X, Position.Y, FloorZ),
-                    FVector(TileLength / 2400.f, WallScale, WallScale)));
+                auto* Prop = Props[NextProp % Props.Num()];
+                const FBox Bounds = Prop->GetStaticMesh()->GetBoundingBox();
+                const float NativeRadius = FMath::Max(Bounds.GetSize().X, Bounds.GetSize().Y) * 0.5f;
+                const float Scale = FMath::Min(Stream.FRandRange(0.85f, 1.1f), Edge.HalfWidth * 0.4f / FMath::Max(1.f, NativeRadius));
+                const float Radius = NativeRadius * Scale;
+                const FVector Point = A + Forward * Along + Right * (Side * (Edge.HalfWidth * 0.76f - Radius));
+                if (SlopeAt(Point.X, Point.Y) > 0.3f) continue;
+                bool bClear = true;
+                for (const int32 Mouth : CanyonLayout.AllCaveMouthNodes)
+                    if (FVector::Dist2D(Point, CanyonLayout.Nodes[Mouth].Position) < 220.f + Radius) bClear = false;
+                for (const FVector& Previous : Placed)
+                    if (FVector::Dist2D(Point, Previous) < 220.f + Radius) bClear = false;
+                if (!bClear) continue;
+                const float Z = CanyonLayout.SurfaceHeightAt(Point.X, Point.Y);
+                // Bound the height variation under the footprint to avoid floating on banks.
+                for (const FVector& Offset : { Right * Radius, -Right * Radius, Forward * Radius, -Forward * Radius })
+                    if (FMath::Abs(CanyonLayout.SurfaceHeightAt(Point.X + Offset.X, Point.Y + Offset.Y) - Z) > 35.f) bClear = false;
+                if (!bClear) continue;
+                const FRotator Rotation(0.f, Stream.FRandRange(0.f, 360.f), 0.f);
+                const FVector CenterOffset = Rotation.RotateVector(FVector(Bounds.GetCenter().X, Bounds.GetCenter().Y, 0.f) * Scale);
+                Prop->AddInstance(FTransform(Rotation, FVector(Point.X, Point.Y, Z - Bounds.Min.Z * Scale) - CenterOffset, FVector(Scale)));
+                Placed.Add(Point);
+                ++NextProp;
             }
-        }
-        for (const float Side : { -1.f, 1.f })
-        {
-            const FVector Point = (A + B) * 0.5f + Right * (Side * (Edge.HalfWidth + 1200.f * S));
-            if (NearMouth(Point, 250.f) || SlopeAt(Point.X, Point.Y) > 0.42f) continue;
-            const float GroundZ = CanyonLayout.SurfaceHeightAt(Point.X, Point.Y);
-            if (GroundZ < CanyonLayout.SurfaceHeightAt((A.X + B.X) * 0.5f, (A.Y + B.Y) * 0.5f) + 1000.f * S) continue;
-            auto* Rock = Talus[Stream.RandRange(0, 2)];
-            if (!Rock) continue;
-            const float Scale = S * Stream.FRandRange(0.6f, 1.f);
-            const FBox Box = Rock->GetStaticMesh()->GetBoundingBox();
-            Rock->AddInstance(FTransform(FRotator(0.f, Stream.FRandRange(0.f, 360.f), 0.f),
-                FVector(Point.X, Point.Y, GroundZ - Box.Min.Z * Scale - Box.GetSize().Z * Scale * 0.15f), FVector(Scale)));
-        }
     }
 }
 

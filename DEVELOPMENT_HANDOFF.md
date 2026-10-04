@@ -1,3 +1,12 @@
+## 修正峡谷物品来源（开发分支，尚未发布）
+
+- 原资源提交 `c846fb8` 来自朋友 `origin/codex/ui-readability-refresh`，以 `47627e0` 合入十个物品及材质、Blender／FBX 源文件。
+- `BuildCanyonAssets` 改用 `/Game/IslandAssets/Canyon/Props` 中的十个物品，不再生成此前误选的 CanyonModules 谷底、岩壁和 Talus。旧资源文件仍保留。
+- 室外下层路线两侧确定性摆放，保留原材质，小物品接近原始尺寸、大物品按路宽缩小，按包围盒贴地并检查坡度及占地高度变化，跳过洞口及邻近实例。没有额外碰撞，继续支持无碰撞实例的变形选取。重建及主题切换清理原实例。
+- `Scripts/prepare_canyon_prop_materials.py` 为 29 个导入材质启用实例化渲染；导入脚本按当前项目目录定位源文件，并调用材质准备。
+- 编辑器编译通过，0.5／1／2 倍生成、资源来源、材质、重建和主题清理、变形及多人宝藏三项最终回归全部通过（`Saved/Logs/CanyonApprovedPropsFinalRegression.log`）。种子 1050、1 倍地图实际生成全部十种物品，共十一实例（`Saved/Logs/CanyonApprovedPropsFinalCounts.log`）。
+- v0.16.0 下载包仍包含替换前的资源，修正尚未重新打包发布。实际画面和多人联机仍需试玩。
+
 ## 最新 Windows 测试 Release：v0.16.0
 
 - 已发布 [v0.16.0-hide-and-seek-rc1](https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.16.0-hide-and-seek-rc1)。包含四人躲猫猫、默认 2 倍速度、开局 10 秒看图、人数对应宝藏和队伍结算、两步变形、峡谷实际资源及单名逃生者三宝即时胜利。
