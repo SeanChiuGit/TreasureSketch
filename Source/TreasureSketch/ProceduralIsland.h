@@ -64,6 +64,7 @@ public:
     bool IsWeatherFogEnabled() const;
 
 private:
+    bool FindCanyonCaveFloor(const FVector& RoutePoint, FVector& Floor) const;
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UProceduralMeshComponent> IslandMesh;
 

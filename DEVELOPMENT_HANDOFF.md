@@ -1,3 +1,14 @@
+## 峡谷简化与洞内物品 / 宝藏（2026-10-05，尚未打包发布）
+
+- `ConfigureThemeParameters`：峡谷固定 81×81 / 78.375 cm × sqrt(MapScale)，边长仍为 6270 cm × sqrt(MapScale)。地形法线用相邻已缓存高度计算，省去每顶点四次完整路线采样。
+- 普通洞穴 XY 随地表网格、Z 为 90 cm；存在 ThreeMouthHall 的地图仅洞穴保留原 XY / Z 精度，避开连接处地板回归。移除地表节点大范围补光，统一洞内灯预算 ≤8，间距 ≥900 cm、半径 1400 cm、无阴影。
+- `FindCanyonCaveFloor` 按路线预计地板高度短距离向下射线，要求洞穴网格、可站立坡度，再检查屋顶和人物胶囊空间。宝藏与物品共用该验证，不从山顶向下定位。洞内物品原材质、尺寸适配通道并限制高度 180 cm；地表与地下使用独立实例间距。
+- 多宝藏候选加入每 180 cm 的洞道样本；先留每名逃生者一个洞内名额，每 86 次尝试逐步减到至少一个，保持原 950 cm 水平间距及无重复、总数量 3 / 6 / 9。其他主题的放置规则保持原逻辑。
+- 编辑器编译成功。`Canyon.GenerationPerformance`、`Canyon.MergedAssetsAndScale`、`RoomSettings.HideTreasureScaling`、`RoomSettings.HideAndSeek` 通过，日志 `Saved/Logs/CanyonSimplifyVerified-*.log`。新增洞内物品、地板 / 屋顶、各地图大小 / 人数洞内宝藏及八灯预算验证。
+- 最终性能（同机 NullRHI，种子 1050 / 18232）：0.099148 / 0.098404 秒，123864 / 147513 顶点，41440 / 48421 三角形。基线 1.671622 / 1.857477 秒，553684 / 652115 三角形，日志 `CanyonBeforeSimplify.log`；生成约快 17–19 倍，三角形约减少 92.5–92.6%。三岔洞地图保留高精度，因此不能把该降幅推广到所有种子。尚未验证实际帧率和灯光画面。
+- `Canyon.RandomCavePool` 仍失败，旧版基线 `CanyonBaseline-RandomCavePool.log` 也失败。对比路段：1006 branch0/segment1、branch1/segment2；1030 branch0/segment1、branch1/segment1 均为原有问题；无新失败路段，1153 branch2/segment1 原有失败现已通过。测试里旧版长路 / 高差断言也未随 0.25 缩图更新。未修改这些失败测试掩盖问题。
+- 本次没有修改或打包本机私有 `Config/DefaultEngine.ini`，最新可下载包仍为 v0.19.0。
+
 ## 最新 Windows 测试 Release：v0.19.0
 
 - 已发布 [v0.19.0-hide-and-seek-rc1](https://github.com/SeanChiuGit/TreasureSketch/releases/tag/v0.19.0-hide-and-seek-rc1)，源码标签指向 `e642a2f`。抓捕默认范围 4.5 米、前方 160°、高差 ±3 米、出手等待 0.15 秒，增加范围轮廓及房间 2–10 米设置（每次微调 0.25 米）；修正自由观战鼠标上下反向。包含 v0.18.0 的其他功能。

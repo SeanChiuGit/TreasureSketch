@@ -63,6 +63,40 @@ bool FCanyonHideTreasureTest::RunTest(const FString& Parameters)
             return Props;
         };
         const int32 FirstCount = CountAssets();
+        int32 UndergroundProps = 0;
+        TArray<UHierarchicalInstancedStaticMeshComponent*> PropComponents;
+        Island->GetComponents(PropComponents);
+        for (auto* Component : PropComponents)
+            if (Component->ComponentHasTag(TEXT("CanyonAsset")))
+                for (int32 Index = 0; Index < Component->GetInstanceCount(); ++Index)
+                {
+                    FTransform Transform;
+                    Component->GetInstanceTransform(Index, Transform);
+                    const FVector P = Transform.GetLocation();
+                    if (P.Z < Island->GetCanyonLayout().SurfaceHeightAt(P.X, P.Y) - 200.f)
+                        ++UndergroundProps;
+                }
+        TestTrue(TEXT("Approved props also populate covered cave floors"), UndergroundProps >= 1);
+        for (const int32 Count : { 3, 6, 9 })
+        {
+            FRandomStream Stream(1050);
+            const auto Treasures = Island->FindSeparatedTreasurePoints(Stream, Count, 950.f);
+            TestEqual(TEXT("Surface and cave placement fills the party treasure quota"), Treasures.Num(), Count);
+            int32 Underground = 0;
+            for (const FVector& P : Treasures)
+            {
+                if (P.Z >= Island->GetCanyonLayout().SurfaceHeightAt(P.X, P.Y) - 200.f) continue;
+                ++Underground;
+                FHitResult Floor, Roof;
+                TestTrue(TEXT("Cave treasure rests on actual collision ground"),
+                    World->LineTraceSingleByChannel(Floor, P + FVector(0, 0, 10.f),
+                        P - FVector(0, 0, 10.f), ECC_Visibility) && Floor.ImpactNormal.Z > 0.7f);
+                TestTrue(TEXT("Cave treasure has a roof above the player"),
+                    World->LineTraceSingleByChannel(Roof, P + FVector(0, 0, 200.f),
+                        P + FVector(0, 0, 1800.f), ECC_Visibility));
+            }
+            TestTrue(TEXT("Every canyon round includes underground treasure"), Underground >= 1);
+        }
         Island->OnConstruction(FTransform::Identity);
         TestEqual(TEXT("Rebuilding does not duplicate assets and preserves seeded placement"), CountAssets(), FirstCount);
     }

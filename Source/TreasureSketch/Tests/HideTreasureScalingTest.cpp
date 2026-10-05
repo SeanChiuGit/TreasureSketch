@@ -27,6 +27,13 @@ bool FHideTreasureScalingTest::RunTest(const FString& Parameters)
                         const auto Points = Island->FindSeparatedTreasurePoints(Stream, Count, 950.f);
                         TestEqual(FString::Printf(TEXT("Theme %d scale %.1f seed %d placement %d provides %d treasures"),
                             static_cast<int32>(Theme), Scale, Seed, PlacementSeed, Count), Points.Num(), Count);
+                        if (Theme == EIslandTheme::CanyonGraybox)
+                        {
+                            int32 CaveCount = 0;
+                            for (const FVector& Point : Points)
+                                if (Point.Z < Island->GetCanyonLayout().SurfaceHeightAt(Point.X, Point.Y) - 200.f) ++CaveCount;
+                            TestTrue(TEXT("Every canyon placement includes covered cave treasure"), CaveCount > 0);
+                        }
                         for (int32 Index = 0; Index < Points.Num(); ++Index)
                             for (int32 Other = 0; Other < Index; ++Other)
                                 TestTrue(TEXT("Treasure dig ranges remain separated"),

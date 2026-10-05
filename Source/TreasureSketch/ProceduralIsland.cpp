@@ -240,8 +240,9 @@ void AProceduralIsland::ConfigureThemeParameters()
     if (Theme == EIslandTheme::CanyonGraybox)
     {
         MapScale = FMath::IsFinite(MapScale) ? FMath::Clamp(MapScale, 0.5f, 5.f) : 1.f;
-        GridSize = 321;
-        CellSize = 19.59375f * FMath::Sqrt(MapScale);
+        // Preserve map size, but use 16 times fewer surface cells.
+        GridSize = 81;
+        CellSize = 78.375f * FMath::Sqrt(MapScale);
         return;
     }
     const FIslandThemeDefinition& Definition = GetThemeDefinition(Theme);
@@ -670,6 +671,24 @@ void AProceduralIsland::RecordDecoration(float X, float Y)
         .Add(FVector2D(X, Y));
 }
 
+bool AProceduralIsland::FindCanyonCaveFloor(const FVector& RoutePoint, FVector& Floor) const
+{
+    if (!GetWorld() || !CanyonCaveMesh) return false;
+    const FVector Expected = GetActorTransform().TransformPosition(RoutePoint + FVector(0, 0, 600.f));
+    FCollisionQueryParams Query;
+    Query.bTraceComplex = true;
+    FHitResult Ground, Roof;
+    if (!GetWorld()->LineTraceSingleByChannel(Ground, Expected + FVector(0, 0, 160.f),
+            Expected - FVector(0, 0, 180.f), ECC_Visibility, Query)
+        || Ground.GetComponent() != CanyonCaveMesh || Ground.ImpactNormal.Z < 0.7f) return false;
+    Floor = Ground.ImpactPoint;
+    if (!GetWorld()->LineTraceSingleByChannel(Roof, Floor + FVector(0, 0, 200.f),
+            Floor + FVector(0, 0, 1800.f), ECC_Visibility, Query)
+        || Roof.GetComponent() != CanyonCaveMesh) return false;
+    return !GetWorld()->OverlapBlockingTestByChannel(Floor + FVector(0, 0, 110.f),
+        FQuat::Identity, ECC_Pawn, FCollisionShape::MakeCapsule(42.f, 96.f), Query);
+}
+
 FVector AProceduralIsland::FindTreasurePoint(FRandomStream& Stream, float MinimumHeight) const
 {
     if (Theme == EIslandTheme::CanyonGraybox && CanyonLayout.Nodes.IsValidIndex(CanyonLayout.TreasureNode))
@@ -708,11 +727,25 @@ FVector AProceduralIsland::FindTreasurePoint(FRandomStream& Stream, float Minimu
 
 TArray<FVector> AProceduralIsland::FindSeparatedTreasurePoints(FRandomStream& Stream, int32 Count, float MinimumSpacing) const
 {
-    TArray<FVector> Candidates;
+    TArray<FVector> Candidates, CaveCandidates;
     // Enumerate real land positions. The single-treasure random helper can return
     // the same center fallback repeatedly, so it must not place multiple treasures.
     if (Theme == EIslandTheme::CanyonGraybox)
     {
+        // Sample tunnel floors, never the mountain surface above them.
+        for (const auto& Edge : CanyonLayout.Edges)
+        {
+            if (!Edge.bCave) continue;
+            const FVector A = CanyonLayout.Nodes[Edge.A].Position, B = CanyonLayout.Nodes[Edge.B].Position;
+            const int32 Steps = FMath::Max(2, FMath::CeilToInt(FVector::Dist2D(A, B) / 180.f));
+            for (int32 Step = 0; Step <= Steps; ++Step)
+            {
+                FVector Floor;
+                if (FindCanyonCaveFloor(FMath::Lerp(A, B, static_cast<float>(Step) / Steps), Floor))
+                    CaveCandidates.Add(Floor);
+            }
+        }
+        Candidates.Append(CaveCandidates);
         for (const auto& Node : CanyonLayout.Nodes)
         {
             if (Node.bCaveInterior || Node.Layer == ECanyonRouteLayer::Ramp) continue;
@@ -761,21 +794,26 @@ TArray<FVector> AProceduralIsland::FindSeparatedTreasurePoints(FRandomStream& St
     if (Count <= 0 || Candidates.IsEmpty()) return Selected;
     // A greedy layout can get stuck even when another starting point fits.
     // Retry larger quotas; never relax spacing or use duplicate fallback points.
-    const int32 Attempts = Count > 3 ? 256 : 1;
+    const int32 Attempts = Theme == EIslandTheme::CanyonGraybox || Count > 3 ? 256 : 1;
     for (int32 Attempt = 0; Attempt < Attempts; ++Attempt)
     {
         Selected.Reset();
-        Selected.Add(Candidates[Stream.RandRange(0, Candidates.Num() - 1)]);
+        // Prefer one cave treasure per hider; compact caves fall back to
+        // fewer, but always at least one, without relaxing treasure spacing.
+        const int32 CaveQuota = CaveCandidates.IsEmpty() ? 0 : FMath::Max(1, Count / 3 - Attempt / 86);
+        if (CaveQuota > 0) Selected.Add(CaveCandidates[Stream.RandRange(0, CaveCandidates.Num() - 1)]);
+        else Selected.Add(Candidates[Stream.RandRange(0, Candidates.Num() - 1)]);
         while (Selected.Num() < Count)
         {
             float BestSpacingSquared = FMath::Square(MinimumSpacing);
             int32 BestIndex = INDEX_NONE;
             int32 ValidCandidates = 0;
-            for (int32 Index = 0; Index < Candidates.Num(); ++Index)
+            const TArray<FVector>& Pool = Selected.Num() < CaveQuota ? CaveCandidates : Candidates;
+            for (int32 Index = 0; Index < Pool.Num(); ++Index)
             {
                 float NearestSquared = TNumericLimits<float>::Max();
                 for (const FVector& Existing : Selected)
-                    NearestSquared = FMath::Min(NearestSquared, FVector::DistSquared2D(Candidates[Index], Existing));
+                    NearestSquared = FMath::Min(NearestSquared, FVector::DistSquared2D(Pool[Index], Existing));
                 if (NearestSquared <= FMath::Square(MinimumSpacing)) continue;
                 ++ValidCandidates;
                 // Farthest-first is fast, but may waste space on compact routes.
@@ -789,7 +827,7 @@ TArray<FVector> AProceduralIsland::FindSeparatedTreasurePoints(FRandomStream& St
             }
             // Never accept a duplicate or overlapping fallback to fill the quota.
             if (BestIndex == INDEX_NONE) break;
-            Selected.Add(Candidates[BestIndex]);
+            Selected.Add(Pool[BestIndex]);
         }
         if (Selected.Num() == Count) return Selected;
     }
@@ -1378,14 +1416,24 @@ void AProceduralIsland::BuildCanyonGrayboxTerrain()
         {
             const float WX = X * CellSize - Half, WY = Y * CellSize - Half;
             const float Z = CanyonLayout.SurfaceHeightAt(WX, WY);
-            const float DX = CanyonLayout.SurfaceHeightAt(WX + 70.f, WY) - CanyonLayout.SurfaceHeightAt(WX - 70.f, WY);
-            const float DY = CanyonLayout.SurfaceHeightAt(WX, WY + 70.f) - CanyonLayout.SurfaceHeightAt(WX, WY - 70.f);
             const int32 Index = Y * GridSize + X;
             Vertices[Index] = FVector(WX, WY, Z);
-            Normals[Index] = FVector(-DX / 140.f, -DY / 140.f, 1.f).GetSafeNormal();
             UVs[Index] = FVector2D(X / 12.f, Y / 12.f);
             Colors[Index] = FLinearColor::White;
             Tangents[Index] = FProcMeshTangent(1.f, 0.f, 0.f);
+        }
+    });
+    // Reuse sampled heights instead of evaluating the complete route graph
+    // four more times per vertex just to derive the surface normal.
+    ParallelFor(GridSize, [&](int32 Y)
+    {
+        for (int32 X = 0; X < GridSize; ++X)
+        {
+            const int32 X0 = FMath::Max(0, X - 1), X1 = FMath::Min(GridSize - 1, X + 1);
+            const int32 Y0 = FMath::Max(0, Y - 1), Y1 = FMath::Min(GridSize - 1, Y + 1);
+            const float DX = (Vertices[Y * GridSize + X1].Z - Vertices[Y * GridSize + X0].Z) / ((X1 - X0) * CellSize);
+            const float DY = (Vertices[Y1 * GridSize + X].Z - Vertices[Y0 * GridSize + X].Z) / ((Y1 - Y0) * CellSize);
+            Normals[Y * GridSize + X] = FVector(-DX, -DY, 1.f).GetSafeNormal();
         }
     });
     for (int32 Y = 0; Y < GridSize - 1; ++Y)
@@ -1458,42 +1506,54 @@ void AProceduralIsland::BuildCanyonAssets()
     }
     if (Props.IsEmpty()) return;
     FRandomStream Stream(Seed ^ 0x4c178);
-    TArray<FVector> Placed;
+    TArray<FVector> Placed, PlacedInCaves;
     int32 NextProp = Stream.RandRange(0, Props.Num() - 1);
     for (const auto& Edge : CanyonLayout.Edges)
     {
-        if (Edge.bCave || Edge.Layer != ECanyonRouteLayer::Lower) continue;
+        if (!Edge.bCave && Edge.Layer != ECanyonRouteLayer::Lower) continue;
         const FVector A = CanyonLayout.Nodes[Edge.A].Position, B = CanyonLayout.Nodes[Edge.B].Position;
-        if (CanyonLayout.Nodes[Edge.A].bCaveInterior || CanyonLayout.Nodes[Edge.B].bCaveInterior) continue;
+        if (!Edge.bCave && (CanyonLayout.Nodes[Edge.A].bCaveInterior || CanyonLayout.Nodes[Edge.B].bCaveInterior)) continue;
         const float Length = FVector::Dist2D(A, B);
         const FVector Forward = (B - A).GetSafeNormal2D();
         const FVector Right(-Forward.Y, Forward.X, 0.f);
         // Keep authored sizes where possible; shrink larger props to fit narrow routes.
-        for (float Along = 160.f; Along < Length - 160.f; Along += 280.f)
+        for (float Along = Edge.bCave ? 80.f : 160.f; Along < Length - (Edge.bCave ? 80.f : 160.f); Along += Edge.bCave ? 220.f : 280.f)
             for (const float Side : { -1.f, 1.f })
             {
                 auto* Prop = Props[NextProp % Props.Num()];
                 const FBox Bounds = Prop->GetStaticMesh()->GetBoundingBox();
                 const float NativeRadius = FMath::Max(Bounds.GetSize().X, Bounds.GetSize().Y) * 0.5f;
-                const float Scale = FMath::Min(Stream.FRandRange(0.85f, 1.1f), Edge.HalfWidth * 0.4f / FMath::Max(1.f, NativeRadius));
+                float Scale = FMath::Min(Stream.FRandRange(0.85f, 1.1f), Edge.HalfWidth * 0.4f / FMath::Max(1.f, NativeRadius));
+                if (Edge.bCave) Scale = FMath::Min(Scale, 180.f / FMath::Max(1.f, static_cast<float>(Bounds.GetSize().Z)));
                 const float Radius = NativeRadius * Scale;
-                const FVector Point = A + Forward * Along + Right * (Side * (Edge.HalfWidth * 0.76f - Radius));
-                if (SlopeAt(Point.X, Point.Y) > 0.3f) continue;
+                const FVector Point = FMath::Lerp(A, B, Along / Length) + Right * (Side * (Edge.HalfWidth * (Edge.bCave ? 0.5f : 0.76f) - Radius));
+                if (!Edge.bCave && SlopeAt(Point.X, Point.Y) > 0.3f) continue;
                 bool bClear = true;
                 for (const int32 Mouth : CanyonLayout.AllCaveMouthNodes)
                     if (FVector::Dist2D(Point, CanyonLayout.Nodes[Mouth].Position) < 220.f + Radius) bClear = false;
-                for (const FVector& Previous : Placed)
-                    if (FVector::Dist2D(Point, Previous) < 220.f + Radius) bClear = false;
+                for (const FVector& Previous : Edge.bCave ? PlacedInCaves : Placed)
+                    if (FVector::Dist2D(Point, Previous) < (Edge.bCave ? 120.f : 220.f) + Radius) bClear = false;
                 if (!bClear) continue;
-                const float Z = CanyonLayout.SurfaceHeightAt(Point.X, Point.Y);
+                FVector CaveFloor;
+                if (Edge.bCave && !FindCanyonCaveFloor(Point, CaveFloor)) continue;
+                const float Z = Edge.bCave ? GetActorTransform().InverseTransformPosition(CaveFloor).Z
+                    : CanyonLayout.SurfaceHeightAt(Point.X, Point.Y);
                 // Bound the height variation under the footprint to avoid floating on banks.
                 for (const FVector& Offset : { Right * Radius, -Right * Radius, Forward * Radius, -Forward * Radius })
-                    if (FMath::Abs(CanyonLayout.SurfaceHeightAt(Point.X + Offset.X, Point.Y + Offset.Y) - Z) > 35.f) bClear = false;
+                {
+                    if (Edge.bCave)
+                    {
+                        FVector Foot;
+                        if (!FindCanyonCaveFloor(Point + Offset, Foot)
+                            || FMath::Abs(GetActorTransform().InverseTransformPosition(Foot).Z - Z) > 35.f) bClear = false;
+                    }
+                    else if (FMath::Abs(CanyonLayout.SurfaceHeightAt(Point.X + Offset.X, Point.Y + Offset.Y) - Z) > 35.f) bClear = false;
+                }
                 if (!bClear) continue;
                 const FRotator Rotation(0.f, Stream.FRandRange(0.f, 360.f), 0.f);
                 const FVector CenterOffset = Rotation.RotateVector(FVector(Bounds.GetCenter().X, Bounds.GetCenter().Y, 0.f) * Scale);
                 Prop->AddInstance(FTransform(Rotation, FVector(Point.X, Point.Y, Z - Bounds.Min.Z * Scale) - CenterOffset, FVector(Scale)));
-                Placed.Add(Point);
+                (Edge.bCave ? PlacedInCaves : Placed).Add(Point);
                 ++NextProp;
             }
     }
@@ -1503,21 +1563,6 @@ void AProceduralIsland::BuildCanyonGrayboxLandmarks()
 {
     if (!CanyonLayout.Validate()) return;
     const float S = CanyonLayout.LengthScale;
-    for (int32 NodeIndex = 0; NodeIndex < CanyonLayout.Nodes.Num(); NodeIndex += 2)
-    {
-        const FCanyonGrayboxNode& Node = CanyonLayout.Nodes[NodeIndex];
-        UPointLightComponent* Fill = NewObject<UPointLightComponent>(this);
-        Fill->SetupAttachment(RootComponent);
-        Fill->SetMobility(EComponentMobility::Movable);
-        Fill->SetIntensity(65000.f);
-        Fill->SetAttenuationRadius(FMath::Max(2500.f, 6000.f * S));
-        Fill->SetLightColor(FLinearColor(1.f, 0.88f, 0.68f));
-        Fill->SetCastShadows(false);
-        Fill->RegisterComponent();
-        Fill->SetRelativeLocation(FVector(Node.Position.X, Node.Position.Y,
-            CanyonLayout.SurfaceHeightAt(Node.Position.X, Node.Position.Y) + 1300.f * S));
-        CanyonFillLights.Add(Fill);
-    }
     UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr,
         TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
     if (Base)
@@ -1656,8 +1701,12 @@ void AProceduralIsland::BuildCanyonCaves()
                 LowestFloor = FMath::Min(LowestFloor,
                     600.f + CanyonLayout.Nodes[Index].Position.Z);
     Bounds.BottomZ = LowestFloor - 250.f;
-    Bounds.StepXY = CellSize;
-    Bounds.StepZ = FMath::Max(45.f, 60.f * CanyonLayout.LengthScale);
+    // Narrow hall junctions need the original sampling to preserve their
+    // floor connections. Ordinary tunnels use a much cheaper coarse shell.
+    const bool bNarrowHall = CanyonLayout.CaveNetworks.ContainsByPredicate(
+        [](const FCanyonCaveNetwork& Network) { return Network.Pattern == ECanyonCavePattern::ThreeMouthHall; });
+    Bounds.StepXY = bNarrowHall ? CellSize * 0.25f : CellSize;
+    Bounds.StepZ = bNarrowHall ? FMath::Max(45.f, 60.f * CanyonLayout.LengthScale) : 90.f;
     struct FCarveSegment { FVector A, B; float Width, Clearance; int32 Group; };
     TArray<FCarveSegment> CarveSegments;
     int32 CarveGroups = 0;
@@ -1758,100 +1807,25 @@ void AProceduralIsland::BuildCanyonCaves()
         CanyonCaveMesh->SetMaterial(0, Rock);
     }
 
-    float PathLength = 0.f;
-    for (int32 I = 1; I < CanyonLayout.CavePathNodes.Num(); ++I)
-        PathLength += FVector::Dist2D(
-            CanyonLayout.Nodes[CanyonLayout.CavePathNodes[I - 1]].Position,
-            CanyonLayout.Nodes[CanyonLayout.CavePathNodes[I]].Position);
-    const int32 LightCount = FMath::Max(2, FMath::CeilToInt(PathLength / 650.f));
-    for (int32 I = 1; I <= LightCount; ++I)
+    // A fixed light budget avoids dozens of overlapping movable lights.
+    // Cover interior nodes with at most eight broad, shadow-free lights.
+    for (const auto& Node : CanyonLayout.Nodes)
     {
-        const float T = I / static_cast<float>(LightCount + 1);
-        FVector Point, Along;
-        CanyonLayout.SampleCave(T, Point, Along);
+        if (!Node.bCaveInterior || CanyonFillLights.Num() >= 8) continue;
+        const FVector Position = Node.Position + FVector(0, 0, 860.f);
+        bool bCovered = false;
+        for (const UPointLightComponent* Existing : CanyonFillLights)
+            if (FVector::Dist(Existing->GetRelativeLocation(), Position) < 900.f) bCovered = true;
+        if (bCovered) continue;
         UPointLightComponent* Lamp = NewObject<UPointLightComponent>(this);
         Lamp->SetupAttachment(RootComponent);
         Lamp->SetMobility(EComponentMobility::Movable);
-        Lamp->SetIntensity(14500.f);
-        Lamp->SetAttenuationRadius(850.f);
+        Lamp->SetIntensity(18000.f);
+        Lamp->SetAttenuationRadius(1400.f);
         Lamp->SetLightColor(FLinearColor(0.86f, 0.69f, 0.49f));
         Lamp->SetCastShadows(false);
         Lamp->RegisterComponent();
-        Lamp->SetRelativeLocation(FVector(Point.X, Point.Y,
-            600.f + Point.Z + 260.f));
-        CanyonFillLights.Add(Lamp);
-    }
-    if (CanyonLayout.CavePattern == ECanyonCavePattern::ThreeMouthHall
-        || CanyonLayout.CavePattern == ECanyonCavePattern::LongLoop)
-    {
-        float BranchLength = 0.f;
-        const TArray<int32>& Branch = CanyonLayout.CaveBranches[2];
-        for (int32 I = 1; I < Branch.Num(); ++I)
-            BranchLength += FVector::Dist2D(CanyonLayout.Nodes[Branch[I - 1]].Position,
-                CanyonLayout.Nodes[Branch[I]].Position);
-        const int32 BranchLights = FMath::Max(2, FMath::CeilToInt(BranchLength / 650.f));
-        for (int32 I = 1; I <= BranchLights; ++I)
-        {
-            FVector Point, Along;
-            CanyonLayout.SampleCaveBranch(2, I / static_cast<float>(BranchLights + 1),
-                Point, Along);
-            UPointLightComponent* Lamp = NewObject<UPointLightComponent>(this);
-            Lamp->SetupAttachment(RootComponent);
-            Lamp->SetMobility(EComponentMobility::Movable);
-            Lamp->SetIntensity(14500.f);
-            Lamp->SetAttenuationRadius(850.f);
-            Lamp->SetLightColor(FLinearColor(0.86f, 0.69f, 0.49f));
-            Lamp->SetCastShadows(false);
-            Lamp->RegisterComponent();
-            Lamp->SetRelativeLocation(FVector(Point.X, Point.Y, 600.f + Point.Z + 260.f));
-            CanyonFillLights.Add(Lamp);
-        }
-    }
-    for (int32 NetworkIndex = 0; NetworkIndex < CanyonLayout.CaveNetworks.Num(); ++NetworkIndex)
-    {
-        const FCanyonCaveNetwork& Network = CanyonLayout.CaveNetworks[NetworkIndex];
-        TArray<TArray<int32>> Paths;
-        if (NetworkIndex > 0)
-        {
-            Paths = Network.Branches;
-            if (Paths.IsEmpty()) Paths.Add(Network.PathNodes);
-        }
-        for (const FCanyonDeadEnd& DeadEnd : Network.DeadEnds) Paths.Append(DeadEnd.Paths);
-        for (const TArray<int32>& Path : Paths)
-            for (int32 Segment = 1; Segment < Path.Num(); ++Segment)
-            {
-                const FVector A = CanyonLayout.Nodes[Path[Segment - 1]].Position;
-                const FVector B = CanyonLayout.Nodes[Path[Segment]].Position;
-                const int32 Count = FMath::Max(1, FMath::CeilToInt(FVector::Dist2D(A, B) / 650.f));
-                for (int32 I = 0; I < Count; ++I)
-                {
-                    const FVector Point = FMath::Lerp(A, B, (I + 0.5f) / Count);
-                    UPointLightComponent* Lamp = NewObject<UPointLightComponent>(this);
-                    Lamp->SetupAttachment(RootComponent);
-                    Lamp->SetMobility(EComponentMobility::Movable);
-                    Lamp->SetIntensity(14500.f);
-                    Lamp->SetAttenuationRadius(850.f);
-                    Lamp->SetLightColor(FLinearColor(0.86f, 0.69f, 0.49f));
-                    Lamp->SetCastShadows(false);
-                    Lamp->RegisterComponent();
-                    Lamp->SetRelativeLocation(Point + FVector(0.f, 0.f, 860.f));
-                    CanyonFillLights.Add(Lamp);
-                }
-            }
-    }
-    for (const FCanyonCaveHall& Hall : CanyonLayout.AllCaveHalls)
-    {
-        const FVector& Center = CanyonLayout.Nodes[Hall.Node].Position;
-        UPointLightComponent* Lamp = NewObject<UPointLightComponent>(this);
-        Lamp->SetupAttachment(RootComponent);
-        Lamp->SetMobility(EComponentMobility::Movable);
-        Lamp->SetIntensity(28000.f);
-        Lamp->SetAttenuationRadius(Hall.Radius * 2.f);
-        Lamp->SetLightColor(FLinearColor(0.90f, 0.74f, 0.53f));
-        Lamp->SetCastShadows(false);
-        Lamp->RegisterComponent();
-        Lamp->SetRelativeLocation(FVector(Center.X, Center.Y,
-            600.f + Center.Z + Hall.Clearance * 0.65f));
+        Lamp->SetRelativeLocation(Position);
         CanyonFillLights.Add(Lamp);
     }
 }
